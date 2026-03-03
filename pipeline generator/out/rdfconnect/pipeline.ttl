@@ -1,0 +1,38 @@
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix owl: <http://www.w3.org/2002/07/owl#>.
+@prefix ex: <http://example.org/>.
+
+
+### Import runners and processors
+# TC: should be included in component catalogue as a custom property. For example each tc:Processor gets a osw:hasInstallationInstructions and then owlImportString
+# The imports are essentially the same as my component catalogue: essential information that the rdf connect orchestrator / runners need to know to run the pipeline, including SHACl shapes for the processors
+# So I could consider doing an automated mapping to fill up my catalogue
+<> owl:imports <./node_modules/@rdfc/js-runner/index.ttl>. # The filepath may already be known based on the npm install logic, but the filename itself will not be known
+<> owl:imports <./node_modules/ldes-client/processor.ttl>.
+<> owl:imports <./node_modules/@rdfc/log-processor-ts/processor.ttl>.
+
+
+### Define the channels
+# Should be auto-generated in the RdfConnectCompiler
+<channel> a rdfc:Writer, rdfc:Reader.
+
+
+### Define the pipeline
+<> a rdfc:Pipeline;
+    rdfc:consistsOf [
+        rdfc:instantiates rdfc:NodeRunner;
+        rdfc:processor <ldes-client>, <log>;
+    ].
+
+
+### Define and configure the processor
+<ldes-client> a rdfc:LdesClient;
+    rdfc:url <https://ca-westtoerwin-nginx-prod.livelyisland-1fa58ea1.westeurope.azurecontainerapps.io/touristattractions/latestView>;
+    rdfc:output <channel>; # I can look these property path names up in the config-related nodeshape
+    rdfc:follow true.
+
+<log> a rdfc:LogProcessorJs;
+    rdfc:reader <channel>;
+    rdfc:level "debug";
+    rdfc:label "test".
+

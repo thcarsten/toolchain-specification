@@ -1,0 +1,9 @@
+services:
+  rdf-connect:
+    container_name: rdf-connect
+    image: rdf-connect:latest
+    volumes:
+      - ./pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro
+    environment:
+      LOG_LEVEL: debug
+    command: npx rdfc /workspace/pipeline/pipeline.ttl

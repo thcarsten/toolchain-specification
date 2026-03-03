@@ -1,0 +1,85 @@
+@prefix : <http://example.org/example/> .
+@prefix tc: <https://w3id.org/toolchain#> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix osw: <http://ontosoft.org/software#> .
+@prefix sosa: <http://www.w3.org/ns/sosa/> .
+@prefix ssn: <https://www.w3.org/TR/vocab-ssn/> .
+@prefix ssn: <https://www.w3.org/TR/vocab-ssn/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+
+
+
+#################################################################
+# RDFConnect Pipeline
+#################################################################
+:RdfcExamplePipeline a tc:PipelineDefinition;
+    rdfs:label "RDF Connect Example Pipeline";
+    rdfs:comment "A simple example pipeline using two processors and one runner of the RDF Connect framework for the pipeline generator PoC.".
+
+:RdfcLdesClientStep a tc:PipelineStep;
+        p-plan:isStepOfPlan :RdfcExamplePipeline;
+        tc:toBeCarriedOutByProcessor rdfc:LdesClient;
+        p-plan:hasInputVar :RdfcLdesClientConfig .
+
+:RdfcConsoleOutStep a tc:PipelineStep;
+        p-plan:isStepOfPlan :RdfcExamplePipeline;
+        tc:toBeCarriedOutByProcessor rdfc:LogProcessorJs;
+        p-plan:hasInputVar :RdfcConsoleOutConfig .
+
+:RdfcConsoleOutStep p-plan:isPrecededBy :RdfcLdesClientStep .
+
+:RdfcLdesClientConfig a tc:Config;
+    tc:embedded [
+        rdfc:url <https://ca-westtoerwin-nginx-prod.livelyisland-1fa58ea1.westeurope.azurecontainerapps.io/touristattractions/latestView>;
+        rdfc:follow true
+    ] .
+
+:RdfcConsoleOutConfig a tc:Config;
+    tc:embedded [
+        rdfc:level "debug";
+        rdfc:label "test"
+    ] .
+
+
+
+#################################################################
+# LDIO Pipeline
+#################################################################
+
+
+:LdioExamplePipeline a tc:PipelineDefinition;
+    rdfs:label "LDIO Example Pipeline";
+    rdfs:comment "A simple example pipeline using two processors and one runner of the LDIO framework for the pipeline generator PoC.".
+
+
+:LDESClientStep a tc:PipelineStep;
+        p-plan:isStepOfPlan :LdioExamplePipeline;
+        tc:toBeCarriedOutByProcessor ldio:LdesClient;
+        p-plan:hasInputVar :LdesClientConfig .
+
+:ConsoleOutStep a tc:PipelineStep;
+        p-plan:isStepOfPlan :LdioExamplePipeline;
+        tc:toBeCarriedOutByProcessor ldio:ConsoleOut;
+        p-plan:hasInputVar :ConsoleOutConfig .
+    
+:ConsoleOutStep p-plan:isPrecededBy :SparqlStep .
+:SparqlStep p-plan:isPrecededBy :LDESClientStep .
+
+:LdesClientConfig a tc:Config;
+    tc:embedded [
+        :urls "https://ca-westtoerwin-nginx-prod.livelyisland-1fa58ea1.westeurope.azurecontainerapps.io/touristattractions/latestView";
+        :retries [ :enabled true] ;
+    ] .
+
+:ConsoleOutConfig a tc:Config;
+    tc:embedded [
+        :rdf-writer 
+            [:content-type "text/turtle"] ;
+    ] .

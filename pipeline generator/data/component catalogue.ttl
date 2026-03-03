@@ -1,0 +1,635 @@
+@prefix : <http://example.org/example/> .
+@prefix tc: <https://w3id.org/toolchain#> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix osw: <http://ontosoft.org/software#> .
+@prefix sosa: <http://www.w3.org/ns/sosa/> .
+@prefix ssn: <https://www.w3.org/TR/vocab-ssn/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+
+#################################################################
+# Component Catalogue
+#################################################################
+:LdioComponentCatalogue a tc:ComponentCatalogue;
+    prov:hadMember 
+            ldio:LdesClient, 
+            ldio:SparqlConstructTransformer,
+            ldio:ConsoleOut,
+            ldio:LinkedDataInteractionsOrchestrator .
+
+
+:RDFConnectComponentCatalogue a tc:ComponentCatalogue;
+    prov:hadMember
+            rdfc:LdesClient,
+            rdfc:LogProcessorJs,
+            rdfc:NodeRunner .
+
+
+#################################################################
+# Processors
+#################################################################
+
+rdfc:LogProcessorJs a tc:Processor;
+    rdfs:label "JS/TS Log Processor";
+    rdfs:comment "A simple JS/TS processor to log an incoming stream to the RDF-Connect logging system.";
+    osw:hasDependency rdfc:NodeRunner ;
+    osw:hasUseLimitations :RdfcLogProcessorJsConfigShape ;
+    # rdfc:definition_file I would say also provide the filepath of the definition that should be loaded
+    # at config creation. Frees you of the responsibility to have everything present in the component catalogue
+    owl:imports <./node_modules/@rdfc/log-processor-ts/processor.ttl>. # This is technically illegal, because the range is a owl:Ontology, not a string
+
+
+:RdfcLogProcessorJsConfigShape a sh:NodeShape;
+    sh:targetClass rdfc:LogProcessorJs;
+    sh:property [
+    sh:path tc:embedded ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:node [
+            sh:property [
+                sh:class rdfc:Reader;
+                sh:path rdfc:reader;
+                sh:name "reader";
+                sh:minCount 1;
+                sh:maxCount 1;
+            ], [
+                sh:class rdfc:Writer;
+                sh:path rdfc:writer;
+                sh:name "writer";
+                sh:minCount 0;
+                sh:maxCount 1;
+            ], [
+                sh:datatype xsd:string;
+                sh:path rdfc:label;
+                sh:name "label";
+                sh:minCount 0;
+                sh:maxCount 1;
+            ], [
+                sh:datatype xsd:string;
+                sh:path rdfc:level;
+                sh:name "level";
+                sh:minCount 0;
+                sh:maxCount 1;
+            ], [
+                sh:datatype xsd:boolean;
+                sh:path rdfc:raw;
+                sh:name "raw";
+                sh:minCount 0;
+                sh:maxCount 1;
+            ], [
+                sh:datatype xsd:boolean;
+                sh:path rdfc:readAsStream;
+                sh:name "readAsStream";
+                sh:minCount 0;
+                sh:maxCount 1;
+            ]
+        ] 
+    ].
+
+
+rdfc:LdesClient
+    a tc:Processor ;
+    rdfs:label "ldes client";
+    rdfs:comment "An LDES client that can read a stream of members from an LDES."; 
+    osw:hasDependency rdfc:NodeRunner ;
+    osw:hasUseLimitations :RdfcLdesClientConfigShape,
+                          :RdfcLdesClientFetchConfigShape, 
+                          :RdfcLdesClientFetchRetryConfigShape,
+                          :RdfcLdesClientAuthConfigShape;
+    owl:imports <./node_modules/ldes-client/processor.ttl> . # This is specific to RDF Connect
+
+:RdfcLdesClientConfigShape a sh:NodeShape;
+  sh:targetClass rdfc:LdesClient;
+  sh:property [
+    sh:path tc:embedded ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:node [
+                # Everything that used to be on rdfc:LdesClient
+                sh:property [
+                    sh:datatype xsd:string;
+                    sh:path rdfc:url;
+                    sh:name "url";
+                    sh:maxCount 1;
+                    sh:minCount 1;
+                ], [
+                    sh:class rdfc:Writer;
+                    sh:path rdfc:output;
+                    sh:name "output";
+                    sh:maxCount 1;
+                    sh:minCount 1;
+                ], [
+                    sh:datatype xsd:dateTime;
+                    sh:path rdfc:before;
+                    sh:name "before";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:dateTime;
+                    sh:path rdfc:after;
+                    sh:name "after";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:string;
+                    sh:path rdfc:ordered;
+                    sh:name "ordered";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:boolean;
+                    sh:path rdfc:follow;
+                    sh:name "follow";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:integer;
+                    sh:path rdfc:interval;
+                    sh:name "pollInterval";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:string;
+                    sh:path rdfc:shapeFile;
+                    sh:name "shapeFile";
+                    sh:minCount 0;
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:boolean;
+                    sh:path rdfc:noShape;
+                    sh:name "noShape";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:string;
+                    sh:path rdfc:savePath;
+                    sh:name "savePath";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:boolean;
+                    sh:path rdfc:loose;
+                    sh:name "loose";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:boolean;
+                    sh:path rdfc:urlIsView;
+                    sh:name "urlIsView";
+                    sh:maxCount 1;
+                ], [
+                    sh:class rdfc:FetchConfig;
+                    sh:path rdfc:fetch;
+                    sh:name "fetchConfig";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:string;
+                    sh:path rdfc:conditionFile;
+                    sh:name "conditionFile";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:boolean;
+                    sh:path rdfc:materialize;
+                    sh:name "materialize";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:boolean;
+                    sh:path rdfc:startFresh;
+                    sh:name "startFresh";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:boolean;
+                    sh:path rdfc:lastVersionOnly;
+                    sh:name "lastVersionOnly";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:string;
+                    sh:path rdfc:streamId;
+                    sh:name "streamId";
+                    sh:maxCount 1;
+                ], [
+                    sh:datatype xsd:boolean;
+                    sh:path rdfc:sdsify;
+                    sh:name "sdsify";
+                    sh:maxCount 1;
+                ];
+            ];
+  ] .
+
+:RdfcLdesClientFetchConfigShape a sh:NodeShape; # This is a slight remapping of the processor.ttl
+  sh:targetClass rdfc:FetchConfig;
+  sh:property [
+    sh:class rdfc:AuthConfig;
+    sh:path rdfc:auth;
+    sh:name "auth";
+    sh:maxCount 1;
+  ], [
+    sh:datatype xsd:integer;
+    sh:path rdfc:concurrent;
+    sh:name "concurrent";
+    sh:maxCount 1;
+  ], [
+    sh:class rdfc:FetchRetry;
+    sh:path rdfc:retry;
+    sh:name "retry";
+    sh:maxCount 1;
+  ], [
+    sh:datatype xsd:boolean;
+    sh:path rdfc:safe;
+    sh:name "safe";
+    sh:maxCount 1;
+  ].
+
+:RdfcLdesClientFetchRetryConfigShape a sh:NodeShape;
+  sh:targetClass rdfc:FetchRetry;
+  sh:property [
+    sh:datatype xsd:integer;
+    sh:path rdfc:code;
+    sh:name "codes";
+  ], [
+    sh:datatype xsd:integer;
+    sh:path rdfc:maxRetry;
+    sh:name "maxRetries";
+    sh:maxCount 1;
+  ].
+
+:RdfcLdesClientAuthConfigShape a sh:NodeShape;
+  sh:targetClass rdfc:AuthConfig;
+  sh:property [
+    sh:datatype xsd:string;
+    sh:path rdfc:type;
+    sh:name "type";
+    sh:maxCount 1;
+  ], [
+    sh:datatype xsd:string;
+    sh:path rdfc:auth;
+    sh:name "auth";
+    sh:maxCount 1;
+  ].
+
+
+ldio:LdesClient
+    a tc:Processor ;
+    rdfs:label "Ldio:LdesClient" ; # In this case, the rdfs:label is also used to generate the corresponding entry in the yaml config file that the LDIO expects 
+    ldio:type "Input" ;
+    osw:hasDependency ldio:LinkedDataInteractionsOrchestrator ;
+    osw:hasUseLimitations :LdioLdesClientConfigShape. 
+
+:LdioLdesClientConfigShape
+        a sh:NodeShape ;
+	    sh:target [ # I express here that the tc:Config needs to belong to ldio:LdesClient
+        	a sh:SPARQLTarget ;
+            sh:prefixes :prefixes ;
+        	sh:select """
+            		SELECT ?this
+            		WHERE {
+                		?step tc:toBeCarriedOutByProcessor ldio:LdesClient .
+                		?step p-plan:hasInputVar ?this .
+                		?this a tc:Config .
+            			}
+        		  """ ;
+    		  ] ; 
+        sh:property [
+            sh:path tc:embedded ;
+            sh:node [
+                a sh:NodeShape ;
+                sh:property [
+                    sh:name "urls" ; # this is optional. This tells the pipeline generator the field name that should be used when generating the config. Otherwise the predicate is used. 
+                    sh:path :urls ;
+                    sh:datatype xsd:string ;
+                    sh:minCount 1 ;
+                    sh:message "At last one value for 'urls' is required." ;
+                ] ;
+            ] ;
+        ] .
+
+
+ldio:SparqlConstructTransformer 
+    a tc:Processor ;
+    rdfs:label "Ldio:SparqlConstructTransformer" ; 
+    ldio:type "Transformer" ;
+    osw:hasDependency ldio:LinkedDataInteractionsOrchestrator ;
+    osw:hasUseLimitations :LdioSparqlConstructTransformerConfigShape. 
+
+
+
+:LdioSparqlConstructTransformerConfigShape
+    a sh:NodeShape ;
+    sh:closed true ;
+    sh:ignoredProperties ( rdf:type ) ;
+    sh:severity sh:Warning ; # TODO: This makes it so that using unknown properties emits a warning, whereas violations for the known properties emits a violation (does not work yet)
+
+	    sh:target [ # I express here that the tc:Config needs to belong to ldio:LdesClient
+        	a sh:SPARQLTarget ;
+            sh:prefixes :prefixes ;
+        	sh:select """
+            		SELECT ?this
+            		WHERE {
+                		?step tc:toBeCarriedOutByProcessor ldio:SparqlConstructTransformer .
+                		?step p-plan:hasInputVar ?this .
+                		?this a tc:Config .
+            			}
+        		  """ ;
+    		  ] ; 
+        sh:property [
+            sh:path tc:embedded ;
+            sh:node [
+                a sh:NodeShape ;
+                sh:property [
+                    sh:name "query" ; # this is optional. This tells the pipeline generator the field name that should be used when generating the config. Otherwise the predicate is used. 
+                    sh:path :query ;
+                    sh:datatype xsd:string ;
+                    sh:minCount 1 ;
+                    sh:maxCount 1 ;
+                    sh:message "At last one value for 'query' is required." ;
+                ] ,
+                [
+                    sh:name "infer" ; # this is optional. This tells the pipeline generator the field name that should be used when generating the config. Otherwise the predicate is used. 
+                    sh:path :infer ;
+                    sh:datatype xsd:boolean ;
+                    sh:minCount 0 ;
+                    sh:maxCount 1 ;
+                    sh:message "If infer is provided, it has to be of type boolean." ;
+                ] ;
+            ] ;
+        ] .
+
+
+
+ldio:ConsoleOut a tc:Processor ;
+    a tc:Processor ;
+    rdfs:label "Ldio:ConsoleOut" ; 
+    osw:hasDependency ldio:LinkedDataInteractionsOrchestrator ;
+    ldio:type "Output" ;
+    osw:hasUseLimitations :LdioConsoleOutConfigShape .
+
+:LdioConsoleOutConfigShape
+        a sh:NodeShape ;
+        sh:target [ # I express here that the tc:Config needs to belong to ldio:ConsoleOut
+        	a sh:SPARQLTarget ;
+            sh:prefixes :prefixes ;
+        	sh:select """
+            		SELECT ?this
+            		WHERE {
+                		?step tc:toBeCarriedOutByProcessor ldio:ConsoleOut .
+                		?step p-plan:hasInputVar ?this .
+                		?this a tc:Config .
+            			}
+        		  """ ;
+    		  ] ;
+        sh:property [
+            sh:path tc:embedded ;
+            sh:node [
+                a sh:NodeShape ;
+                sh:property [
+                sh:path ( :rdf-writer :content-type ) ;
+                    sh:datatype xsd:string ;
+                    sh:minCount 0 ;
+                    sh:maxCount 1 ;
+                    sh:message "content-type may have max one value of type string." ;
+                ] ;
+            ] ;
+        ] . 
+
+
+
+#################################################################
+# Runners
+#################################################################
+
+rdfc:NodeRunner a tc:Runner;
+    rdfs:label "Javascript Node Runner" ; 
+    osw:hasUseLimitations :NodeRunnerConfig ;
+    owl:imports <./node_modules/@rdfc/js-runner/index.ttl> . # This is specific to RDF Connect
+
+
+:NodeRunnerConfig a sh:NodeShape; # This also has to be reformulated as: any tarfetsubjectsof osw;hasDependency
+  # These things can only be evaluated AFTer the compilation process
+  sh:targetSubjectsOf rdfc:jsImplementationOf;
+  sh:property [
+    sh:path rdfc:entrypoint;
+    sh:name "location";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:string;
+  ], [
+    sh:path rdfc:file;
+    sh:name "file";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:datatype xsd:string;
+  ], [
+    sh:path rdfc:class;
+    sh:name "clazz";
+    sh:maxCount 1;
+    sh:datatype xsd:string;
+  ].
+
+
+
+ldio:LinkedDataInteractionsOrchestrator
+    a tc:Runner ;
+    rdfs:label "Linked Data Interactions Orchestrator" ;
+    osw:hasProjectWebsite "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
+    osw:hasSoftwareVersion [
+          osw:hasVersionId "2.8.0-SNAPSHOT"
+          ] ;
+    
+    osw:hasInstallationInstructions [
+         a tc:DockerComposeFile ;
+         tc:dockerString """
+version: '3.3'
+services:
+  ldio-workbench:
+    container_name: ldio-workbench
+    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
+    volumes:
+      - ./ldio_config.yml:/ldio_config.yml:ro
+    ports:
+      - "8080:8080"
+         """ 
+    ] ;
+
+    osw:hasUseLimitations :LdioProcessorTypeConstraintShape, 
+			   :LdioSingleFlowChainShape , :LdioTypeOrderShape .
+
+
+
+    :LdioProcessorTypeConstraintShape
+          a sh:NodeShape ;
+          sh:target [ # I express here that the tc:Config needs to belong to ldio:ConsoleOut
+        	a sh:SPARQLTarget ;
+            sh:prefixes :prefixes ;
+        	sh:select """
+            		SELECT ?this
+            		WHERE {
+                        ?step tc:toBeCarriedOutByProcessor ?this.
+                		?this a tc:Processor .
+                		?this osw:hasDependency ldio:LinkedDataInteractionsOrchestrator .
+            			}
+        		  """ ;
+    		  ] ; 
+          sh:property [
+              sh:path ldio:type ;
+              sh:in ("Input" "Adapter" "Transformer" "Output") ;
+              sh:minCount 1 ;
+              sh:maxCount 1 ;
+              sh:message "Processors depending on :LinkedDataInteractionsOrchestrator must have ldio:type of Input, Adapter, Transformer or Output." ;
+          ] .
+
+
+
+    :LdioSingleFlowChainShape # I express here that each associated :PipelineStep may not be branching
+	  a sh:NodeShape ;
+      sh:target [ 
+        	a sh:SPARQLTarget ;
+            sh:prefixes :prefixes ;
+        	sh:select """
+            		SELECT ?this
+            		WHERE {
+                		?this tc:toBeCarriedOutByProcessor ?processor .
+                		?processor osw:hasDependency ldio:LinkedDataInteractionsOrchestrator .
+            			}
+        		  """ ;
+    		  ] ; 
+
+    # Max 1 predecessor (no merging)
+    sh:property [
+        sh:path p-plan:isPrecededBy ;
+        sh:maxCount 1 ;
+        sh:message "A LDIO PipelineStep may have at most one preceding step." ;
+    ] ;
+
+    # Max 1 successor (no branching)
+    sh:property [
+        sh:path [ sh:inversePath p-plan:isPrecededBy ] ;
+        sh:maxCount 1 ;
+        sh:message "A LDIO PipelineStep may precede at most one step." ;
+    ] . 
+
+
+
+    :LdioTypeOrderShape
+    a sh:NodeShape ;
+      sh:target [ # all LDIO processors that have a LDIO predecessor
+        	a sh:SPARQLTarget ;
+            sh:prefixes :prefixes ;
+        	sh:select """
+            		SELECT ?this
+            		WHERE {
+                        ?this a tc:Processor .
+                		?this osw:hasDependency ldio:LinkedDataInteractionsOrchestrator .
+
+                        # Only include if the predecessor is also an LDIO processor
+                        ?thisStep tc:toBeCarriedOutByProcessor ?this. 
+                        ?thisStep p-plan:isPrecededBy ?prevStep .
+                        ?prevStep tc:toBeCarriedOutByProcessor ?prevProcessor. 
+                        ?prevProcessor osw:hasDependency ldio:LinkedDataInteractionsOrchestrator .
+            			}
+        		  """ ;
+    		  ] ; 
+    sh:sparql [
+        sh:message "PipelineStep type order violation: Required order is Input > Adapter > Transformer > Output." ;
+        sh:prefixes :prefixes ;
+        sh:select """
+            SELECT ?this
+            WHERE {
+                # Only include if the predecessor is also an LDIO processor
+                ?thisStep tc:toBeCarriedOutByProcessor ?this. 
+                ?thisStep p-plan:isPrecededBy ?prevStep .
+                ?prevStep tc:toBeCarriedOutByProcessor ?prevProcessor. 
+                ?this ldio:type ?thisType .
+                ?prevProcessor ldio:type ?prevType .
+
+                BIND(
+                    IF(?prevType = "Input", 1,
+                    IF(?prevType = "Adapter", 2,
+                    IF(?prevType = "Transformer", 3,
+                    IF(?prevType = "Output", 4, 0)))) AS ?prevRank
+                )
+
+                BIND(
+                    IF(?thisType = "Input", 1,
+                    IF(?thisType = "Adapter", 2,
+                    IF(?thisType = "Transformer", 3,
+                    IF(?thisType = "Output", 4, 0)))) AS ?thisRank
+                )
+
+                FILTER(?prevRank > ?thisRank)
+            }
+        """ ;
+    ] .
+
+
+
+# Also add constraint that any processor using the LDIO runner and sending via http channel, has to use port 8080
+
+
+#################################################################
+# PREFIX DECLARATION
+# The prefixes have to be explicitly declared for sparql queries as part of SHACL shapes
+#################################################################
+
+
+:prefixes
+    sh:declare 
+    [
+        sh:prefix "" ;
+        sh:namespace "http://example.org/example/" ;
+    ] ,
+    [
+        sh:prefix "tc" ;
+        sh:namespace "https://w3id.org/toolchain#" ;
+    ] ,
+    [
+        sh:prefix "ldio" ;
+        sh:namespace "http://example.org/example/ldio/" ;
+    ] ,
+    [
+        sh:prefix "rdf" ;
+        sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#" ;
+    ] ,
+    [
+        sh:prefix "rdfs" ;
+        sh:namespace "http://www.w3.org/2000/01/rdf-schema#" ;
+    ] ,
+    [
+        sh:prefix "rdfc" ;
+        sh:namespace "https://w3id.org/rdf-connect#" ;
+    ] ,
+    [
+        sh:prefix "sh" ;
+        sh:namespace "http://www.w3.org/ns/shacl#" ;
+    ] ,
+    [
+        sh:prefix "dct" ;
+        sh:namespace "http://purl.org/dc/terms/" ;
+    ] ,
+    [
+        sh:prefix "xsd" ;
+        sh:namespace "http://www.w3.org/2001/XMLSchema#" ;
+    ] ,
+    [
+        sh:prefix "osw" ;
+        sh:namespace "http://ontosoft.org/software#" ;
+    ] ,
+    [
+        sh:prefix "sosa" ;
+        sh:namespace "http://www.w3.org/ns/sosa/" ;
+    ] ,
+    [
+        sh:prefix "ssn" ;
+        sh:namespace "https://www.w3.org/TR/vocab-ssn/" ;
+    ] ,
+    [
+        sh:prefix "prov" ;
+        sh:namespace "http://www.w3.org/ns/prov#" ;
+    ] ,
+    [
+        sh:prefix "p-plan" ;
+        sh:namespace "http://purl.org/net/p-plan#" ;
+    ] ,
+    [
+        sh:prefix "owl" ;
+        sh:namespace "http://www.w3.org/2002/07/owl#" ;
+    ] .

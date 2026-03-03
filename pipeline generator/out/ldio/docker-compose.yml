@@ -1,0 +1,11 @@
+
+version: '3.3'
+services:
+  ldio-workbench:
+    container_name: ldio-workbench
+    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
+    volumes:
+      - ./ldio_example_pipeline.yml:/ldio_example_pipeline.yml:ro
+    ports:
+      - "8080:8080"
+         

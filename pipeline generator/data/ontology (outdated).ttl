@@ -1,0 +1,201 @@
+@prefix : <http://example.org/example/> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdfc: <https://rdf-connect.github.io/specification/> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix osw: <http://ontosoft.org/software#> .
+@prefix sosa: <http://www.w3.org/ns/sosa/> .
+@prefix ssn: <https://www.w3.org/TR/vocab-ssn/> .
+@prefix ssn: <https://www.w3.org/TR/vocab-ssn/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+
+
+
+#################################################################
+# Classes
+#################################################################
+:Pipeline a rdfs:Class ;
+          rdfs:label "Pipeline" ;
+          rdfs:definition "A directed graph of ProcessorInstances linked to each other via DataFlows." .
+:PipelineComponent a rdfs:Class ;
+          rdfs:label "Pipeline Component" ;
+          rdfs:definition "Any modular piece of software that is needed at runtime to run a Pipeline." .
+:Processor a rdfs:Class; rdfs:subClassOf :PipelineComponent ;
+          rdfs:label "Processor" ;
+          rdfs:definition "A modular piece of software that transforms data and can be used as a template." .
+:ProcessorInstance a rdfs:Class ;
+          rdfs:label "Processor Instance" ;
+          rdfs:definition "A Processor that is instantiated as part of a Pipeline and receiving a Config." .
+:Runner a rdfs:Class ; rdfs:subClassOf :PipelineComponent ;
+          rdfs:label "Runner" ;
+          rdfs:definition "--placeholder--" .
+:RunnerInstance a rdfs:Class ;
+          rdfs:label "Runner Instance" ;
+          rdfs:definition "--placeholder--" .
+:Config a rdfs:Class ;
+          rdfs:label "Config" ;
+          rdfs:definition "--placeholder--" .
+:Dockerfile a rdfs:Class ;
+          rdfs:label "Dockerfile" ;
+          rdfs:definition "--placeholder--" .
+
+
+#################################################################
+# Properties
+#################################################################
+:instantiates a rdf:Property ;
+    rdfs:domain :ProcessorInstance, :RunnerInstance ;
+    rdfs:range :Processor, :Runner ;
+    rdfs:label "instatiates" ;
+    rdfs:definition "--placeholder--" .
+
+:permitsConfig a rdf:Property ;
+    rdfs:domain :PipelineComponent ;
+    rdfs:range :ConfigSchema .
+
+:configuredAs a rdf:Property ;
+    rdfs:domain :RunnerInstance, :ProcessorInstance ;
+    rdfs:range :Config .
+
+:buildSpec a rdf:Property ;
+    rdfs:domain :PipelineComponent ;
+    rdfs:range :Dockerfile .
+
+:inputFrom a rdf:Property ;
+    rdfs:domain :ProcessorInstance ;
+    rdfs:range :DataFlow .
+
+:outputTo a rdf:Property ;
+    rdfs:domain :ProcessorInstance ;
+    rdfs:range :DataFlow .
+
+:consistsOf a rdf:Property ;
+    rdfs:domain :Pipeline ;
+    rdfs:range :ProcessorInstance, :RunnerInstance .
+
+:hasConstraint a rdf:Property ;
+    rdfs:domain :PipelineComponent ;
+    rdfs:range :Constraint .
+
+:hasDocumentation a rdf:Property ;
+    rdfs:domain :PipelineComponent ;
+    rdfs:range :Documentation .
+
+:isImplementedBy a rdf:Property ;
+    rdfs:domain :Processor, :Runner ;
+    rdfs:range :Runner .
+
+:inputDataSchema a rdf:Property ;
+    rdfs:domain :Processor ;
+    rdfs:range :DataSchema .
+
+:outputDataSchema a rdf:Property ;
+    rdfs:domain :Processor ;
+    rdfs:range :DataSchema .
+
+:embeddedShape a rdf:Property ;
+    rdfs:domain :ConfigSchema ;
+    rdfs:range  sh:NodeShape ; # Expects a SHACL shape as object 
+    rdfs:label "embedded shape" ;
+    rdfs:definition "Links to the SHACL shape that represents the ConfigSchema within the rdf graph.".
+
+:embedded a rdf:Property ;
+    rdfs:domain :Config ;
+    rdfs:range [] ; # Expects a blank node as object
+    rdfs:label "embedded" ;
+    rdfs:definition "Links to the object (as blank node) representing the Config of the PipelineComponent as embedded in the rdf graph".
+
+:literal a rdf:Property ;
+        rdfs:domain :Config, :ConfigSchema ;
+    rdfs:range  xsd:string ;
+    rdfs:label "literal" ;
+    rdfs:definition "Indicates that the Config or ConfigSchema is represented as text string and is hence not parsed in RDF." .
+
+:external a rdf:Property ;
+        rdfs:domain :Config, :ConfigSchema ;
+        rdfs:range  xsd:string ; # In this case the object should be a dereferencable url pointing to a textfile
+        rdfs:label "external" ;
+        rdfs:definition "Indicates that the Config or ConfigSchema is represented as text string that has to be fetched by dereferencing the URL." .
+
+:isFormat a rdf:Property ;
+        rdfs:domain :Config, :ConfigSchema ;
+        rdfs:range  xsd:string ; # Should ideally not be string but a UUID of a specific format
+        rdfs:label "is in format" ;
+        rdfs:definition "Indicates the format that a Config or ConfigSchema is being represented in." .
+
+:expectedFormat a rdf:Property ;
+        rdfs:domain :ConfigSchema ;
+        rdfs:range  xsd:string ; # Should ideally not be string but a UUID of a specific format
+        rdfs:label "expected format" ;
+        rdfs:definition "Indicates the format that a Config has to be serialized as during runtime for the pipeline to execute correctly." .
+
+
+############################################################
+# Generic SHACL shapes for validating ontology assumptions
+############################################################
+
+# To be added:
+# Each Config and ConfigSchema should have either a embedded, literal or external predicate. 
+# If it is literal or external, isFormat has to be present as well
+# ConfigSchema also requires expectedFormat.
+
+
+# Input and output of linked processor instances must match
+:MatchingIOShape a sh:NodeShape ;
+sh:targetClass :DataFlow ;
+sh:sparql [
+a sh:SPARQLConstraint ;
+sh:message "Input and output types of processors in a dataflow must match." ;
+sh:select """
+SELECT $this WHERE {
+$this :from ?a ; :to ?b .
+?a :implementsProcessor ?pa .
+?b :implementsProcessor ?pb .
+?pa :output ?out .
+?pb :input ?in .
+FILTER (?out != ?in)
+}
+"""
+] .
+
+
+# Each processor instance must be linked via a DataFlow
+:LinkedViaDataFlowShape a sh:NodeShape ;
+  sh:targetClass :ProcessorInstance ;
+  sh:or (
+    [ sh:path [ sh:inversePath :flowFrom ] ]
+    [ sh:path [ sh:inversePath :flowTo ] ]
+  ) ;
+  sh:message "Each processor instance must participate in at least one dataflow (incoming or outgoing)." .
+
+
+# Each processor must appear as object of :consistsOf
+:ProcessorUsedInPipelineShape
+    a sh:NodeShape ;
+    sh:targetClass :Processor ;
+    sh:property [
+        sh:path [
+            sh:sequencePath (
+                [ sh:inversePath :implementsProcessor ]
+                [ sh:inversePath :consistsOf ]
+            )
+        ] ;
+        sh:minCount 1 ;
+        sh:message "Each processor type must appear in at least one pipeline via consistsOf." ;
+    ] .
+
+
+# Shape: every ProcessorInstance MUST implement a Processor
+:ProcessorInstanceShape
+    a sh:NodeShape ;
+    sh:targetClass :ProcessorInstance ;
+    sh:property [
+        sh:path :implementsProcessor ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "A ProcessorInstance must declare which Processor type it implements." ;
+    ] .
