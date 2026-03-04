@@ -22,7 +22,7 @@
 <br><br>
 The goal is to design a framework-agnostic, streaming-oriented pipeline orchestration system for Linked Data. Pipelines are described semantically using RDF, and execution is realized across multiple frameworks (currently LDIO, RDF Connect, semantic.works) using Docker containers and RDF Connect for orchestration. For this purpose, the *toolchain* ontology is developed.
 
-The *toolchain* ontology allows to describe data pipelines for the purpose of replicability. Four Core Classes are established, each of which are concerned with different responsibilities. Providing a minimal **Pipeline Definition** is sufficient to allow replication of a pipeline. Pipelines are defined as a series of data transformation steps, which are executed by Pipeline Components. These Pipeline Components are collected in a **Component Catalogue**, which hence provides the resources for building a pipeline. A Pipeline Generator takes a Pipeline Definition and attempts to build an executable pipeline based on the resources at its disposal in the Component Catalogue. The **Pipeline Build** reflects  the compiled pipeline and provides all information concerning instantiation of a pipeline in a specific Environment.
+The *toolchain* ontology allows to describe data pipelines for the purpose of replicability. Four Core Classes are established, each of which are concerned with different responsibilities. Providing a minimal **Pipeline Definition** is sufficient to allow replication of a pipeline. Pipelines are defined as a series of data transformation steps, which are executed by Pipeline Components. These Pipeline Components are collected in a **Component Catalogue**, which hence provides the resources for building a pipeline. A Pipeline Generator takes a Pipeline Definition and attempts to build an executable pipeline based on the resources at its disposal in the Component Catalogue. The **Pipeline Build** reflects the compiled pipeline and provides all information concerning instantiation of a pipeline in specific Environments.
 <br><br>
 Splitting the *toolchain* ontology into these four Core Classes leaves a clean separation of concerns: The Pipeline Definition allows the user to create new pipelines with minimal effort: It is sufficient to describe which Processors provide data to other Processors, and to provide Configs to configure each Processor used in the Pipeline. The Component Catalogue is based on the idea that each Pipeline Component is modular and should be easy to reuse. Hence, all information that is known about a PipelineComponent (and which may be relevant for a Pipeline Generator) should be included in the Component Catalogue. This allows a user to merely point to the Processor in the Component Catalogue when defining a particular Pipeline Step. Hence, essential details about the Processor do not need to be repeated with each new Pipeline Definition. Likewise, distinguishing between the Pipeline Definition and the Pipeline Build allows defining Pipelines without having to be  concerned with their implementation. It is up to the Pipeline Generator to figure out a feasible implementation of the pipeline, allowing to largely automate this process: Based on what is known about each Pipeline Component, the feasibility of the defined Pipeline can be evaluated and a corresponding Pipeline Build can be generated.  
 <br>
@@ -34,8 +34,8 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 | Term | Definition |
 | ----- | ----- |
 | **Pipeline** | We understand a Pipeline as an arrangement of modular data transformation steps, whereby each step acts on data in a well-defined, configurable way, before forwarding the data to the next step. These steps can be arranged in a nonlinear way, similar to a directed graph: Steps can receive zero or more inputs and outputs. To qualify as Pipeline, all Steps have to be directly or indirectly chained to each other. |
-| **Data** | Data is any kind of digital content that carries information of interest. This information can be extracted through transformation and made available through transportation, i.e. through Pipelines. As such, Data are the entities that are send through pipelines to make information available at a target location. |
-| **Config** | A Config controls the expected (transformation) behavior for each Step in a Pipeline. As such, it differs from Data in so far as it is not subject to transformation itself, does not provide much valuable information beyond the behavior within the Pipeline, and is also not send through the Pipeline. | 
+| **Data** | Data is any kind of digital content that carries information of interest. This information can be extracted through transformation and made available through transportation, i.e. through Pipelines. As such, Data are the entities that are send through pipeslines to make information available at a target location. |
+| **Config** | A Config defines the expected (transformation) behavior for each Step in a Pipeline. As such, it differs from Data in so far as it is not subject to transformation itself, does not provide much valuable information beyond the behavior within the Pipeline, and is also not send through the Pipeline. | 
 | **Instance** | We understand instantiating Pipeline Components as installing or deploying these in Environments so that they are ready to run. | 
 <br><br>
 
@@ -47,7 +47,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 | tc  | toolchain  | the document you are currently reading |
 | rdf  | http://www.w3.org/1999/02/22-rdf-syntax-ns#  | https://www.w3.org/TR/rdf11-concepts/ |
 | rdfs | http://www.w3.org/2000/01/rdf-schema#  | https://www.w3.org/TR/rdf-schema/ |
-| rdfc | https://w3id.org/rdf-connect# | https://w3id.org/rdf-connect# |
+| rdfc | https://w3id.org/rdf-connect# | https://rdf-connect.github.io/specification/ |
 | p-plan  | http://purl.org/net/p-plan# | https://vocab.linkeddata.es/p-plan/index.html |
 | prov  | http://www.w3.org/ns/prov# | https://www.w3.org/TR/prov-o/ |
 | osw  | http://ontosoft.org/software#  | https://ontosoft-earthcube.github.io/ontosoft/ontosoft%20ontology/v1.0.1/doc/index.html |
@@ -61,24 +61,20 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 - For the *Pipeline Definition* the p-plan ontology is used. This is because the *Pipeline Definition* reflects a plan of a pipeline to be built and executed.
 - For the *Component Catalogue* the osw-ontology is used, which allows extensive metadata annotation of software, and hence provides sufficient terms for defining PipelineComponents exhaustively. 
 - For the *Pipeline Build* a mix of prov and sosa is used. Prov is used for describing the Pipeline Build as a prov:SoftwareAgent, which allows to define Pipeline Runs as Activities of the Pipeline Build. Sosa is used for describing the Pipeline Build as a sosa:System, which allows describing how this system may be hosted in different Environments (sosa:Platforms). 
-- A link with dcat is made twice: A Pipeline Run is a prov:Activity that used and generated dcat:Datasets, allowing to link datasets to the pipelines that generated them. A *Component Catalogue* is also a dcat:Dataset by itself, providing a means for publishing and sharing Pipeline Components with a wider audience. 
+- A link with dcat is made twice: A Pipeline Run is a prov:Activity that used and generated dcat:datasets, allowing to link datasets to the pipelines that generated them. A *Component Catalogue* is also a dcat:dataset by itself, providing a means for publishing and sharing Pipeline Components with a wider audience. 
 <br><br>
 
 ## 2.3. Core Classes
 <br>
 
 ### Pipeline Generator
-![Pipeline Generator](diagrams/pipeline_generator.svg)
-
 | | |
 |----------|----------|
-| **Definition** | A Pipeline Generator is a reasoning service that takes a Pipeline Definition and one or more Component Catalogues as input and produces a Pipeline Build as output. In other words, a Pipeline Generator suggests a system capable of executing a Pipeline Definition based on the Components it has at its disposal as resources. It considers osw:UsesAndAssumptions of each PipelineComponent to evaluate the feasibility of suggesting a Pipeline Build. As such it should be sufficient for a user to define a Pipeline Definition to arrive at a Pipeline Build capable of running the pipeline. A Pipeline Generator could hence automate the task of building a pipeline, making it sufficient for the user to formulate the intended pipeline. |
+| **Definition** | A Pipeline Generator takes a Pipeline Definition and one or more Component Catalogues as input and produces a Pipeline Build as output. In other words, a Pipeline Generator compiles a system capable of executing a Pipeline Definition based on the Components it has at its disposal as resources. It considers constraints (sh:NodeShapes) of each PipelineComponent to evaluate the feasibility of suggesting a Pipeline Build. As such it should be sufficient for a user to define a Pipeline Definition to arrive at a Pipeline Build capable of running the pipeline. A Pipeline Generator could hence automate the task of building a pipeline, making it sufficient for the user to formulate the intended pipeline. |
 | **subclass of** | prov:SoftwareAgent |
 <br>
 
 ### Pipeline Definition
-![Pipeline Definition](diagrams/pipeline_definition.svg)
-
 | | |
 |----------|----------|
 | **Definition** | In its essence, a Pipeline Definition is a directed graph of planned PipelineSteps, each aimed to generate or transform data. For this purpose, each Pipeline Step points at a Processor, which is a Pipeline Component appointed to carry out the Pipeline Step. A Pipeline Step also receives a Config in order to define the expected behavior of the Processor during the Pipeline Step. A Pipeline Step can correspond to a Pipeline Definition, making nesting possible. <br><br> A Pipeline Definition declares intent; it is a plan of a pipeline to be run. |
@@ -86,8 +82,6 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 <br>
 
 ### Component Catalogue
-![Component Catalogue](diagrams/component_catalogue.svg)
-
 | | |
 |----------|----------|
 | **Definition** | A Component Catalogue is a collection of the PipelineComponents that can be instanced in order to create an Pipeline Build capable of executing a Pipeline Definition. Machine-readable installation instructions (thus steps needed for instancing the component) can be expressed as Dockerfiles. Dependencies between PipelineComponents can be expressed to ensure that instancing a PipelineComponent includes instancing the supporting Runners in the respective Environments. 
@@ -95,18 +89,16 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 <br>
 
 ### Pipeline Build
-![Pipeline Build](diagrams/pipeline_build.svg)
-
 | | |
 |----------|----------|
-| **Definition** | A Pipeline Build is the description of a system capable of executing the Pipeline Definition. It has to be sufficiently described to allow reproducibility (in contrast to the Pipeline Definition, whose main concern is declaring intent). As such, the Pipeline Build consists of a collection of ProcessorInstances, which are responsible for executing PipelineSteps. A pipeline does not run in a vacuum, hence it is also needs to be defined in which Environment these PipelineComponents are instanced. These Environments are also described as Dockerfiles. Furthermore, data transfer between ProcessorInstances is defined via Channels. This allows adding fields related to this data transfer. Runners may be instanced as well. These are PipelineComponents that Processors depend on, however they are not responsible for transforming or generating data themselves. |
+| **Definition** | An Pipeline Build is the description of a system capable of executing the Pipeline Definition. As such, a Pipeline Build is based on a PipelineDefinition (prov:hadPlan) and consists of one or more Environments. Each Environment is responsible for executing one or more PipelineSteps contained in the PipelineDefinition. Every Environment is associated with a Dockerfile that specifies the runtime environment required to execute the associated Pipeline Steps. An Environment may also be linked to one or more configs, which represent the compiled configurations of its Pipeline Steps. If a Pipeline Build contains more than one Environment, it must also be associated with a Docker Compose file, which defines how the different Docker containers (built from the respective Dockerfiles) are started and connected. In multi-segment setups, Environments may require Bridge Steps, which are special steps added at the beginning or end of a segment and executed by a regular Pipeline Component to enable communication between containers; for example, HTTP In and HTTP Out components can forward data across containers via HTTP. |
 | **subclass of** |sosa:System, prov:SoftwareAgent |
 <br>
 
+
+
 ## 2.4. Additional Classes
 <br>
-
-![Toolchain Model](diagrams/toolchain_model.svg)
 
 ### PipelineStep
 | | |
@@ -120,9 +112,8 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ### Config
 | | |
 |----------|----------|
-| **Definition** | A Config is a data structure equivalent to the "object" type in JSON, consisting of an unordered set of name/value pairs. The name is a string and the value is a string, number, boolean, array, or object (same concept as in the [Common Workflow Language](https://www.commonwl.org/v1.2/Workflow.html#Data_concepts)). Defining a Config in this way allows for both simple configuration of Pipeline Steps (a simple set of parameter names and their values), as well as complex, nested configurations. <br><br> A Config can be serialized in different formats, and this format can differ from the format that the instanced PipelineComponent expects during runtime. As of now, we support only support RDF as format, but yaml and JSON are planned for the future. If the Config is serialized as RDF, it can directly be embedded in the RDF graph that makes up the Component Catalogue: Using the "embedded"-predicate, the Config should point to a blank node representing a data object: Field-names serve as predicates and field-values as objects. The subgraph originating from the blind node must be acyclic to later allow conversion between formats. If the Config is serialized as JSON or yaml, it cannot be embedded in the RDF graph. In this case, the predicate "external" should either point to a url that is dereferencable. Alternatively, the predicate "literal" should point to a string which is of the corresponding format. A Config should also declare the serialization format it uses (json, yaml), although this may be inferred. |
+| **Definition** | A Config is a data structure equivalent to the "object" type in JSON, consisting of an unordered set of name/value pairs. The name is a string and the value is a string, number, boolean, array, or object (same concept as in the [Common Workflow Language](https://www.commonwl.org/v1.2/Workflow.html#Data_concepts)). Defining a Config in this way allows for both simple configuration of Pipeline Steps (a simple set of parameter names and their values), as well as complex, nested configurations. <br><br> A Config can be serialized in different formats, and this format can differ from the format that is compiled during runtime. As of now, we support RDF as format, JSON and yaml are planned. If the Config is serialized as RDF, it can directly be embedded in the RDF graph that makes up the Component Catalogue: Using the "embedded"-predicate, the Config should point to a blank node representing a data object: Field-names serve as predicates and field-values as objects. The subgraph originating from the root blind node must be acyclic to later allow conversion between formats. If the Config is serialized as JSON or yaml, it cannot be embedded in the RDF graph. In this case, the predicate "external" should either point to a url that is dereferencable. Alternatively, the predicate "literal" should point to a string which is of the corresponding format. A Config should also declare the serialization format it uses (json, yaml), although this may be inferred. |
 | **subclass of** | p-plan:Variable |
-| **domain** | tc:embedded, tc:literal, tc:external |
 
 
 <br>
@@ -130,7 +121,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ### Processor
 | | |
 |----------|----------|
-| **Definition** | A Processor is any modular unit that can generate or transform data when instantiated. It differs from a ProcessorInstance in that it is a blueprint intended for reuse. To allow easy reuse, the Component Catalogue has to provide enough information about the Processor so that it can be instantiated as part of the Pipeline Build based on the provided information. |
+| **Definition** | A Processor is any modular unit that can generate or transform data. To allow easy reuse, the Component Catalogue has to provide enough information about the Processor so that it can be instantiated as part of the Pipeline Build based on the provided information. |
 | **subclass of** | tc:PipelineComponent |
 
 
@@ -154,45 +145,10 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 
 <br>
 
-### ProcessorInstance
+### sh:NodeShape
 | | |
 |----------|----------|
-| **Definition** | A ProcessorInstance is an instance of a Processor, linked to other ProcessorInstances via Channels, and responsible for executing a Pipeline Step. |
-| **subclass of** | tc:PipelineComponentInstance |
-
-
-<br>
-
-### RunnerInstance
-| | |
-|----------|----------|
-| **Definition** | A RunnerInstance is an instance of a Runner. |
-| **subclass of** | tc:PipelineComponentInstance |
-
-
-<br>
-
-### PipelineComponentInstance
-| | |
-|----------|----------|
-| **Definition** | A PipelineComponentInstance is an instance of a PipelineComponent and hence a superclass of ProcessorInstance and RunnerInstance. As a SubSystem of the PipelineBuild, it is responsible for executing (part of) a pipeline definition. |
-| **subclass of** | prov:SoftwareAgent |
-
-
-<br>
-
-### ConfigInstance
-| | |
-|----------|----------|
-| **Definition** | A ConfigInstance is a "compiled" Config as part of an Pipeline Build. There are several reasons as of why this instanced Config may slightly differ from the Config as part of the Pipeline Definition: Configs may be serialized in different formats, but a PipelineComponentInstance may expect a specific format. A Pipeline Generator may implement changes to a ConfigInstance. Several Configs may be compiled to one combined ConfigInstance. |
-| **subclass of** | prov:Entity |
-| **Range** | prov:value |
-<br>
-
-### Channel
-| | |
-|----------|----------|
-| **Definition** | A Channel links two or more ProcessorInstances together. In other words, it describes how ProcessorInstances forward data to each other. You can picture ProcessorInstances as nodes, and Channels as edges in a graph. The Channel entity allows to qualify this interdependence further, for example by defining the port, the protocol, the mode, etc. of the data transfer. It is hence an Entity that qualifies how p-plan:isPrecededBy is realized in the PipelineBuild. |
+| **Definition** | In order to evaluate the feasibility of turning a Pipeline Definition into an Pipeline Build, the PipelineGenerator has to know which constraints instantiated Pipeline Components add to a Pipeline Build. This is what sh:NodeShapes are for. NodeShapes can express the kinds of data that a Processor can transform and the output it produces. NodeShapes also allow to express mandatory and optional fields of a Config that a Processor can interpret. Processors may also have specific constraints about the relationships they allow with other processors (via isPrecededBy). For example, an "API-call"-processor may not allow data input through a preceding Step, because it fetches new data from a remote source. <br><br> Taken together, defining NodeShapes are a powerful tool to formulate explicit constraints that modular pipeline components impose when instantiated. These constraints can be validated to evaluate the feasibility of creating a Pipeline Build. They can also form a basis for the Pipeline Generator to reason about viable Pipeline Builds given the Pipeline Definition and Component Catalogue. These constraints are expressed as SHACL-shapes to allow automatic validation. Each Constraint should have a sh:message for human readibility. These should clearly indicate and describe what kind of constraint is imposed, to allow easier implementation of the logic behind the constraint.
 | **subclass of** | --- |
 
 
@@ -201,27 +157,46 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ### Environment
 | | |
 |----------|----------|
-| **Definition** | An Environment reflects the runtime environment(s) in which Pipeline Components are instantiated to prepare for a Pipeline Run. As such an Environment is mainly defined through its Dockerfile, which is machine-readible way of defining this runtime environment. |
+| **Definition** | An Environment reflects the Runtime Environment(s) in which Pipeline Components are instantiated to prepare for a Pipeline Run. As such an Environment is mainly defined through its Dockerfile, which is machine-readible way of defining this runtime environment. |
 | **subclass of** | sosa:Platform |
 
 
+
 <br>
+
+### Bridge Step
+| | |
+|----------|----------|
+| **Definition** | These are Pipeline Steps inserted as part of a Pipeline Build, within a specific Environment. They handle the communication across Environments and are hence inserted at the beginning or end of a segment of Pipeline Steps contained in an Environment. |
+| **subclass of** | --- |
+
+<br>
+
+
 
 ### Dockerfile
 | | |
 |----------|----------|
-| **Definition** | A Dockerfile provides machine-readable instructions on how to instantiate a Pipeline Component (or Environment consisting of PipelineComponents). A Pipeline Generator may not rely on Docker, but it must be able to read Dockerfiles. |
+| **Definition** | A Dockerfile provides machine-readable instructions on how to instantiate a Pipeline Component (or Environment consisting of PipelineComponents). |
 | **subclass of** | osw:TextEntity |
 <br>
 
+### DockerComposeFile
+| | |
+|----------|----------|
+| **Definition** | Describes a Pipeline Build as a whole, i.e. how different Environments are spinned up together to run a pipeline. |
+| **subclass of** | osw:TextEntity |
+<br>
+
+
 ## 2.5. Future Directions 
-- In this model, pipelines are only described as concrete instances, not as reusable templates. In my view, a pipeline automatically becomes reusable by simply changing the some configuration values, such as the data source. But some people may see that differently and may want a catalogue for pipelines. 
+- In this model, pipelines are only described as concrete instances, not as reusable templates. In my view, a pipeline automatically becomes reusable by simply changing the used data and potentially some configuration values. But some people may see that differently and may want distinction of class and instance for pipelines. 
 - We may want to be able to express the state of a pipeline run while it is still ongoing. This remains to be discussed, because in the current scope the rdf graph is only used to compile a pipeline build, but not used to monitor the pipeline progress. 
 - We may not always want to build each PipelineComponent, some PipelineComponents may already be running. We have to think more about how to express this and how this would work in practice. 
 - We may want to be able to express that a PipelineComponent requires one of several runners.
 - We may want to be able to provide hints to the Pipeline Generator for the Pipeline Build we want. For example, saying that Pipeline Components of the same framework should be put in the same environment. Or that a Channel should be configured in a specific way.  
 - Config of runners: The ontology supports that Runners can have Configs, but currently there is no way for the user to define the Config of Runners. This is because Runners do not make part of the Pipeline Definition. 
-- The shape of data inputs and outputs can be defined via NodeShapes, however currently the ontology does not include Data entities. I honestly am not sure how a Data entity could be defined for pipelines that stream data; perhaps the stream could be seen as a data dump that is processed gradually over time.  
+- The shape of data inputs and outputs can be defined via NodeShapes, however currently the ontology does not include Data entities. I honestly am not sure how a Data entity could be defined for pipelines that stream data, unless the stream is seen as a data dump that is processed gradually over time.  
 <br>
 
 
