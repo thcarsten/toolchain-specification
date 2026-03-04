@@ -68,6 +68,8 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 <br>
 
 ### Pipeline Generator
+![Pipeline Generator](diagrams/pipeline_generator.svg)
+
 | | |
 |----------|----------|
 | **Definition** | A Pipeline Generator takes a Pipeline Definition and one or more Component Catalogues as input and produces a Pipeline Build as output. In other words, a Pipeline Generator compiles a system capable of executing a Pipeline Definition based on the Components it has at its disposal as resources. It considers constraints (sh:NodeShapes) of each PipelineComponent to evaluate the feasibility of suggesting a Pipeline Build. As such it should be sufficient for a user to define a Pipeline Definition to arrive at a Pipeline Build capable of running the pipeline. A Pipeline Generator could hence automate the task of building a pipeline, making it sufficient for the user to formulate the intended pipeline. |
@@ -75,6 +77,8 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 <br>
 
 ### Pipeline Definition
+![Pipeline Definition](diagrams/pipeline_definition.svg)
+
 | | |
 |----------|----------|
 | **Definition** | In its essence, a Pipeline Definition is a directed graph of planned PipelineSteps, each aimed to generate or transform data. For this purpose, each Pipeline Step points at a Processor, which is a Pipeline Component appointed to carry out the Pipeline Step. A Pipeline Step also receives a Config in order to define the expected behavior of the Processor during the Pipeline Step. A Pipeline Step can correspond to a Pipeline Definition, making nesting possible. <br><br> A Pipeline Definition declares intent; it is a plan of a pipeline to be run. |
@@ -82,6 +86,8 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 <br>
 
 ### Component Catalogue
+![Component Catalogue](diagrams/component_catalogue.svg)
+
 | | |
 |----------|----------|
 | **Definition** | A Component Catalogue is a collection of the PipelineComponents that can be instanced in order to create an Pipeline Build capable of executing a Pipeline Definition. Machine-readable installation instructions (thus steps needed for instancing the component) can be expressed as Dockerfiles. Dependencies between PipelineComponents can be expressed to ensure that instancing a PipelineComponent includes instancing the supporting Runners in the respective Environments. 
@@ -89,6 +95,8 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 <br>
 
 ### Pipeline Build
+![Pipeline Build](diagrams/pipeline_build.svg)
+
 | | |
 |----------|----------|
 | **Definition** | An Pipeline Build is the description of a system capable of executing the Pipeline Definition. As such, a Pipeline Build is based on a PipelineDefinition (prov:hadPlan) and consists of one or more Environments. Each Environment is responsible for executing one or more PipelineSteps contained in the PipelineDefinition. Every Environment is associated with a Dockerfile that specifies the runtime environment required to execute the associated Pipeline Steps. An Environment may also be linked to one or more configs, which represent the compiled configurations of its Pipeline Steps. If a Pipeline Build contains more than one Environment, it must also be associated with a Docker Compose file, which defines how the different Docker containers (built from the respective Dockerfiles) are started and connected. In multi-segment setups, Environments may require Bridge Steps, which are special steps added at the beginning or end of a segment and executed by a regular Pipeline Component to enable communication between containers; for example, HTTP In and HTTP Out components can forward data across containers via HTTP. |
@@ -99,6 +107,8 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 
 ## 2.4. Additional Classes
 <br>
+
+![Toolchain Model](diagrams/toolchain_model.svg)
 
 ### PipelineStep
 | | |
