@@ -20,6 +20,8 @@
 #################################################################
 :LdioComponentCatalogue a tc:ComponentCatalogue;
     prov:hadMember 
+            ldio:HttpIn, 
+            ldio:RdfAdapter,
             ldio:LdesClient, 
             ldio:SparqlConstructTransformer,
             ldio:ConsoleOut,
@@ -28,23 +30,175 @@
 
 :RDFConnectComponentCatalogue a tc:ComponentCatalogue;
     prov:hadMember
+            # Javascript components
             rdfc:LdesClient,
             rdfc:LogProcessorJs,
-            rdfc:NodeRunner .
+            rdfc:Buffer,
+            rdfc:NodeRunner ,
+            # Python components
+            rdfc:PyRunner ,
+            rdfc:LogProcessorPy ,
+            rdfc:HttpOut .
+
+
 
 
 #################################################################
-# Processors
+# RDF Connect Processors
 #################################################################
 
-rdfc:LogProcessorJs a tc:Processor;
+rdfc:HttpOut a tc:PipelineComponent;
+    rdfs:label "RDF Connect Http Out";
+    osw:hasDependency rdfc:PyRunner ;
+    osw:hasUseLimitations :RdfcHttpOutConfigShape ;
+    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl>.
+
+:RdfcHttpOutConfigShape a sh:NodeShape;
+    sh:targetClass rdfc:HttpOut;
+    sh:property [
+        sh:path tc:embedded ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:class rdfc:Reader;
+                sh:path rdfc:reader;
+                sh:name "reader";
+                sh:minCount 1;
+                sh:maxCount 1;
+            ] , [
+                sh:datatype xsd:string;
+                sh:path rdfc:endpoint;
+                sh:name "endpoint";
+                sh:minCount 1;
+                sh:maxCount 1;
+            ] , [
+                sh:class rdfc:Writer;
+                sh:path rdfc:writer;
+                sh:name "writer";
+                sh:minCount 0;
+                sh:maxCount 1;
+            ] , [
+                sh:datatype xsd:string;
+                sh:path rdfc:content_type;
+                sh:name "content_type";
+                sh:minCount 0;
+                sh:maxCount 1;
+            ]
+        ]
+    ].
+
+
+
+rdfc:LogProcessorPy a tc:PipelineComponent;
+    rdfs:label "Python Log Processor";
+    osw:hasDependency rdfc:PyRunner ;
+    osw:hasUseLimitations :RdfcLogProcessorPyConfigShape ;
+    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_log_processor/processor.ttl>. # Relative path inside docker container
+
+# This is just a copy-and-paste from the JS log processor
+:RdfcLogProcessorPyConfigShape a sh:NodeShape;
+    sh:targetClass rdfc:LogProcessorPy;
+    sh:property [
+        sh:path tc:embedded ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+                sh:class rdfc:Reader;
+                sh:path rdfc:reader;
+                sh:name "reader";
+                sh:minCount 1;
+                sh:maxCount 1;
+            ], [
+                sh:class rdfc:Writer;
+                sh:path rdfc:writer;
+                sh:name "writer";
+                sh:minCount 0;
+                sh:maxCount 1;
+            ], [
+                sh:datatype xsd:string;
+                sh:path rdfc:label;
+                sh:name "label";
+                sh:minCount 0;
+                sh:maxCount 1;
+            ], [
+                sh:datatype xsd:string;
+                sh:path rdfc:level;
+                sh:name "level";
+                sh:minCount 0;
+                sh:maxCount 1;
+            ], [
+                sh:datatype xsd:boolean;
+                sh:path rdfc:raw;
+                sh:name "raw";
+                sh:minCount 0;
+                sh:maxCount 1;
+            ] 
+        ]
+    ].
+
+
+
+rdfc:Buffer a tc:PipelineComponent;
+    rdfs:label "Buffer Processor" ;
+    rdfs:comment " At a certain interval, the processor will pipe through a given amount of data from the incoming stream to the outgoing stream.";
+    osw:hasDependency rdfc:NodeRunner ;
+    osw:hasUseLimitations :RdfcBufferConfigShape ;
+    owl:imports <./node_modules/@rdfc/buffer-processor-ts/processor.ttl>. 
+
+:RdfcBufferConfigShape a sh:NodeShape;
+    sh:targetClass rdfc:Buffer;
+    sh:property [
+        sh:path tc:embedded ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:node [
+            sh:property [
+            sh:class rdfc:Reader;
+            sh:path rdfc:incoming;
+            sh:name "incoming";
+            sh:maxCount 1;
+            sh:minCount 1;
+            ], [
+            sh:class rdfc:Writer;
+            sh:path rdfc:outgoing;
+            sh:name "outgoing";
+            sh:maxCount 1;
+            sh:minCount 1;
+            ], [
+            sh:datatype xsd:integer;
+            sh:path rdfc:interval;
+            sh:name "interval";
+            sh:minCount 0;
+            sh:maxCount 1;
+            ], [
+            sh:datatype xsd:integer;
+            sh:path rdfc:amount;
+            sh:name "amount";
+            sh:minCount 0;
+            sh:maxCount 1;
+            ], [
+            sh:datatype xsd:integer;
+            sh:path rdfc:minAmount;
+            sh:name "minAmount";
+            sh:minCount 0;
+            sh:maxCount 1;
+            ]
+        ]
+    ].
+
+
+
+
+rdfc:LogProcessorJs a tc:PipelineComponent;
     rdfs:label "JS/TS Log Processor";
     rdfs:comment "A simple JS/TS processor to log an incoming stream to the RDF-Connect logging system.";
     osw:hasDependency rdfc:NodeRunner ;
     osw:hasUseLimitations :RdfcLogProcessorJsConfigShape ;
     # rdfc:definition_file I would say also provide the filepath of the definition that should be loaded
     # at config creation. Frees you of the responsibility to have everything present in the component catalogue
-    owl:imports <./node_modules/@rdfc/log-processor-ts/processor.ttl>. # This is technically illegal, because the range is a owl:Ontology, not a string
+    owl:imports <./node_modules/@rdfc/log-processor-ts/processor.ttl>. 
 
 
 :RdfcLogProcessorJsConfigShape a sh:NodeShape;
@@ -96,7 +250,7 @@ rdfc:LogProcessorJs a tc:Processor;
 
 
 rdfc:LdesClient
-    a tc:Processor ;
+    a tc:PipelineComponent ;
     rdfs:label "ldes client";
     rdfs:comment "An LDES client that can read a stream of members from an LDES."; 
     osw:hasDependency rdfc:NodeRunner ;
@@ -120,7 +274,8 @@ rdfc:LdesClient
                     sh:name "url";
                     sh:maxCount 1;
                     sh:minCount 1;
-                ], [
+                ], 
+                [
                     sh:class rdfc:Writer;
                     sh:path rdfc:output;
                     sh:name "output";
@@ -268,8 +423,27 @@ rdfc:LdesClient
   ].
 
 
+#################################################################
+# Ldio Processors
+#################################################################
+
+
+ldio:HttpIn a tc:PipelineComponent ;
+    rdfs:label "Ldio:HttpIn" ; 
+    ldio:type "Input" ;
+    osw:hasDependency ldio:LinkedDataInteractionsOrchestrator .
+    # This component has no config
+
+
+ldio:RdfAdapter a tc:PipelineComponent ;
+    rdfs:label "Ldio:RdfAdapter" ; 
+    ldio:type "Adapter" ;
+    osw:hasDependency ldio:LinkedDataInteractionsOrchestrator .
+    # TODO: Add config node shape
+
+
 ldio:LdesClient
-    a tc:Processor ;
+    a tc:PipelineComponent ;
     rdfs:label "Ldio:LdesClient" ; # In this case, the rdfs:label is also used to generate the corresponding entry in the yaml config file that the LDIO expects 
     ldio:type "Input" ;
     osw:hasDependency ldio:LinkedDataInteractionsOrchestrator ;
@@ -283,7 +457,7 @@ ldio:LdesClient
         	sh:select """
             		SELECT ?this
             		WHERE {
-                		?step tc:toBeCarriedOutByProcessor ldio:LdesClient .
+                		?step tc:toBeCarriedOutByComponent ldio:LdesClient .
                 		?step p-plan:hasInputVar ?this .
                 		?this a tc:Config .
             			}
@@ -305,7 +479,7 @@ ldio:LdesClient
 
 
 ldio:SparqlConstructTransformer 
-    a tc:Processor ;
+    a tc:PipelineComponent ;
     rdfs:label "Ldio:SparqlConstructTransformer" ; 
     ldio:type "Transformer" ;
     osw:hasDependency ldio:LinkedDataInteractionsOrchestrator ;
@@ -325,7 +499,7 @@ ldio:SparqlConstructTransformer
         	sh:select """
             		SELECT ?this
             		WHERE {
-                		?step tc:toBeCarriedOutByProcessor ldio:SparqlConstructTransformer .
+                		?step tc:toBeCarriedOutByComponent ldio:SparqlConstructTransformer .
                 		?step p-plan:hasInputVar ?this .
                 		?this a tc:Config .
             			}
@@ -356,8 +530,8 @@ ldio:SparqlConstructTransformer
 
 
 
-ldio:ConsoleOut a tc:Processor ;
-    a tc:Processor ;
+ldio:ConsoleOut a tc:PipelineComponent ;
+    a tc:PipelineComponent ;
     rdfs:label "Ldio:ConsoleOut" ; 
     osw:hasDependency ldio:LinkedDataInteractionsOrchestrator ;
     ldio:type "Output" ;
@@ -371,7 +545,7 @@ ldio:ConsoleOut a tc:Processor ;
         	sh:select """
             		SELECT ?this
             		WHERE {
-                		?step tc:toBeCarriedOutByProcessor ldio:ConsoleOut .
+                		?step tc:toBeCarriedOutByComponent ldio:ConsoleOut .
                 		?step p-plan:hasInputVar ?this .
                 		?this a tc:Config .
             			}
@@ -397,8 +571,15 @@ ldio:ConsoleOut a tc:Processor ;
 # Runners
 #################################################################
 
-rdfc:NodeRunner a tc:Runner;
-    rdfs:label "Javascript Node Runner" ; 
+rdfc:PyRunner a tc:PipelineComponent, rdfc:Runner;
+    rdfs:label "RDF Connect Python Runner" ; 
+     osw:hasDependency rdfc:Orchestrator ;
+    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl>.
+
+
+rdfc:NodeRunner a tc:PipelineComponent, rdfc:Runner;
+    rdfs:label "RDF Connect Javascript Node Runner" ; 
+    osw:hasDependency rdfc:Orchestrator ;
     osw:hasUseLimitations :NodeRunnerConfig ;
     owl:imports <./node_modules/@rdfc/js-runner/index.ttl> . # This is specific to RDF Connect
 
@@ -427,35 +608,73 @@ rdfc:NodeRunner a tc:Runner;
 
 
 
+rdfc:Orchestrator a tc:PipelineComponent ;
+    rdfs:label "RDF Connect Orchestrator" ;
+    tc:hasDefaultConfig [
+        a tc:Config, tc:MicroServiceConfig ;
+        tc:literal """
+  rdf-connect:
+    container_name: rdf-connect
+    image: rdf-connect:latest
+    build: ../../resources/rdfc-docker
+    volumes:
+      - ./rdfc_pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro
+    environment:
+      LOG_LEVEL: debug
+    command: npx rdfc /workspace/pipeline/pipeline.ttl
+"""
+] .
+
+
+
+ldio:LdioPipelineStarterService 
+    a tc:PipelineComponent ;
+    rdfs:label "Ldio Pipeline Starter Service" ;
+    tc:hasDefaultConfig :LdioPipelineStarterDockerComposeConfig. 
+
+:LdioPipelineStarterDockerComposeConfig
+        a tc:Config, tc:MicroServiceConfig ;
+        tc:literal '''
+ldio-pipeline-starter:
+    image: curlimages/curl
+    volumes:
+      - ./ldio_pipeline.yml:/pipeline.yml:ro
+    command: >
+      sh -c "
+      sleep 30 &&
+      curl -X POST
+      -H 'content-type: application/yaml'
+      http://ldio-workbench:8080/admin/api/v1/pipeline
+      --data-binary @/pipeline.yml
+      "         
+''' .
+
+
+
 ldio:LinkedDataInteractionsOrchestrator
-    a tc:Runner ;
+    a tc:PipelineComponent ;
     rdfs:label "Linked Data Interactions Orchestrator" ;
     osw:hasProjectWebsite "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
     osw:hasSoftwareVersion [
           osw:hasVersionId "2.8.0-SNAPSHOT"
           ] ;
     
-    osw:hasInstallationInstructions [
-         a tc:DockerComposeFile ;
-         tc:dockerString """
-version: '3.3'
-services:
+    tc:hasDefaultConfig [
+        a tc:Config, tc:MicroServiceConfig ;
+        tc:literal """
   ldio-workbench:
     container_name: ldio-workbench
     image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
-    volumes:
-      - ./ldio_config.yml:/ldio_config.yml:ro
     ports:
       - "8080:8080"
-         """ 
+"""
     ] ;
+    osw:hasDependency ldio:LdioPipelineStarterService ;
 
     osw:hasUseLimitations :LdioProcessorTypeConstraintShape, 
 			   :LdioSingleFlowChainShape , :LdioTypeOrderShape .
 
-
-
-    :LdioProcessorTypeConstraintShape
+:LdioProcessorTypeConstraintShape
           a sh:NodeShape ;
           sh:target [ # I express here that the tc:Config needs to belong to ldio:ConsoleOut
         	a sh:SPARQLTarget ;
@@ -463,8 +682,8 @@ services:
         	sh:select """
             		SELECT ?this
             		WHERE {
-                        ?step tc:toBeCarriedOutByProcessor ?this.
-                		?this a tc:Processor .
+                        ?step tc:toBeCarriedOutByComponent ?this.
+                		?this a tc:PipelineComponent .
                 		?this osw:hasDependency ldio:LinkedDataInteractionsOrchestrator .
             			}
         		  """ ;
@@ -487,7 +706,7 @@ services:
         	sh:select """
             		SELECT ?this
             		WHERE {
-                		?this tc:toBeCarriedOutByProcessor ?processor .
+                		?this tc:toBeCarriedOutByComponent ?processor .
                 		?processor osw:hasDependency ldio:LinkedDataInteractionsOrchestrator .
             			}
         		  """ ;
@@ -517,13 +736,13 @@ services:
         	sh:select """
             		SELECT ?this
             		WHERE {
-                        ?this a tc:Processor .
+                        ?this a tc:PipelineComponent .
                 		?this osw:hasDependency ldio:LinkedDataInteractionsOrchestrator .
 
                         # Only include if the predecessor is also an LDIO processor
-                        ?thisStep tc:toBeCarriedOutByProcessor ?this. 
+                        ?thisStep tc:toBeCarriedOutByComponent ?this. 
                         ?thisStep p-plan:isPrecededBy ?prevStep .
-                        ?prevStep tc:toBeCarriedOutByProcessor ?prevProcessor. 
+                        ?prevStep tc:toBeCarriedOutByComponent ?prevProcessor. 
                         ?prevProcessor osw:hasDependency ldio:LinkedDataInteractionsOrchestrator .
             			}
         		  """ ;
@@ -535,9 +754,9 @@ services:
             SELECT ?this
             WHERE {
                 # Only include if the predecessor is also an LDIO processor
-                ?thisStep tc:toBeCarriedOutByProcessor ?this. 
+                ?thisStep tc:toBeCarriedOutByComponent ?this. 
                 ?thisStep p-plan:isPrecededBy ?prevStep .
-                ?prevStep tc:toBeCarriedOutByProcessor ?prevProcessor. 
+                ?prevStep tc:toBeCarriedOutByComponent ?prevProcessor. 
                 ?this ldio:type ?thisType .
                 ?prevProcessor ldio:type ?prevType .
 

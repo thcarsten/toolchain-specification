@@ -1,0 +1,8 @@
+rdflib # Interact with RDF graph
+boltons # Recursive transformation of nested structures
+glom # Easier data retrieval from nested structures
+validators # detecting urls
+pyld # for json-ld framing
+bidict # for ordered dictionaries with one-to-one mapping 
+pyyaml # yaml support
+jsonschema # for automatic validation of dictionary contents

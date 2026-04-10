@@ -16,6 +16,91 @@
 
 
 
+
+
+#################################################################
+# Interoperable Pipeline
+#################################################################
+:InteroperablePipeline a tc:PipelineDefinition;
+    rdfs:label "Interoperable pipeline.";
+    rdfs:comment "Pipeline that spans the frameworks RDF Connect and LDIO.".
+    
+:step_1 a tc:PipelineStep;
+    p-plan:isStepOfPlan :InteroperablePipeline;
+    tc:toBeCarriedOutByProcessor rdfc:LdesClient;
+    p-plan:hasInputVar [
+        tc:embedded 
+        [
+        rdfc:url <https://ca-westtoerwin-nginx-prod.livelyisland-1fa58ea1.westeurope.azurecontainerapps.io/touristattractions/latestView>;
+        rdfc:follow true
+        ] 
+    ].
+
+:step_2 a tc:PipelineStep;
+    p-plan:isStepOfPlan :InteroperablePipeline;
+    tc:toBeCarriedOutByProcessor ldio:ConsoleOut;
+    p-plan:hasInputVar [
+        a tc:Config;
+        tc:embedded 
+        [
+        :rdf-writer 
+            [:content-type "text/turtle"] ;
+        ] 
+    ] .
+
+:step_2 p-plan:isPrecededBy :step_1 .
+
+
+
+#################################################################
+# Mixed RDFConnect Pipeline
+#################################################################
+:RdfcMixedPipeline a tc:PipelineDefinition;
+    rdfs:label "RDF Connect Mixed Pipeline";
+    rdfs:comment "A pure RDF Connect pipeline which uses Javascript and Python componentss".
+
+# This is a bit awkward bc I need to make sure that each url is unique. So at a later date I should think about how urls are to be constructed / formatted
+:RdfcMixedLdesClientStep a tc:PipelineStep;
+        p-plan:isStepOfPlan :RdfcMixedPipeline;
+        tc:toBeCarriedOutByProcessor rdfc:LdesClient;
+        p-plan:hasInputVar :RdfcMixedLdesClientConfig .
+
+:RdfcMixedBufferStep a tc:PipelineStep;
+        p-plan:isStepOfPlan :RdfcMixedPipeline;
+        tc:toBeCarriedOutByProcessor rdfc:Buffer;
+        p-plan:hasInputVar :RdfcMixedBufferConfig .
+
+:RdfcMixedConsoleOutStep a tc:PipelineStep;
+        p-plan:isStepOfPlan :RdfcMixedPipeline;
+        tc:toBeCarriedOutByProcessor rdfc:LogProcessorPy;
+        p-plan:hasInputVar :RdfcMixedConsoleOutConfig .
+
+:RdfcMixedConsoleOutStep p-plan:isPrecededBy :RdfcMixedBufferStep .
+:RdfcMixedBufferStep p-plan:isPrecededBy :RdfcMixedLdesClientStep .
+
+:RdfcMixedLdesClientConfig a tc:Config;
+    tc:embedded [
+        rdfc:url <https://ca-westtoerwin-nginx-prod.livelyisland-1fa58ea1.westeurope.azurecontainerapps.io/touristattractions/latestView>;
+        rdfc:follow true
+    ] .
+
+:RdfcMixedBufferConfig a tc:Config;
+    tc:embedded [
+        rdfc:interval 5000; # Every 5000 ms
+        rdfc:amount 0  # pipe through all available data
+    ] .
+
+
+:RdfcMixedConsoleOutConfig a tc:Config;
+    tc:embedded [
+        rdfc:level "debug";
+        rdfc:label "test"
+    ] .
+
+
+
+
+
 #################################################################
 # RDFConnect Pipeline
 #################################################################
@@ -82,4 +167,34 @@
     tc:embedded [
         :rdf-writer 
             [:content-type "text/turtle"] ;
+    ] .
+
+
+
+
+#################################################################
+# Debug Pipeline
+#################################################################
+
+
+:DebugPipeline a tc:PipelineDefinition;
+    rdfs:label "Debug Pipeline";
+    rdfs:comment "This is not a real pipeline, it is just used to test whether the Pipeline class grabs the subgraph correctly".
+
+
+# TODO: Normally, the SparqlStep should not be included in the config output file because it is detached from the other PipelineSteps. However, currently I have no SHACL shape that checks for this. 
+# I think this check should occur on the level of ontology: All Steps as part of a pipeline definition must be connected (in)directly in some way
+
+:SparqlStep a tc:PipelineStep;
+        p-plan:isStepOfPlan :LdioExamplePipeline;
+        tc:toBeCarriedOutByProcessor ldio:SparqlConstructTransformer;
+        p-plan:hasInputVar :SparqlConfig .
+
+:SparqlConfig a tc:Config;
+    tc:embedded [
+        :query """CONSTRUCT {
+        ?s ?p ?o
+}
+WHERE { ?s ?p ?o }
+""" ;
     ] .
