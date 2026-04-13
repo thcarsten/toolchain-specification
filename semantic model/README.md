@@ -190,18 +190,23 @@ Description of a simple LDIO pipeline:
 ~~~
 :LdioExamplePipeline a tc:PipelineDefinition;
     rdfs:label "LDIO Example Pipeline";
-    rdfs:comment "A simple example pipeline using three processors and one runner of the LDIO framework for the pipeline generator PoC.".
+    rdfs:comment "A simple example pipeline using components of the LDIO framework.".
 
 :LDESClientStep a tc:PipelineStep;
         p-plan:isStepOfPlan :LdioExamplePipeline;
-        tc:toBeCarriedOutByProcessor ldio:LdesClient;
-        p-plan:hasInputVar :LdesClientConfig .
-
+        p-plan:hasInputVar [ 
+            a tc:Assignment;
+            tc:assignedComponent ldio:LdesClient;
+            tc:assignedConfig :LdesClientConfig
+        ] .
+        
 :ConsoleOutStep a tc:PipelineStep;
         p-plan:isStepOfPlan :LdioExamplePipeline;
-        tc:toBeCarriedOutByProcessor ldio:ConsoleOut;
-        p-plan:hasInputVar :ConsoleOutConfig .
-    
+        p-plan:hasInputVar [ 
+            tc:assignedComponent ldio:ConsoleOut;
+            tc:assignedConfig :ConsoleOutConfig
+        ] .
+        
 :ConsoleOutStep p-plan:isPrecededBy :LDESClientStep .
 
 :LdesClientConfig a tc:Config;
@@ -219,35 +224,28 @@ Description of a simple LDIO pipeline:
 
 Based on this pipeline, the pipeline generator looks up the references pipeline components in the component catalogue:
 ~~~
-:LdioComponentCatalogue a tc:ComponentCatalogue;
-    prov:hadMember 
+:DishacledComponentCatalogue a tc:ComponentCatalogue, dcat:Catalog;
+    dcat:resource  
             ldio:LdesClient, 
             ldio:SparqlConstructTransformer,
             ldio:ConsoleOut,
-            ldio:LinkedDataInteractionsOrchestrator .
+            ldio:LinkedDataInteractionsOrchestrator,
+            ... 
 
 
-ldio:ConsoleOut a tc:Processor ;
-    a tc:Processor ;
+ldio:ConsoleOut a tc:PipelineComponent ;
     rdfs:label "Ldio:ConsoleOut" ; 
-    osw:hasDependency ldio:LinkedDataInteractionsOrchestrator ;
+    dcterms:requires ldio:LinkedDataInteractionsOrchestrator ;
     ldio:type "Output" ;
-    osw:hasUseLimitations :LdioConsoleOutConfigShape .
+    dcat:qualifiedRelation [
+        dcterms:relation :LdioConsoleOutConfigShape ;
+        dcat:hadRole :configShape ; # This tells the PipelineGenerator that any Config assigned to ldio:ConsoleOut has to be validated by this shape, whenever ldio:ConsoleOut is included in a Pipeline Build. 
+    ] .
+
 
 :LdioConsoleOutConfigShape
         a sh:NodeShape ;
-        sh:target [ # I express here that the tc:Config needs to belong to ldio:ConsoleOut
-        	a sh:SPARQLTarget ;
-            sh:prefixes :prefixes ;
-        	sh:select """
-            		SELECT ?this
-            		WHERE {
-                		?step tc:toBeCarriedOutByProcessor ldio:ConsoleOut .
-                		?step p-plan:hasInputVar ?this .
-                		?this a tc:Config .
-            			}
-        		  """ ;
-    		  ] ;
+        sh:targetClass tc:PipelineConfig ; # Constraints the target to a specific subclass of tc:Config.  
         sh:property [
             sh:path tc:embedded ;
             sh:node [
