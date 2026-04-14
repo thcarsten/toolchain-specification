@@ -55,6 +55,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 | sh  | http://www.w3.org/ns/shacl#  | https://www.w3.org/TR/shacl/ |
 | dcat  | http://www.w3.org/ns/dcat#  | https://www.w3.org/TR/vocab-dcat-3/ |
 | dcterms | http://purl.org/dc/terms/ | https://www.dublincore.org/specifications/dublin-core/dcmi-terms/ |
+| osw  | http://ontosoft.org/software#  | https://ontosoft-earthcube.github.io/ontosoft/ontosoft%20ontology/v1.0.1/doc/index.html |
 <br><br>
 
 ## 2.2. Relation to other ontologies
@@ -115,7 +116,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ### PipelineComponent
 | | |
 |----------|----------|
-| **Definition** | A Pipeline Component is any modular unit that can be included in a pipeline to help execute a PipelineStep. It may be a component which produces or transforms data. It may also be a component which is not responsible for forwarding data, but which is needed because another Pipeline Components depends on it. Pipeline Components are resources of the Component Catalog. Therefore, the need to be described with information relevant for their deployment, such as dependencies and constraints. |
+| **Definition** | A Pipeline Component is any modular unit that can be included in a pipeline to help execute a PipelineStep. It may be a component which produces or transforms data. It may also be a component which is not responsible for forwarding data, but which is needed because another Pipeline Components depends on it. Pipeline Components are resources of the Component Catalog. Therefore, they need to be described with information relevant for their deployment, such as dependencies and constraints. |
 | **subclass of** | osw:Software |
 <br>
 
@@ -129,8 +130,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ### Assignment 
 | | |
 |----------|----------|
-| **Definition** | As part of the Pipeline Definition, an assignment defines which Pipeline Component is responsible for executing a Pipeline Step, and how that component should be configured. If more than one Pipeline Component is responsible for executing a PipelineStep (such as using a processor with a specific runner of the RDF Connect framework, for example), each of these Pipeline Components can receive its own assigned Config by attaching several Assignments to a Pipeline Step. 
- |
+| **Definition** | As part of the Pipeline Definition, an assignment defines which Pipeline Component is responsible for executing a Pipeline Step, and how that component should be configured. If more than one Pipeline Component is responsible for executing a PipelineStep (such as using a processor with a specific runner of the RDF Connect framework, for example), each of these Pipeline Components can receive its own assigned Config by attaching several Assignments to a Pipeline Step. |
 | **subclass of** | p-plan:Variable |
 <br>
 
@@ -158,6 +158,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 |----------|----------|
 | **Definition** | The DockerImageConfig defines how the Docker Image must be build to include the necessary dependencies for the Microservice. |
 | **subclass of** | tc:Config |
+<br>
 
 ### DockerComposeConfig
 | | |
