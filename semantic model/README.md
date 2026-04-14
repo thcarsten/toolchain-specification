@@ -12,8 +12,9 @@
     - [2.4. Additional Classes](#24-additional-classes)
     - [2.5. Subclasses of Config](#25-subclasses-of-config)
     - [2.6. Future Directions](#26-future-directions)
-s
 - [3. Examples](#3-examples)
+    - [3.1. Ldio example](#31-ldio-example)
+    - [3.2. RDF Connect example](#32-rdf-connect-example)
 
 <br><br>
 
@@ -186,7 +187,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 
 # 3. Examples
 
-Description of a simple LDIO pipeline:
+## 3.1. LDIO example:
 ~~~
 :LdioExamplePipeline a tc:PipelineDefinition;
     rdfs:label "LDIO Example Pipeline";
@@ -222,21 +223,24 @@ Description of a simple LDIO pipeline:
     ] .
 ~~~
 
-Based on this pipeline, the pipeline generator looks up the references pipeline components in the component catalogue:
+Based on this pipeline, the pipeline generator looks up the referenced pipeline components in the component catalog:
 ~~~
-:DishacledComponentCatalogue a tc:ComponentCatalogue, dcat:Catalog;
+:DishacledComponentCatalog a tc:ComponentCatalog, dcat:Catalog;
     dcat:resource  
             ldio:LdesClient, 
             ldio:SparqlConstructTransformer,
             ldio:ConsoleOut,
             ldio:LinkedDataInteractionsOrchestrator,
+            rdfc:LdesClient,
+            rdfc:NodeRunner,
+            rdfc:Orchestrator
             ... 
 
 
 ldio:ConsoleOut a tc:PipelineComponent ;
     rdfs:label "Ldio:ConsoleOut" ; 
     dcterms:requires ldio:LinkedDataInteractionsOrchestrator ;
-    ldio:type "Output" ;
+    ldio:type "Output" ; # Specific property of Ldio
     dcat:qualifiedRelation [
         dcterms:relation :LdioConsoleOutConfigShape ;
         dcat:hadRole :configShape ; # This tells the PipelineGenerator that any Config assigned to ldio:ConsoleOut has to be validated by this shape, whenever ldio:ConsoleOut is included in a Pipeline Build. 
@@ -245,7 +249,7 @@ ldio:ConsoleOut a tc:PipelineComponent ;
 
 :LdioConsoleOutConfigShape
         a sh:NodeShape ;
-        sh:targetClass tc:PipelineConfig ; # Constraints the target to a specific subclass of tc:Config.  
+        sh:targetClass tc:PipelineConfig ; # Constraints the target further to a specific subclass of tc:Config.  
         sh:property [
             sh:path tc:embedded ;
             sh:node [
@@ -260,6 +264,257 @@ ldio:ConsoleOut a tc:PipelineComponent ;
             ] ;
         ] . 
 
-(...)
+ldio:LinkedDataInteractionsOrchestrator
+    a tc:PipelineComponent ;
+    rdfs:label "Linked Data Interactions Orchestrator" ;
+    osw:hasProjectWebsite "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
+    osw:hasSoftwareVersion [
+          osw:hasVersionId "2.8.0-SNAPSHOT"
+          ] ;
+    
+    tc:storedConfig [
+        a tc:DefaultConfig, tc:DockerComposeConfig ;
+        tc:literal """
+  ldio-workbench:
+    container_name: ldio-workbench
+    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
+    ports:
+      - "8080:8080"
+"""
+    ] ;
+    dcterms:requires ldio:LdioPipelineStarterService ;
+    dcat:qualifiedRelation [
+        dcterms:relation :LdioProcessorTypeConstraintShape, # Specific constraints checking the validity of Ldio pipeline segments
+                         :LdioSingleFlowChainShape , 
+                         :LdioTypeOrderShape ;
+    ] .
+
+
+ldio:LdioPipelineStarterService  # Service that will start the Ldio pipeline segment once the ldio workbench is up
+    a tc:PipelineComponent ;
+    rdfs:label "Ldio Pipeline Starter Service" ;
+    tc:storedConfig [
+        a tc:DefaultConfig, tc:DockerComposeConfig ;
+        tc:literal '''
+ldio-pipeline-starter:
+    image: curlimages/curl
+    volumes:
+      - ./ldio_pipeline.yml:/pipeline.yml:ro
+    command: >
+      sh -c "
+      sleep 30 &&
+      curl -X POST
+      -H 'content-type: application/yaml'
+      http://ldio-workbench:8080/admin/api/v1/pipeline
+      --data-binary @/pipeline.yml
+      "         
+''' ;
+] .
+   	
 ~~~
 
+## 3.2. RDF Connect example:
+~~~
+:RdfcExamplePipeline a tc:PipelineDefinition;
+    rdfs:label "RDF Connect Example Pipeline";
+    rdfs:comment "An example of a RDF Connect pipeline which uses Javascript and Python components".
+
+:step_1 a tc:PipelineStep;
+        p-plan:isStepOfPlan :RdfcExamplePipeline;
+        p-plan:hasInputVar [ 
+            tc:assignedComponent rdfc:LdesClient;
+            tc:assignedConfig :step_1_config
+        ] .
+
+:step_2 a tc:PipelineStep;
+        p-plan:isStepOfPlan :RdfcExamplePipeline;
+        p-plan:hasInputVar [ 
+            tc:assignedComponent rdfc:Buffer;
+            tc:assignedConfig :step_2_config
+        ] .
+
+:step_3 a tc:PipelineStep;
+        p-plan:isStepOfPlan :RdfcExamplePipeline;
+        p-plan:hasInputVar [ 
+            tc:assignedComponent rdfc:LogProcessorPy;
+            tc:assignedConfig :step_3_config
+        ] .
+
+:step_3 p-plan:isPrecededBy :step_2 .
+:step_2 p-plan:isPrecededBy :step_1 .
+
+:step_1_config a tc:Config;
+    tc:embedded [
+        rdfc:url <https://ca-westtoerwin-nginx-prod.livelyisland-1fa58ea1.westeurope.azurecontainerapps.io/touristattractions/latestView>;
+        rdfc:follow true
+    ] .
+
+:step_2_config a tc:Config;
+    tc:embedded [
+        rdfc:interval 5000; 
+        rdfc:amount 0  
+    ] .
+
+:step_3_config a tc:Config;
+    tc:embedded [
+        rdfc:level "debug";
+        rdfc:label "test"
+    ] .
+~~~
+
+Based on this pipeline, the pipeline generator looks up the referenced pipeline components in the component catalog:
+
+~~~
+rdfc:LdesClient
+    a tc:PipelineComponent, rdfc:Processor;
+    rdfs:label "ldes client";
+    rdfs:comment "An LDES client that can read a stream of members from an LDES."; 
+    dcterms:requires rdfc:NodeRunner ;
+    dcat:qualifiedRelation [
+        dcterms:relation :RdfcLdesClientConfigShape,
+                         :RdfcLdesClientFetchConfigShape, 
+                         :RdfcLdesClientFetchRetryConfigShape,
+                         :RdfcLdesClientAuthConfigShape;
+        dcat:hadRole :configShape ; 
+    ] ;
+    owl:imports <./node_modules/ldes-client/processor.ttl> . # This is specifically required for RDF Connect processors
+
+
+rdfc:Buffer a tc:PipelineComponent, rdfc:Processor;
+    rdfs:label "Buffer Processor" ;
+    rdfs:comment " At a certain interval, the processor will pipe through a given amount of data from the incoming stream to the outgoing stream.";
+    dcterms:requires rdfc:NodeRunner ;
+    dcat:qualifiedRelation [
+        dcterms:relation :RdfcBufferConfigShape ;
+        dcat:hadRole :configShape ; 
+    ] ;
+    owl:imports <./node_modules/@rdfc/buffer-processor-ts/processor.ttl>. 
+
+
+rdfc:LogProcessorPy a tc:PipelineComponent, rdfc:Processor;
+    rdfs:label "Python Log Processor";
+    dcterms:requires rdfc:PyRunner ;
+    dcat:qualifiedRelation [
+        dcterms:relation :RdfcLogProcessorPyConfigShape ;
+        dcat:hadRole :configShape ; 
+    ] ;
+    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_log_processor/processor.ttl>. # Relative path inside docker container
+
+
+rdfc:NodeRunner a tc:PipelineComponent, rdfc:Runner;
+    rdfs:label "RDF Connect Javascript Node Runner" ; 
+    dcterms:requires rdfc:Orchestrator ;
+    dcat:qualifiedRelation [
+        dcterms:relation :NodeRunnerConfig ;
+        dcat:hadRole :configShape ; 
+    ] ;
+    owl:imports <./node_modules/@rdfc/js-runner/index.ttl> . # This is specific to RDF Connect
+
+
+rdfc:PyRunner a tc:PipelineComponent, rdfc:Runner;
+    rdfs:label "RDF Connect Python Runner" ; 
+    dcterms:requires rdfc:Orchestrator ;
+    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl>.
+
+
+rdfc:Orchestrator a tc:PipelineComponent ;
+    rdfs:label "RDF Connect Orchestrator" ;
+    tc:storedConfig [
+        a tc:Config, tc:DefaultConfig, tc:DockerComposeConfig ;
+        tc:literal """
+  rdf-connect:
+    container_name: rdf-connect
+    image: rdf-connect:latest
+    build: ../../resources/rdfc-docker
+    volumes:
+      - ./rdfc_pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro
+    environment:
+      LOG_LEVEL: debug
+    command: npx rdfc /workspace/pipeline/pipeline.ttl
+"""
+] .
+~~~
+
+Based on a Pipeline Definition, the Pipeline Generator looks up all implicated dependencies via dcterms:requires. It finds the PipelineComponent that has a DockerComposeConfig, as well as a DefaultConfig. This is because it is assumed that dcterms:requires always points to the PipelineComponent, which resolves the dependencies of the component pointing to it (either directly or indirectly). In this example it is hence assumed that the stored DockerComposeConfig of the rdfc:Orchestrator can resolve all dependencies of all PipelineComponents implicated by the Pipeline Definition, as well as its own dependencies. 
+<br><br>
+You can also see in this example that rdfc:Processors are attached to a default rdfc:Runner via dcterms:requires. In some cases, you may want to attach a PipelineComponent to a different PipelineComponent and hence override this default. This is possible via tc:Assignment. See this example:
+
+~~~
+:step_1 a tc:PipelineStep;
+        p-plan:isStepOfPlan :RdfcExamplePipeline;
+        p-plan:hasInputVar [ 
+            tc:assignedComponent rdfc:LdesClient;
+            tc:assignedConfig :step_1_config;
+            dcterms:requires rdfc:JsRunner
+        ] .
+~~~
+
+Here, Step 1 is configured to use the rdfc:LdesClient in combination with rdfc:JsRunner. In this case, dcterms:requires is overwritten for this specific Pipeline Step. It is also possible to give rdfc:Orchestrator a different Config than the DefaultConfig. You can do it like so:
+
+~~~
+:step_1 a tc:PipelineStep;
+        p-plan:isStepOfPlan :RdfcExamplePipeline;
+        p-plan:hasInputVar [ 
+            tc:assignedComponent rdfc:LdesClient;
+            tc:assignedConfig :step_1_config;
+            dcterms:requires rdfc:JsRunner ;
+        ] ,
+         [ 
+            tc:assignedComponent rdfc:Orchestrator;
+            tc:assignedConfig :customOrchestratorConfig;
+        ] . 
+~~~
+
+In this case, only step_1 will be executed with the custom Orchestrator. If you want the whole pipeline to run with the custom Orchestrator, you can give each PipelineStep the same Assignment (give the Assignment a proper uri and link each step to it). While this is more verbose, this is only needed if you want to overwrite the default settings. The Pipeline Generator and semantic model are designed to take most work away from the user, so in most cases the default settings should work just fine. It is of course also possible to modify the component catalog itself and assign a different Config as DefaultConfig, in which case all steps will automatically refer to this new Config. 
+
+Another possibility is to define the pipeline on the level of the rdfc:Orchestrator from the get-go:
+~~~
+:step_1 a tc:PipelineStep;
+        p-plan:isStepOfPlan :RdfcExamplePipeline;
+        p-plan:hasInputVar [ 
+            tc:assignedComponent rdfc:Orchestrator;
+            tc:assignedConfig :pipelineConfig;
+        ] .
+
+:pipelineConfig a tc:PipelineConfig ;
+    tc:embedded [
+        a rdfc:Pipeline ;
+        owl:imports <file:///usr/local/lib/python3.13/site-packages/rdfc_log_processor/processor.ttl>,
+            <file:///usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl>,
+            <node_modules/@rdfc/buffer-processor-ts/processor.ttl>,
+            <node_modules/@rdfc/js-runner/index.ttl>,
+            <node_modules/ldes-client/processor.ttl> ;
+        rdfc:consistsOf :env_1,
+            :env_2 .
+    ] .
+
+:env_1 rdfc:instantiates rdfc:JsRunner ;
+    rdfc:processor :step_1, :step_2 .
+
+:env_2 rdfc:instantiates rdfc:PyRunner ;
+    rdfc:processor :step_3 .
+
+:step_1 a rdfc:LdesClient ;
+    rdfc:follow true ;
+    rdfc:output :channel_1 ;
+    rdfc:url <https://ca-westtoerwin-nginx-prod.livelyisland-1fa58ea1.westeurope.azurecontainerapps.io/touristattractions/latestView> .
+
+:step_2 a rdfc:Buffer ;
+    rdfc:amount 0 ;
+    rdfc:incoming :channel_1 ;
+    rdfc:interval 5000 ;
+    rdfc:outgoing :channel_2 .
+
+:step_3 a rdfc:LogProcessorPy ;
+    rdfc:label "test" ;
+    rdfc:level "debug" ;
+    rdfc:reader :channel_2 .
+
+:channel_1 a rdfc:Reader,
+    rdfc:Writer .
+
+:channel_2 a rdfc:Reader,
+    rdfc:Writer .
+~~~
+
+In this case, the entire generatedConfig for the Orchestrator is directly passed to the Orchestrator. You can picture this as defining the Orchestrator as a Microservice which performs one step of a pipeline. Although this step is an entire pipeline in and of itself, the PipelineGenerator "sees" the Orchestrator as a regular PipelineStep within a possibly bigger pipeline. 
