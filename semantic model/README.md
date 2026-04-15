@@ -15,6 +15,7 @@
 - [3. Examples](#3-examples)
     - [3.1. Ldio example](#31-ldio-example)
     - [3.2. RDF Connect example](#32-rdf-connect-example)
+    - [3.3. semantic.works example](#33-semanticworks-example)
 
 <br><br>
 
@@ -519,3 +520,133 @@ Another possibility is to define the pipeline on the level of the rdfc:Orchestra
 ~~~
 
 In this case, the entire generatedConfig for the Orchestrator is directly passed to the Orchestrator. You can picture this as defining the Orchestrator as a Microservice which performs one step of a pipeline. Although this step is an entire pipeline in and of itself, the PipelineGenerator "sees" the Orchestrator as a regular PipelineStep within a possibly bigger pipeline. 
+
+## 3.3. semantic.works example:
+This is an example of how a simple image service by semantic.works may be registered in the Component Catalog. In this case, each process of the image service is understood as its own PipelineComponent which requires the image microservice to run. You can also see that semantic.works introduces and requires custom properties, such as the dispatcher routing rule, which needs to be added to the dispatcher to 'register' each deployed microservice.
+~~~
+@prefix : <http://example.org/example/> .
+@prefix tc: <https://w3id.org/toolchain#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix osw: <http://ontosoft.org/software#> .
+@prefix dct: <http://purl.org/dc/terms/>.
+@prefix ext: <http://mu.semte.ch/vocabluries/ext/>.
+@prefix mu: <http://mu.semte.ch/vocabularies/core/>.
+@prefix nfo: <http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#>.
+@prefix nie: <http://www.semanticdesktop.org/ontologies/2007/01/19/nie#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#>.
+
+
+:semantic-works-services
+  a dcat:Catalog, tc:ComponentCatalog;
+  dct:title "Public semantic.works microservices and processes.";
+  dct:description "Contains a distribution for all DiSHACLed annotated microservices and processes.";
+  dcat:resource
+    <https://semantic.works/services/image-service>,
+    <https://semantic.works/services/image-service/process/resize> ,
+    <https://semantic.works/services/image-service/process/retrieve>.
+
+
+<https://semantic.works/services/image-service>
+    a dcat:Resource, mu:Microservice, tc:PipelineComponent;
+    osw:hasProjectWebsite <https://github.com/madnificent/mu-image-service>;
+    dct:title """Image service""";
+    dct:description """Provides scaled down versions of imageson the fly and caches the results in the triplestore.""";
+    tc:storedConfig [
+      a tc:DefaultConfig, tc:DockerComposeConfig;
+      tc:literal """
+        imageservice:
+    image: madnificent/mu-image-service:0.0.1
+    links:
+      - db:database
+    volumes:
+      - ./data/files:/share
+      """ ]; 
+    :dispatcher_routing_rule """
+      match "/images/*path" do
+    Proxy.forward conn, path, "http://imageservice/image/"
+  end
+    """ ; # The image service has to be 'registered' in the semantic.works dispatcher by defining a matching rule for routing to the image service. To support automating this registration process, this information is added here. 
+    ext:hasProcess
+      <https://semantic.works/services/image-service/process/resize> ,
+      <https://semantic.works/services/image-service/process/retrieve> .
+
+
+<https://semantic.works/services/image-service/process/resize>
+  a ext:Process, tc:PipelineComponent;
+  dct:title "Resize image";
+  dct:description """Resizes an image and returns it to the user.""";
+  dct:requires <https://semantic.works/services/image-service>;
+  dcat:qualifiedRelation [
+        dcterms:relation :unconvertedInput ;
+        dcat:hadRole :inputShape ; 
+    ] ;
+  dcat:qualifiedRelation [
+        dcterms:relation :convertedOutput ;
+        dcat:hadRole :outputShape ; 
+    ] .
+
+
+<https://semantic.works/services/image-service/process/retrieve>
+  a ext:Process, tc:PipelineComponent; 
+  dct:title "Retrieve resized image";
+  dct:description """Renders a previously resized image""";
+    dct:requires <https://semantic.works/services/image-service>;
+  dcat:qualifiedRelation [
+        dcterms:relation :convertedOutput ;
+        dcat:hadRole :inputShape ; 
+    ] .
+
+
+:unconvertedInput
+  a sh:NodeShape; # TODO: sh:NodeShape applies to _all_ nfo:FileDataObject, yet we only care about some of these matching.  Whether _everything_ is expected to match or _some_ are expected to match is a desired extension.  We may want to ignore what does not, or we may crash if it does not match.
+  sh:targetClass nfo:FileDataObject ;
+  sh:property [
+    sh:path mu:uuid ;
+    sh:minCount 1 ;
+    sh:dataType xsd:string
+  ] ;
+  sh:property [
+    sh:path dct:format ;
+    sh:minCount 1 ;
+    sh:dataType xsd:string ;
+    sh:pattern "^image/"
+  ] ;
+  sh:property [
+    sh:path [ sh:inversePath nie:dataSource ] ;
+    sh:minCount 1
+  ] ;
+  sh:closed false .
+
+
+:convertedOutput
+  a sh:NodeShape ;
+  sh:targetSubjectsOf ext:hasDerivedImage ; # Original file
+  sh:property [
+    sh:path ext:hasDerivedImage ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+    sh:node [
+      a sh:NodeShape ;
+      sh:targetClass nfo:FileDataObject ;
+      sh:property [
+        sh:path ext:imageWidth ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+        sh:dataType xsd:string
+      ] , [
+        sh:path ext:imageHeight ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+        sh:dataType xsd:string
+      ] , [
+        sh:path nie:dataSource ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+      ]
+    ]
+  ] ;
+  sh:closed false.
+  ~~~
