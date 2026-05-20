@@ -1,52 +1,65 @@
-from rdf_extract import Compiler, DataTree, GraphReader, merge_graphs
+from rdfine import GraphDict, GraphReader, merge_graphs
 from rdflib import Graph
 import pandas as pd
+from copy import deepcopy
 
 
-class RdfcConfigCompiler(Compiler):
+class RdfcConfigCompiler:
     """
     Compiles the pipeline definition file for a Rdf Connect pipeline.
     """
 
-    def __init__(self, pipeline_tree: DataTree) -> None:
-        super().__init__()  # Inheriting the init of the parent class
-        self.input = pipeline_tree
-        self.pipeline_id = pipeline_tree.dict_data.get("@id")
-        self.processor_graph: Graph | None = None
+    def __init__(self, assembled_pipeline: GraphDict) -> None:
+        self.graph_dict = deepcopy(assembled_pipeline)
+        self.graph_reader = GraphReader(assembled_pipeline.to_graph())
+        self.pipeline_id = assembled_pipeline.get("@id")
 
-        # Creating a graph reader based on the pipeline_tree
-        copy_tree = pipeline_tree.copy()
-        copy_tree.compact()
-        copy_tree.provide_prefixes()
-        pipeline_graph = copy_tree.to_graph()
-        self.graph_reader = GraphReader(pipeline_graph)
-        self.graph_reader.prefix_store.load(
-            copy_tree.prefix_store.prefixes, replace=True
-        )
-
-    def generate_output(self) -> None:
-        self.df_channel_predicates = self.lookup_channel_predicates()
+    def compile(self) -> None:
         self.pipeline_graph = self.describe_pipeline()
+        self.pipeline_required_graph = self.describe_pipeline_required()
         self.processor_graph = self.describe_processors()
+        self.df_channel_predicates = self.lookup_channel_predicates()
         self.channel_graph = self.describe_channels()
         output_graph = merge_graphs(
-            [self.pipeline_graph, self.processor_graph, self.channel_graph]
+            [
+                self.pipeline_graph,
+                self.pipeline_required_graph,
+                self.processor_graph,
+                self.channel_graph,
+            ]
         )
-        self.output = DataTree(GraphReader(output_graph).to_dict(self.pipeline_id))
+        self.output = output_graph
+        self.pipeline_definition = self.output.serialize(format="turtle")
+        self.pipeline_definition = self.pipeline_definition.replace(
+            self.pipeline_id, "<>"
+        )
+        return self.pipeline_definition
+
         # self.output["@id"] = ""  # The pipeline HAS to be named <>, this is what RDF Connect expects. Otherwise it will not work
+
+    def tab_processors(self) -> pd.DataFrame:
+        """
+        Looks up processors that are instantiated by the rdfc:Orchestrator microservice.
+        """
+
+        # Starting a new graph which initializes each pipeline step as a rdfc:Processor
+        processors_query = f"""
+            SELECT  ?step ?component 
+            WHERE {{
+            ?step :isCarriedOutBy ?component .
+            rdfc:Orchestrator :instantiates ?component .
+            rdfc:Orchestrator :executes ?step .
+            }}
+        """
+
+        return self.graph_reader.execute_query(processors_query)
 
     def describe_pipeline(self) -> Graph:
 
         # Fetching the rdfc:Runners as list
-        components = self.input.get("components")
-        components.subset(keep=["@type"])
-        components = components.to_dict()
-        runner_list = [
-            component
-            for component in components
-            if "rdfc:Runner" in components[component]["@type"]
-            or "rdfc:Runner" == components[component]["@type"]
-        ]
+        runner_list = self.graph_reader.get_triples(pred="rdf:type", obj="rdfc:Runner")[
+            "sub"
+        ].to_list()
 
         # Each runner requires its own instanced environment
         env_i = 0  # Simple running index for the environments
@@ -58,25 +71,46 @@ class RdfcConfigCompiler(Compiler):
                                     CONSTRUCT {{
                                     {self.pipeline_id} a rdfc:Pipeline . 
                                     {self.pipeline_id} rdfc:consistsOf :env_{env_i} .
-                                    {self.pipeline_id} owl:imports ?import .
                                     :env_{env_i} rdfc:instantiates {runner_id} .
                                     :env_{env_i} rdfc:processor ?step .
                                     }}
                                     WHERE {{
-                                    {self.pipeline_id} na_:components ?all_components_container .
-                                    ?all_components_container ?component_pred ?component .
-                                    ?component osw:hasDependency {runner_id} .
-
-                                    {self.pipeline_id} na_:steps ?all_steps_container .
-                                    ?all_steps_container ?step ?single_step_container .
-                                    ?single_step_container na_:component ?component .
-
-                                    ?anycomponent owl:imports ?import .
+                                    ?processor dct:requires {runner_id} .
+                                    ?step :isCarriedOutBy ?processor .
                                     }}
                                 """
 
             environment_graph = self.graph_reader.execute_query(pipeline_query)
             graph_list.append(environment_graph)
+
+        output_graph = merge_graphs(graph_list)
+        return output_graph
+
+    def describe_pipeline_required(self) -> Graph:
+        """
+        Looks up any PipelineConfigs which are directly attached to the rdfc:Orchestrator.
+        """
+
+        config_query = f"""        
+        SELECT ?config_id ?literal
+        WHERE {{
+        ?config_id ?configForComponent rdfc:Orchestrator . 
+        ?config_id a tc:PipelineConfig . 
+        ?config_id ?config_relation ?literal . 
+        FILTER(?literal IN ('isRequired', 'isAssigned')) 
+        }}
+        """
+
+        config_list = self.graph_reader.execute_query(config_query)[
+            "config_id"
+        ].to_list()
+
+        graph_list = []
+        for config_id in config_list:
+            config_dict = deepcopy(self.graph_dict.get_branch(config_id)[":config"])
+            config_dict["@id"] = self.pipeline_id
+            config_dict["@context"] = dict(self.graph_reader.prefix_store.prefixes)
+            graph_list += [GraphDict(config_dict).to_graph()]
 
         output_graph = merge_graphs(graph_list)
         return output_graph
@@ -92,9 +126,9 @@ class RdfcConfigCompiler(Compiler):
             ?step a ?component .
             }}
             WHERE {{
-            {self.pipeline_id} na_:steps ?all_steps_container .
-            ?all_steps_container ?step ?single_step_container .
-            ?single_step_container na_:component ?component .
+            ?step :isCarriedOutBy ?component .
+            rdfc:Orchestrator :instantiates ?component .
+            rdfc:Orchestrator :executes ?step .
             }}
         """
 
@@ -106,9 +140,24 @@ class RdfcConfigCompiler(Compiler):
         for index, row in triples_table.iterrows():
             step_id = row["sub"]
             processor_id = row["obj"]
-            config_tree = self.input.get(f"configs.{processor_id}.config")
-            config_tree["@id"] = step_id
-            config_tree.add_to_graph(output_graph)
+            config_df = self.graph_reader.get_triples(
+                sub=processor_id, pred=":isAssigned"
+            )
+            config_df = pd.concat(
+                [
+                    config_df,
+                    self.graph_reader.get_triples(sub=processor_id, pred=":isRequired"),
+                ]
+            )
+
+            if len(config_df) > 0:
+                config_id = config_df["obj"].to_list()[0]
+                config_dict = self.graph_dict.get_branch(config_id)[":config"]
+                config_dict["@id"] = step_id
+                config_dict["@context"] = dict(self.graph_reader.prefix_store.prefixes)
+                config_graph = GraphDict(config_dict).to_graph()
+
+                output_graph = merge_graphs([output_graph, config_graph])
 
         # Returning the resulting output graph as data tree
         return output_graph
@@ -128,10 +177,11 @@ class RdfcConfigCompiler(Compiler):
         step_query = f"""
             SELECT ?step ?prev_step ?component
             WHERE {{
-            {self.pipeline_id} na_:steps ?all_steps_container .
-            ?all_steps_container ?step ?single_step_container .
-            ?single_step_container na_:component ?component .
-             OPTIONAL {{?single_step_container na_:previous_step ?prev_step .}}
+             ?step :isCarriedOutBy ?component .
+             OPTIONAL {{?step p-plan:isPrecededBy ?prev_step .
+             rdfc:Orchestrator :executes ?prev_step .}}
+             rdfc:Orchestrator :instantiates ?component .
+             rdfc:Orchestrator :executes ?step .
             }}
         """
 
@@ -216,17 +266,16 @@ class RdfcConfigCompiler(Compiler):
         # For each processor that is responsible for a PipelineStep, look up the channel predicates and attach to self.components
         list_channel_predicates = []
         # Absolutely disgusting but it works
-        for processor_id in [
-            self.input.get(f"steps.{step_id}.component")["@id"]
-            for step_id in self.input.get("steps").to_dict().keys()
-        ]:
+        df_processors = self.tab_processors()
+
+        for processor_id in df_processors["component"].to_list():
 
             df_output = pd.concat(
                 [
                     _lookup_channel_predicates(constraint_id)
-                    for constraint_id in self.input.get(f"constraints.{processor_id}")
-                    .to_dict()
-                    .keys()
+                    for constraint_id in self.graph_reader.get_triples(
+                        sub=processor_id, pred=":constraint"
+                    )["obj"].to_list()
                 ],
                 ignore_index=True,
             )

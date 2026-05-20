@@ -12,10 +12,8 @@
     - [2.4. Additional Classes](#24-additional-classes)
     - [2.5. Subclasses of Config](#25-subclasses-of-config)
     - [2.6. Future Directions](#26-future-directions)
+
 - [3. Examples](#3-examples)
-    - [3.1. Ldio example](#31-ldio-example)
-    - [3.2. RDF Connect example](#32-rdf-connect-example)
-    - [3.3. semantic.works example](#33-semanticworks-example)
 
 <br><br>
 
@@ -56,7 +54,6 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 | sh  | http://www.w3.org/ns/shacl#  | https://www.w3.org/TR/shacl/ |
 | dcat  | http://www.w3.org/ns/dcat#  | https://www.w3.org/TR/vocab-dcat-3/ |
 | dcterms | http://purl.org/dc/terms/ | https://www.dublincore.org/specifications/dublin-core/dcmi-terms/ |
-| osw  | http://ontosoft.org/software#  | https://ontosoft-earthcube.github.io/ontosoft/ontosoft%20ontology/v1.0.1/doc/index.html |
 <br><br>
 
 ## 2.2. Relation to other ontologies
@@ -69,7 +66,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 <br>
 
 ### Component Catalog
-![Component Catalogue](diagrams/component_catalog.svg)
+![Component catalog](diagrams/component_catalog.svg)
 | | |
 |----------|----------|
 | **Definition** | A Component Catalog is a collection of the Pipeline Components. Each Pipeline Component is a modular unit that can be instanced within a pipeline build. Th Component Catalog stores information for each Pipeline Component, which is relevant for instancing. Such information are for example dependencies or constraints that come with including a pipeline component in a pipeline.
@@ -117,21 +114,22 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ### PipelineComponent
 | | |
 |----------|----------|
-| **Definition** | A Pipeline Component is any modular unit that can be included in a pipeline to help execute a PipelineStep. It may be a component which produces or transforms data. It may also be a component which is not responsible for forwarding data, but which is needed because another Pipeline Components depends on it. Pipeline Components are resources of the Component Catalog. Therefore, they need to be described with information relevant for their deployment, such as dependencies and constraints. |
+| **Definition** | A Pipeline Component is any modular unit that can be included in a pipeline to help execute a PipelineStep. It may be a component which produces or transforms data. It may also be a component which is not responsible for forwarding data, but which is needed because another Pipeline Components depends on it. Pipeline Components are resources of the Component Catalog. Therefore, the need to be described with information relevant for their deployment, such as dependencies and constraints. |
 | **subclass of** | osw:Software |
 <br>
 
 ### Config
 | | |
 |----------|----------|
-| **Definition** | A Config is a set of input parameters for a Pipeline Component, which defines its behavior in a pipeline. In its simplest case, it is a set of key-value pairs. However, also nested configurations are possible. As a data structure a Config is equivalent to the "object" type in JSON, consisting of an unordered set of name/value pairs. The name is a string and the value is a string, number, boolean, array, or object (same concept as in the [Common Workflow Language](https://www.commonwl.org/v1.2/Workflow.html#Data_concepts)), resulting in an unordered, tree-like (acyclic) structure. Each Config requires either a tc:embedded or tc:literal-predicate. This tells the Pipeline Generator whether the Config is contained in the graph or must be parsed from a string-literal. If tc:embedded is used, the Config points to a blank node representing a data object: Predicates serve as keys and objects as values. If tc:literal is used, the Config points to a string of either json- or yaml-format. In this case the Pipeline Generator parses the string to extract the configuration data. A Config can be stored as a preset in the Component Catalog. In this case a Pipeline Component can point to its associated Configs via tc:storedConfig. This is ideal for attaching default configurations, or attaching configurations often needed for specific use cases. As part of an Assignment and hence Pipeline Definition (see below), tc:assignedConfig can either point to one of these pre-made Configs or to a newly defined Config. |
-| **subclass of** | - |
+| **Definition** | A Config is a set of input parameters for a Pipeline Component, which defines its behavior in a pipeline. In its simplest case, it is a set of key-value pairs. However, also nested configurations are possible. As a data structure a Config is equivalent to the "object" type in JSON, consisting of an unordered set of name/value pairs. The name is a string and the value is a string, number, boolean, array, or object (same concept as in the [Common Workflow Language](https://www.commonwl.org/v1.2/Workflow.html#Data_concepts)), resulting in an unordered, tree-like (acyclic) structure. Each Config requires either a tc:embedded or tc:literal-predicate. This tells the Pipeline Generator whether the Config is contained in the graph or must be parsed from a string-literal. If tc:embedded is used, the Config points to a blank node representing a data object: Predicates serve as keys and objects as values. If tc:literal is used, the Config points to a string of either json- or yaml-format. In this case the Pipeline Generator parses the string to extract the configuration data. A Config can be stored as a preset in the Component Catalog. In this case a Pipeline Component can point to its associated Configs via tc:storedConfig. This is ideal for attaching default configurations, or attaching configurations often needed for specific use cases. As part of an Assignment and hence Pipeline Definition (see below), tc:config can either point to one of these pre-made Configs or to a newly defined Config. 
+|
+| **subclass of** | --- |
 <br>
 
 ### Assignment 
 | | |
 |----------|----------|
-| **Definition** | As part of the Pipeline Definition, an assignment defines which Pipeline Component is responsible for executing a Pipeline Step, and how that component should be configured. If more than one Pipeline Component is responsible for executing a PipelineStep (such as using a processor with a specific runner of the RDF Connect framework, for example), each of these Pipeline Components can receive its own assigned Config by attaching several Assignments to a Pipeline Step. |
+| **Definition** | An assignment reflects the attribution of responsibility to a Pipeline Component, for executing part of a Pipeline Definition. An Assignment points to a Pipeline Component, and optionally to a Config which defines the required behavior of the Pipeline Component. If an Assignment is the Input Var of a Pipeline Step, it describes the Pipeline Component responsible for that Pipeline Step. An Assignment can also be more generally be declared as variable of a Pipeline Definition, in which case it is declared that a Pipeline Component needs to be included in the Pipeline Build generated to execute the Pipeline Definition. Pipeline Components can require Assignments, which means that they require other Pipeline Components to be included in a Pipeline Build (optionally with a specific Config) to function properly. |
 | **subclass of** | p-plan:Variable |
 <br>
 
@@ -139,8 +137,8 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ### sh:NodeShape
 | | |
 |----------|----------|
-| **Definition** | A NodeShape reflects a constraint, which needs to be validated whenever a Pipeline Component becomes part of a Pipeline Build. These constraints can concern different aspects of a Pipeline Build. For example, each Config assigned to a specific Pipeline Component may have to comply to a schema. A Pipeline Component may not accept data input from another Component, because it itself produces data. Or a Pipeline Component may pose specific constraints on how Pipeline Steps may be linked, such as expecting a strictly linear pipeline. It is also possible to describe constraints for the expected data input and output of Pipeline Components.Taken together, defining NodeShapes are a powerful tool to ensure that pipelines run as expected before being deployed. These constraints are expressed as SHACL-shapes to allow automatic validation. Each sh:NodeShape should have a sh:message for human readibility. These should clearly indicate and describe what kind of constraint is imposed, to allow easier implementation of the logic behind the constraint. Node Shapes are only indirectly linked to Pipeline Components via dcat:Relationship. This allows to further qualify the relationship between Pipeline Components and their constraints. For example, dcat:Role can be used to indicate that a constraint belongs to a specific category, for example concerning input data, output data or Configs. Dcat:Relationship may also be used to define when a constraint should be validated, for example before or after building the pipeline. 
-| **subclass of** | - |
+| **Definition** | A NodeShape reflects a constraint, which needs to be validated whenever a Pipeline Component becomes part of a Pipeline Build. These constraints can concern different aspects of a Pipeline Build. For example, each Config assigned to a specific Pipeline Component may have to comply to a schema. A Pipeline Component may not accept data input from another Component, because it itself produces data. Or a Pipeline Component may pose specific constraints on how Pipeline Steps may be linked, such as expecting a strictly linear pipeline. It is also possible to describe constraints for the expected data input and output of Pipeline Components.Taken together, defining NodeShapes are a powerful tool to ensure that pipelines run as expected before being deployed. These constraints are expressed as SHACL-shapes to allow automatic validation. Each sh:NodeShape should have a sh:message for human readibility. These should clearly indicate and describe what kind of constraint is imposed, to allow easier implementation of the logic behind the constraint. Node Shapes are only indirectly linked to Pipeline Components via dcat:Relationship. This allows to further qualify the relationship between Pipeline Components and their constraints. For example, dcat:Role can be used to indicate that a constraint belongs to a specific category, for example concerning input data, output data or Configs. Dcat:Relationship may also be used to define when a constraint should be validated, for example before or after building the pipeline. |
+| **subclass of** | --- |
 <br>
 
 
@@ -159,7 +157,6 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 |----------|----------|
 | **Definition** | The DockerImageConfig defines how the Docker Image must be build to include the necessary dependencies for the Microservice. |
 | **subclass of** | tc:Config |
-<br>
 
 ### DockerComposeConfig
 | | |
@@ -189,7 +186,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 
 # 3. Examples
 
-## 3.1. LDIO example:
+## LDIO example of a Pipleline Definition:
 ~~~
 :LdioExamplePipeline a tc:PipelineDefinition;
     rdfs:label "LDIO Example Pipeline";
@@ -199,15 +196,15 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
         p-plan:isStepOfPlan :LdioExamplePipeline;
         p-plan:hasInputVar [ 
             a tc:Assignment;
-            tc:assignedComponent ldio:LdesClient;
-            tc:assignedConfig :LdesClientConfig
+            tc:component ldio:LdesClient;
+            tc:config :LdesClientConfig
         ] .
         
 :ConsoleOutStep a tc:PipelineStep;
         p-plan:isStepOfPlan :LdioExamplePipeline;
         p-plan:hasInputVar [ 
-            tc:assignedComponent ldio:ConsoleOut;
-            tc:assignedConfig :ConsoleOutConfig
+            tc:component ldio:ConsoleOut;
+            tc:config :ConsoleOutConfig
         ] .
         
 :ConsoleOutStep p-plan:isPrecededBy :LDESClientStep .
@@ -241,7 +238,7 @@ Based on this pipeline, the pipeline generator looks up the referenced pipeline 
 
 ldio:ConsoleOut a tc:PipelineComponent ;
     rdfs:label "Ldio:ConsoleOut" ; 
-    dcterms:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcterms:requires [tc:component ldio:LinkedDataInteractionsOrchestrator ] ;
     ldio:type "Output" ; # Specific property of Ldio
     dcat:qualifiedRelation [
         dcterms:relation :LdioConsoleOutConfigShape ;
@@ -274,7 +271,7 @@ ldio:LinkedDataInteractionsOrchestrator
           osw:hasVersionId "2.8.0-SNAPSHOT"
           ] ;
     
-    tc:storedConfig [
+    tc:config [
         a tc:DefaultConfig, tc:DockerComposeConfig ;
         tc:literal """
   ldio-workbench:
@@ -284,7 +281,7 @@ ldio:LinkedDataInteractionsOrchestrator
       - "8080:8080"
 """
     ] ;
-    dcterms:requires ldio:LdioPipelineStarterService ;
+    dcterms:requires [tc:component ldio:LdioPipelineStarterService ] ;
     dcat:qualifiedRelation [
         dcterms:relation :LdioProcessorTypeConstraintShape, # Specific constraints checking the validity of Ldio pipeline segments
                          :LdioSingleFlowChainShape , 
@@ -295,7 +292,7 @@ ldio:LinkedDataInteractionsOrchestrator
 ldio:LdioPipelineStarterService  # Service that will start the Ldio pipeline segment once the ldio workbench is up
     a tc:PipelineComponent ;
     rdfs:label "Ldio Pipeline Starter Service" ;
-    tc:storedConfig [
+    tc:config [
         a tc:DefaultConfig, tc:DockerComposeConfig ;
         tc:literal '''
 ldio-pipeline-starter:
@@ -315,7 +312,7 @@ ldio-pipeline-starter:
    	
 ~~~
 
-## 3.2. RDF Connect example:
+## RDF Connect example of a Pipleline Definition:
 ~~~
 :RdfcExamplePipeline a tc:PipelineDefinition;
     rdfs:label "RDF Connect Example Pipeline";
@@ -324,22 +321,22 @@ ldio-pipeline-starter:
 :step_1 a tc:PipelineStep;
         p-plan:isStepOfPlan :RdfcExamplePipeline;
         p-plan:hasInputVar [ 
-            tc:assignedComponent rdfc:LdesClient;
-            tc:assignedConfig :step_1_config
+            tc:component rdfc:LdesClient;
+            tc:config :step_1_config
         ] .
 
 :step_2 a tc:PipelineStep;
         p-plan:isStepOfPlan :RdfcExamplePipeline;
         p-plan:hasInputVar [ 
-            tc:assignedComponent rdfc:Buffer;
-            tc:assignedConfig :step_2_config
+            tc:component rdfc:Buffer;
+            tc:config :step_2_config
         ] .
 
 :step_3 a tc:PipelineStep;
         p-plan:isStepOfPlan :RdfcExamplePipeline;
         p-plan:hasInputVar [ 
-            tc:assignedComponent rdfc:LogProcessorPy;
-            tc:assignedConfig :step_3_config
+            tc:component rdfc:LogProcessorPy;
+            tc:config :step_3_config
         ] .
 
 :step_3 p-plan:isPrecededBy :step_2 .
@@ -371,31 +368,44 @@ rdfc:LdesClient
     a tc:PipelineComponent, rdfc:Processor;
     rdfs:label "ldes client";
     rdfs:comment "An LDES client that can read a stream of members from an LDES."; 
-    dcterms:requires rdfc:NodeRunner ;
+    dcterms:requires [tc:component rdfc:NodeRunner];
+    dcterms:requires # This declares that th rdfc:LdesClient requirs a rdfc:Orchestrator as part of the Pipeline Build, which has a specific import-statement as part of its config. 
+    [
+        tc:component rdfc:Orchestrator ;
+        tc:config [
+            a tc:PipelineConfig ; 
+            tc:embedded [ owl:imports <./node_modules/ldes-client/processor.ttl> ]
+        ];
+    ] ;
     dcat:qualifiedRelation [
         dcterms:relation :RdfcLdesClientConfigShape,
                          :RdfcLdesClientFetchConfigShape, 
                          :RdfcLdesClientFetchRetryConfigShape,
                          :RdfcLdesClientAuthConfigShape;
         dcat:hadRole :configShape ; 
-    ] ;
-    owl:imports <./node_modules/ldes-client/processor.ttl> . # This is specifically required for RDF Connect processors
-
+    ] .
+    
 
 rdfc:Buffer a tc:PipelineComponent, rdfc:Processor;
     rdfs:label "Buffer Processor" ;
     rdfs:comment " At a certain interval, the processor will pipe through a given amount of data from the incoming stream to the outgoing stream.";
-    dcterms:requires rdfc:NodeRunner ;
+    dcterms:requires [tc:component rdfc:NodeRunner] ;
+    dcterms:requires 
+    [
+        tc:component rdfc:Orchestrator ;
+        tc:config [
+            a tc:PipelineConfig ; 
+            tc:embedded [ owl:imports <./node_modules/@rdfc/buffer-processor-ts/processor.ttl> ]
+        ];
+    ] ;
     dcat:qualifiedRelation [
         dcterms:relation :RdfcBufferConfigShape ;
         dcat:hadRole :configShape ; 
-    ] ;
-    owl:imports <./node_modules/@rdfc/buffer-processor-ts/processor.ttl>. 
-
+    ] . 
 
 rdfc:LogProcessorPy a tc:PipelineComponent, rdfc:Processor;
     rdfs:label "Python Log Processor";
-    dcterms:requires rdfc:PyRunner ;
+    dcterms:requires [tc:component rdfc:PyRunner] ;
     dcat:qualifiedRelation [
         dcterms:relation :RdfcLogProcessorPyConfigShape ;
         dcat:hadRole :configShape ; 
@@ -405,23 +415,34 @@ rdfc:LogProcessorPy a tc:PipelineComponent, rdfc:Processor;
 
 rdfc:NodeRunner a tc:PipelineComponent, rdfc:Runner;
     rdfs:label "RDF Connect Javascript Node Runner" ; 
-    dcterms:requires rdfc:Orchestrator ;
     dcat:qualifiedRelation [
         dcterms:relation :NodeRunnerConfig ;
         dcat:hadRole :configShape ; 
     ] ;
-    owl:imports <./node_modules/@rdfc/js-runner/index.ttl> . # This is specific to RDF Connect
-
+    dcterms:requires 
+    [
+        tc:component rdfc:Orchestrator ;
+        tc:config [
+            a tc:PipelineConfig ; 
+            tc:embedded [ owl:imports owl:imports <./node_modules/@rdfc/js-runner/index.ttl> ]
+        ];
+    ] .
 
 rdfc:PyRunner a tc:PipelineComponent, rdfc:Runner;
     rdfs:label "RDF Connect Python Runner" ; 
-    dcterms:requires rdfc:Orchestrator ;
-    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl>.
-
+    dcterms:requires 
+    [
+        tc:component rdfc:Orchestrator ;
+        tc:config [
+            a tc:PipelineConfig ; 
+            tc:embedded [ owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl> ]
+        ];
+    ] .
+    
 
 rdfc:Orchestrator a tc:PipelineComponent ;
     rdfs:label "RDF Connect Orchestrator" ;
-    tc:storedConfig [
+    tc:config [
         a tc:Config, tc:DefaultConfig, tc:DockerComposeConfig ;
         tc:literal """
   rdf-connect:
@@ -445,10 +466,11 @@ You can also see in this example that rdfc:Processors are attached to a default 
 :step_1 a tc:PipelineStep;
         p-plan:isStepOfPlan :RdfcExamplePipeline;
         p-plan:hasInputVar [ 
-            tc:assignedComponent rdfc:LdesClient;
-            tc:assignedConfig :step_1_config;
-            dcterms:requires rdfc:JsRunner
-        ] .
+            tc:component rdfc:LdesClient;
+            tc:config :step_1_config;
+        ], 
+        [ tc:component rdfc:JsRunner ]
+         .
 ~~~
 
 Here, Step 1 is configured to use the rdfc:LdesClient in combination with rdfc:JsRunner. In this case, dcterms:requires is overwritten for this specific Pipeline Step. It is also possible to give rdfc:Orchestrator a different Config than the DefaultConfig. You can do it like so:
@@ -457,13 +479,13 @@ Here, Step 1 is configured to use the rdfc:LdesClient in combination with rdfc:J
 :step_1 a tc:PipelineStep;
         p-plan:isStepOfPlan :RdfcExamplePipeline;
         p-plan:hasInputVar [ 
-            tc:assignedComponent rdfc:LdesClient;
-            tc:assignedConfig :step_1_config;
-            dcterms:requires rdfc:JsRunner ;
+            tc:component rdfc:LdesClient;
+            tc:config :step_1_config;
         ] ,
+        [ tc:component rdfc:JsRunner ] ,
          [ 
-            tc:assignedComponent rdfc:Orchestrator;
-            tc:assignedConfig :customOrchestratorConfig;
+            tc:component rdfc:Orchestrator;
+            tc:config :customOrchestratorConfig;
         ] . 
 ~~~
 
@@ -474,8 +496,8 @@ Another possibility is to define the pipeline on the level of the rdfc:Orchestra
 :step_1 a tc:PipelineStep;
         p-plan:isStepOfPlan :RdfcExamplePipeline;
         p-plan:hasInputVar [ 
-            tc:assignedComponent rdfc:Orchestrator;
-            tc:assignedConfig :pipelineConfig;
+            tc:component rdfc:Orchestrator;
+            tc:config :pipelineConfig;
         ] .
 
 :pipelineConfig a tc:PipelineConfig ;
@@ -519,134 +541,4 @@ Another possibility is to define the pipeline on the level of the rdfc:Orchestra
     rdfc:Writer .
 ~~~
 
-In this case, the entire generatedConfig for the Orchestrator is directly passed to the Orchestrator. You can picture this as defining the Orchestrator as a Microservice which performs one step of a pipeline. Although this step is an entire pipeline in and of itself, the PipelineGenerator "sees" the Orchestrator as a regular PipelineStep within a possibly bigger pipeline. 
-
-## 3.3. semantic.works example:
-This is an example of how a simple image service by semantic.works may be registered in the Component Catalog. In this case, each process of the image service is understood as its own PipelineComponent which requires the image microservice to run. You can also see that semantic.works introduces and requires custom properties, such as the dispatcher routing rule, which needs to be added to the dispatcher to 'register' each deployed microservice.
-~~~
-@prefix : <http://example.org/example/> .
-@prefix tc: <https://w3id.org/toolchain#> .
-@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix osw: <http://ontosoft.org/software#> .
-@prefix dct: <http://purl.org/dc/terms/>.
-@prefix ext: <http://mu.semte.ch/vocabluries/ext/>.
-@prefix mu: <http://mu.semte.ch/vocabularies/core/>.
-@prefix nfo: <http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#>.
-@prefix nie: <http://www.semanticdesktop.org/ontologies/2007/01/19/nie#>.
-@prefix sh: <http://www.w3.org/ns/shacl#>.
-@prefix xsd:  <http://www.w3.org/2001/XMLSchema#>.
-
-
-:semantic-works-services
-  a dcat:Catalog, tc:ComponentCatalog;
-  dct:title "Public semantic.works microservices and processes.";
-  dct:description "Contains a distribution for all DiSHACLed annotated microservices and processes.";
-  dcat:resource
-    <https://semantic.works/services/image-service>,
-    <https://semantic.works/services/image-service/process/resize> ,
-    <https://semantic.works/services/image-service/process/retrieve>.
-
-
-<https://semantic.works/services/image-service>
-    a dcat:Resource, mu:Microservice, tc:PipelineComponent;
-    osw:hasProjectWebsite <https://github.com/madnificent/mu-image-service>;
-    dct:title """Image service""";
-    dct:description """Provides scaled down versions of imageson the fly and caches the results in the triplestore.""";
-    tc:storedConfig [
-      a tc:DefaultConfig, tc:DockerComposeConfig;
-      tc:literal """
-        imageservice:
-    image: madnificent/mu-image-service:0.0.1
-    links:
-      - db:database
-    volumes:
-      - ./data/files:/share
-      """ ]; 
-    :dispatcher_routing_rule """
-      match "/images/*path" do
-    Proxy.forward conn, path, "http://imageservice/image/"
-  end
-    """ ; # The image service has to be 'registered' in the semantic.works dispatcher by defining a matching rule for routing to the image service. To support automating this registration process, this information is added here. 
-    ext:hasProcess
-      <https://semantic.works/services/image-service/process/resize> ,
-      <https://semantic.works/services/image-service/process/retrieve> .
-
-
-<https://semantic.works/services/image-service/process/resize>
-  a ext:Process, tc:PipelineComponent;
-  dct:title "Resize image";
-  dct:description """Resizes an image and returns it to the user.""";
-  dct:requires <https://semantic.works/services/image-service>;
-  dcat:qualifiedRelation [
-        dcterms:relation :unconvertedInput ;
-        dcat:hadRole :inputShape ; 
-    ] ;
-  dcat:qualifiedRelation [
-        dcterms:relation :convertedOutput ;
-        dcat:hadRole :outputShape ; 
-    ] .
-
-
-<https://semantic.works/services/image-service/process/retrieve>
-  a ext:Process, tc:PipelineComponent; 
-  dct:title "Retrieve resized image";
-  dct:description """Renders a previously resized image""";
-    dct:requires <https://semantic.works/services/image-service>;
-  dcat:qualifiedRelation [
-        dcterms:relation :convertedOutput ;
-        dcat:hadRole :inputShape ; 
-    ] .
-
-
-:unconvertedInput
-  a sh:NodeShape; # TODO: sh:NodeShape applies to _all_ nfo:FileDataObject, yet we only care about some of these matching.  Whether _everything_ is expected to match or _some_ are expected to match is a desired extension.  We may want to ignore what does not, or we may crash if it does not match.
-  sh:targetClass nfo:FileDataObject ;
-  sh:property [
-    sh:path mu:uuid ;
-    sh:minCount 1 ;
-    sh:dataType xsd:string
-  ] ;
-  sh:property [
-    sh:path dct:format ;
-    sh:minCount 1 ;
-    sh:dataType xsd:string ;
-    sh:pattern "^image/"
-  ] ;
-  sh:property [
-    sh:path [ sh:inversePath nie:dataSource ] ;
-    sh:minCount 1
-  ] ;
-  sh:closed false .
-
-
-:convertedOutput
-  a sh:NodeShape ;
-  sh:targetSubjectsOf ext:hasDerivedImage ; # Original file
-  sh:property [
-    sh:path ext:hasDerivedImage ;
-    sh:minCount 1 ;
-    sh:maxCount 1 ;
-    sh:node [
-      a sh:NodeShape ;
-      sh:targetClass nfo:FileDataObject ;
-      sh:property [
-        sh:path ext:imageWidth ;
-        sh:minCount 0 ;
-        sh:maxCount 1 ;
-        sh:dataType xsd:string
-      ] , [
-        sh:path ext:imageHeight ;
-        sh:minCount 0 ;
-        sh:maxCount 1 ;
-        sh:dataType xsd:string
-      ] , [
-        sh:path nie:dataSource ;
-        sh:minCount 0 ;
-        sh:maxCount 1 ;
-        sh:nodeKind sh:IRI ;
-      ]
-    ]
-  ] ;
-  sh:closed false.
-  ~~~
+In this case, the entire generatedConfig for the Orchestrator is directly passed to the Orchestrator. You can picture this as defining the Orchestrator as a Pipeline Component which performs one step of a pipeline. Although this step is an entire pipeline in and of itself, the PipelineGenerator "sees" the Orchestrator as a regular PipelineStep within a possibly bigger pipeline. 

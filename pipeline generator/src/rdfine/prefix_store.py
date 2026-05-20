@@ -1,38 +1,41 @@
-from rdflib import Graph, URIRef, BNode
-from .utils import node_to_str
+from rdflib import Graph, URIRef, BNode, Literal, Node
 from bidict import OrderedBidict
 import pandas as pd
-from boltons.iterutils import remap
 
 
 class PrefixStore:
     """
-    TODO: Add dunder method set item
     Class to store prefixes and to apply them to various other types
 
     Properties:
             - prefixes: an OrderedBidict with prefix:url as key:value-pairs (printed in alphabetical order)
             - df_ordered_prefixes: a dataframe that ordered the prefixes from longest to shortest url:
               Prefixes with longer urls are more specific and henc take precedence.
+
     Methods:
         Interface function: load
             - _load_from_ttl
             - _load_from_namespace
             - _update
-        Apply functions
-            - compact_string
-            - expand_string
-            - remove_from_string
+        Apply functions (support primitive, dataframe, list, dict)
+            - compact
+            - expand
+            - drop
+        Hidden functions
+            - _compact_string
+            - _expand_string
+            - _drop_string
+            - apply_prefixes(data, action)
+            - _apply_action_to_object
+        Other functions
             - fetch_prefix
-            - compact_dataframe
-            - compact_object
-        Interface function: drop
-        Other:
-            - replace prefix_in_store
+            - replace_prefix_in_store
             - include_in_query
             - bind_to_namespace
             - _order_prefixes
-            - str_to_node: Save way to turn a string to a UriRef or BNode
+        Type conversions
+            - node_to_python
+            - python_to_node
     """
 
     def __init__(self, source):
@@ -93,7 +96,9 @@ class PrefixStore:
         for namespace in graph.namespaces():
             prefix = list(namespace)[0]
             url = str(list(namespace)[1])
-            prefixes[prefix] = node_to_str(url)
+            prefixes[prefix] = self._expand_string(
+                self.node_to_python(url)
+            )  # Url is expanded string version
 
         return prefixes
 
@@ -115,7 +120,113 @@ class PrefixStore:
     # APPLY PREFIXES
     ###########################
 
-    def compact_string(self, url: str) -> str:
+    def compact(self, data):
+        """
+        Interface function for compacting prefixes.
+        """
+        return self.apply_prefixes(data, action="compact")
+
+    def expand(self, data):
+        """
+        Interface function for expanding prefixes.
+        """
+        return self.apply_prefixes(data, action="expand")
+
+    def drop(self, data):
+        """
+        Interface function for dropping prefixes.
+        """
+        return self.apply_prefixes(data, action="drop")
+
+    def apply_prefixes(self, data, action: str):
+        """
+        Routing function for compact, expand and drop actions
+        """
+
+        # Function argument check
+        supported_actions = ["compact", "expand", "drop"]
+        if action not in supported_actions:
+            raise ValueError(f"action not in {supported_actions}")
+
+        if isinstance(data, str):
+            match action:
+                case "compact":
+                    return self._compact_string(data)
+                case "expand":
+                    return self._expand_string(data)
+                case "drop":
+                    return self._drop_string(data)
+
+        if isinstance(data, pd.DataFrame):
+            match action:
+                case "compact":
+                    return data.map(
+                        lambda cell_url: (
+                            self._compact_string(cell_url)
+                            if isinstance(cell_url, str)
+                            else cell_url
+                        )
+                    )
+                case "expand":
+                    return data.map(
+                        lambda cell_url: (
+                            self._expand_string(cell_url)
+                            if isinstance(cell_url, str)
+                            else cell_url
+                        )
+                    )
+                case "drop":
+                    return data.map(
+                        lambda cell_url: (
+                            self._drop_string(cell_url)
+                            if isinstance(cell_url, str)
+                            else cell_url
+                        )
+                    )
+
+        if isinstance(data, list) or isinstance(data, dict):
+            return self._apply_action_to_object(data, action)
+
+    def _apply_action_to_object(self, obj: list | dict, action: str) -> list | dict:
+        """
+        Recursively apply prefixes in objects, i.e. nested lists and dicts.
+        """
+        if isinstance(obj, dict):
+            new_dict = {}
+            for key, value in obj.items():
+                # Replace in key if it's a string
+                match action:
+                    case "compact":
+                        new_key = (
+                            self._compact_string(key) if isinstance(key, str) else key
+                        )
+                    case "expand":
+                        new_key = (
+                            self._expand_string(key) if isinstance(key, str) else key
+                        )
+                    case "drop":
+                        new_key = (
+                            self._drop_string(key) if isinstance(key, str) else key
+                        )
+                # Recursively process value
+                new_dict[new_key] = self._apply_action_to_object(value, action)
+            return new_dict
+
+        elif isinstance(obj, list):
+            return [self._apply_action_to_object(item, action) for item in obj]
+
+        elif isinstance(obj, str):
+            match action:
+                case "compact":
+                    return self._compact_string(obj)
+                case "expand":
+                    return self._expand_string(obj)
+                case "drop":
+                    return self._drop_string(obj)
+        else:
+            return obj
+
+    def _compact_string(self, url: str) -> str:
         """
         Compacts prefixes in a string to a compacted url
         """
@@ -126,34 +237,7 @@ class PrefixStore:
                     break
         return url
 
-    def compact_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        # Applying the prefixes in the priority as specified above
-        df = df.map(lambda cell_url: self.compact_string(cell_url))
-        return df
-
-    def compact_object(self, obj: list | dict) -> list | dict:
-        """
-        Recursively compact prefixes in objects, i.e. nested lists and dicts.
-        """
-        if isinstance(obj, dict):
-            new_dict = {}
-            for key, value in obj.items():
-                # Replace in key if it's a string
-                new_key = self.compact_string(key) if isinstance(key, str) else key
-                # Recursively process value
-                new_dict[new_key] = self.compact_object(value)
-            return new_dict
-
-        elif isinstance(obj, list):
-            return [self.compact_object(item) for item in obj]
-
-        elif isinstance(obj, str):
-            return self.compact_string(obj)
-
-        else:
-            return obj
-
-    def expand_string(self, url: str) -> str:
+    def _expand_string(self, url: str) -> str:
         """
         Expands a compacted url based on the prefixes provided to a full url of type string
         """
@@ -165,14 +249,14 @@ class PrefixStore:
 
         return expanded_url
 
-    def remove_from_string(self, url: str) -> str:
+    def _drop_string(self, url: str) -> str:
         """
         If the url contains a known prefix (or corresponding url), it is removed.
         """
         prefix_dict = self.fetch_prefix(url)
         if prefix_dict:
             prefix = list(prefix_dict.keys())[0]
-            shortened_url = self.compact_string(url)
+            shortened_url = self._compact_string(url)
             shortened_url = shortened_url.removeprefix(prefix + ":")
             return shortened_url
         else:
@@ -188,7 +272,7 @@ class PrefixStore:
         Returns the corresponding entry as dict.
         """
 
-        compacted_node_id = self.compact_string(node_id)
+        compacted_node_id = self._compact_string(node_id)
 
         match_dict = {}
         # Testing for the case of a compacted node_id
@@ -259,12 +343,77 @@ class PrefixStore:
                 self.prefixes[replacement] = value
         self._order_prefixes()
 
-    def str_to_node(self, node_id: str) -> URIRef | BNode:
-        # If node_id is a blind node
-        if node_id.startswith("_:"):
-            return BNode(node_id.removeprefix("_:"))
+    ###########################
+    # TYPE CONVERSIONS
+    ###########################
+    """
+    Type conversions between RDFlib terms and python native types do not really fit in the responsibilities of the prefix store,
+    however this often involves prefix-knowledge, hence why I put it here.
+    """
+
+    def node_to_python(self, cell: Node):
+        """
+        Converts a RDFlib Node to a native Python Type.
+        Literals are converted to their corresponding Python type.
+        URIrefs and Bnodes are converted to strings.
+        Does some cleaning to remove trailing symbols.
+        """
+
+        # If node is a UriRef, return a cleaned string
+        if isinstance(cell, URIRef) or isinstance(cell, BNode):
+            simplified_cell = cell.n3()
+            if isinstance(simplified_cell, str):
+                if len(simplified_cell) >= 2:  # Prevents bugs
+                    if simplified_cell[0] == '"' and simplified_cell[-1] == '"':
+                        simplified_cell = simplified_cell[1:-1]
+                if len(simplified_cell) >= 2:
+                    if simplified_cell[0] == "<" and simplified_cell[-1] == ">":
+                        simplified_cell = simplified_cell[1:-1]
+                simplified_cell = simplified_cell.strip()
+            if isinstance(cell, URIRef):
+                return self._compact_string(simplified_cell)
+            else:
+                return simplified_cell
+        # Convert to native python primitives if cell is literal
+        elif isinstance(cell, Literal):
+            return cell.toPython()
         else:
-            return URIRef(self.expand_string(node_id))
+            return cell
+
+    def python_to_node(self, cell, node_class) -> Node | None:
+
+        # Fetching type error
+        if node_class == URIRef or node_class == BNode:
+            if not isinstance(cell, str):
+                raise TypeError(
+                    f"Cannot convert {cell} ({type(cell)} to {node_class}, str expected.)"
+                )
+
+        # Converting to URIRef
+        if node_class == URIRef:
+            return URIRef(self._expand_string(cell))
+
+        # Converting to BNode, with safety checks
+        elif node_class == BNode:
+            match_dict = self.fetch_prefix(cell)
+            if match_dict:
+                prefix = list(match_dict.keys())[0]
+                raise TypeError(
+                    f"{cell} has known prefix {prefix}. This indicates URIRef, but you tried converting to BNode."
+                )
+            elif cell.startswith("_:"):
+                cell = cell.removeprefix("_:")
+            return BNode(cell)
+
+        # Converting to Literal
+        elif node_class == Literal:
+            return Literal(
+                cell
+            )  # Handles type conversion automatically via constructor
+
+        # Throw error for unknown node_class
+        else:
+            raise TypeError(f"node_class {node_class} is not URIRef, BNode or Literal.")
 
     ###########################
     # DUNDER METHODS
