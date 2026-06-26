@@ -1,7 +1,5 @@
-from rdfine import GraphDict, GraphReader
-from copy import deepcopy
-import yaml
-import pandas as pd
+from rdflib import Graph
+from rdfine import GraphReader, GraphDict, parse_config
 
 
 class DockerComposeCompiler:
@@ -9,34 +7,31 @@ class DockerComposeCompiler:
     Compiles the docker compose configuration file.
     """
 
-    def __init__(self, assembled_pipeline: GraphDict) -> None:
-        self.graph_dict = deepcopy(assembled_pipeline)
-        self.graph_reader = GraphReader(assembled_pipeline.to_graph())
+    def __init__(self, build_graph: Graph) -> None:
+        self.graph_reader = GraphReader(build_graph)
 
-    def compile(self) -> str:
-        docker_query = f"""
-                    SELECT ?component ?config ?relation 
-                    WHERE {{
-                    ?config a tc:DockerComposeConfig .
-                    ?config :configForComponent ?component .
-                    ?config :config_relation ?relation .
-                    FILTER(?relation IN ('isDefault', 'isRequired', 'isAssigned')) 
-                    }}
-                """
+    def compile(self):
 
-        # An overview table of all docker compose configs, in the correct update order
-        df_docker = self.graph_reader.execute_query(docker_query)
-        # Here I define the order of updates by sorting the df_docker
-        order_map = {"isDefault": 0, "isAssigned": 1, "isRequired": 2}
-        df_docker = df_docker.sort_values(by="relation", key=lambda s: s.map(order_map))
+        # Getting a list of all microservice configs
+        config_list = self.graph_reader.query(
+            select="?config",
+            where=f"""
+                 ?config a tcs:DockerComposeConfig ;
+        """,
+        )["config"].to_list()
 
-        # Adding each docker compose config to the output dict
+        # Compiling the output file based on the config_list
         docker_compose_dict = {}
-        for config_id in df_docker["config"].to_list():
-            microservice_config = self.graph_dict.get_branch(config_id)[":config"]
-            microservice_config = self.graph_dict.prefix_store.drop(microservice_config)
-            docker_compose_dict.update(microservice_config)
+        for config_id in config_list:
+            microservice_graph_dict = GraphDict.from_graph(
+                self.graph_reader.traverse(config_id).graph
+            )
+            microservice_graph_dict = microservice_graph_dict.frame({"@id": config_id})
+            microservice_dict = microservice_graph_dict.dict
+            microservice_dict = parse_config(microservice_dict)
+            microservice_dict = microservice_dict[":config"]
+            docker_compose_dict.update(microservice_dict)
 
-        self.output = docker_compose_dict
-
-        return yaml.dump(docker_compose_dict, sort_keys=False)
+        # Serializing the output in the expected format
+        self.output = GraphDict(docker_compose_dict, self.graph_reader.prefix_store)
+        return self.output.serialize("yml", "drop")

@@ -1,9 +1,6 @@
-from rdfine import GraphDict, GraphReader, GraphTable, merge_graphs, infer
-from copy import deepcopy
+from rdfine import GraphReader
+from rdflib import Graph
 import pandas as pd
-from rdflib import Graph, Literal
-import textwrap
-import yaml
 
 
 class PipelineAssembler:
@@ -12,433 +9,138 @@ class PipelineAssembler:
     Also assigns configs to the components they belong to.
     """
 
-    def __init__(self, pipeline: GraphDict) -> None:
-        self.graph_dict = deepcopy(pipeline)  # Making sure this is a deep copy
-        self.graph_reader = GraphReader(pipeline.to_graph())
+    def __init__(self, pipeline_graph: Graph) -> None:
+        self.graph_reader = GraphReader(pipeline_graph)
+        self.pipeline_id = (
+            self.graph_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition")
+            .df["sub"]
+            .to_list()[0]
+        )
 
-    def compile(self) -> GraphDict:
+    def compile(self) -> Graph:
+        self.describe_pipeline_build()
+        self.describe_docker_container()
+        self.describe_step()
+        self.describe_config_assignment()
+        return self.graph_reader.graph
+
+    def describe_pipeline_build(self) -> None:
         """
-        Enriches the pipeline by adding a "hasPipelineBuild" to the GraphDict
+        Adds:
+            - XY_build a tcs:PipelineBuild
         """
-        self.df_components = self.tab_components()
-        self.graph_dict.dict_data[":hasPipelineBuild"] = self.describe_microservices()
-        microservice_list = self.describe_steps()
-        self.graph_dict.set(":hasPipelineBuild.:hasMicroservice", microservice_list)
-        self.assign_configs_to_components()
-        self.simplify_steps()
-        self.simplify_configs()
-        self.simplify_components()
-        self.trim_graph_dict()
-        self.graph_dict.provide_prefixes()
+        new_triples = self.graph_reader.query(
+            construct=f"{self.pipeline_id}_build a tcs:PipelineBuild", where="?s ?p ?o"
+        ).graph
+        self.graph_reader = self.graph_reader.add(new_triples)
 
-        return self.graph_dict
-
-    def tab_components(self) -> pd.DataFrame:
+    def describe_docker_container(self) -> None:
         """
-        Create an overview df listing all components and their reliance on other components
+        Adds:
+            - tcs:PipelineBuild dct:hasPart tcs:DockerContainer
+            - tcs:DockerContainer tcs:instantiates tcs:PipelineComponent
         """
 
-        # Listing the requirement of each component
-        component_requirements_query = f"""
-            SELECT ?component ?requirement
-            WHERE {{
-                    ?component a tc:PipelineComponent .
-                    OPTIONAL {{
-                    ?component dct:requires ?assignment .
-                    ?assignment tc:component ?requirement .
-                    }}
-                }}"""
-
-        df_requirements = self.graph_reader.execute_query(component_requirements_query)
+        # Create an overview df listing all components and their reliance on other components
+        df_requirements = self.graph_reader.query(
+            select="?component ?requirement",
+            where="?component a tcs:PipelineComponent. OPTIONAL {{?component dct:requires ?requirement .}}",
+        )
 
         # Identifying the components which are microservices
-        microservice_query = f"""
-            SELECT DISTINCT ?component 
-            WHERE {{
-                    ?component a tc:PipelineComponent .
-                    ?component tc:config ?config .
-                    ?config a tc:DockerComposeConfig, tc:DefaultConfig .
-                    
-            }}"""
-
-        microservice_list = list(
-            self.graph_reader.execute_query(microservice_query)["component"]
-        )
-
-        # Mark the components which are microservices
-        df_requirements["microservice"] = False
-        for microservice_id in microservice_list:
+        df_requirements["microservice"] = None
+        for component in df_requirements["component"].to_list():
             df_requirements.loc[
-                df_requirements["component"] == microservice_id, "microservice"
-            ] = True
-        return df_requirements
+                df_requirements["component"] == component, "microservice"
+            ] = self.graph_reader.query(
+                ask=True,
+                where=f"{component} tcs:config ?config. ?config a tcs:DockerComposeConfig .",
+            )
 
-    def describe_microservices(self) -> dict:
-        """
-        Creates the new branch of the dict_data which describes the microservices
-        """
-        pipeline_build_id = self.graph_dict.get("@id") + "_build"
-        dict_data = {"@id": pipeline_build_id, ":hasMicroservice": []}
-        microservice_list = self._lookup_microservices()
-
-        for microservice_id in microservice_list:
-            microservice_dict = {"@id": microservice_id, "@type": "tc:Microservice"}
-            dependants_list = self._lookup_dependants(microservice_id)
-            microservice_dict[":instantiates"] = [
-                {"@id": dependant_id} for dependant_id in dependants_list
-            ]
-
-            dict_data[":hasMicroservice"] += [microservice_dict]
-
-        return dict_data
-
-    def _lookup_dependants(self, microservice_id: str) -> list[str]:
-        dependants = set()  # all discovered dependants
-        to_process = [microservice_id]  # queue (or stack)
-        df_requirements = self.df_components
-
-        while to_process:
-            current = to_process.pop()
-
-            new_deps = df_requirements.loc[
-                (df_requirements["requirement"] == current)
-                & (df_requirements["microservice"] == False),
-                "component",
-            ].tolist()
-
-            for dep in new_deps:
-                if dep not in dependants:
-                    dependants.add(dep)
-                    to_process.append(dep)
-
-        dependants_list = list(dependants)
-        return dependants_list
-
-    def _lookup_microservices(self) -> list[str]:
-        return self.df_components.loc[
-            self.df_components["microservice"] == True, "component"
+        microservice_list = df_requirements.loc[
+            df_requirements["microservice"], "component"
         ].to_list()
 
-    def describe_steps(self) -> list[dict]:
-        """
-        Describe the step that each microservice executes
-        """
-        step_query = f"""
-                                        CONSTRUCT {{
-                                        ?microservice :executes ?step .
-                                        }}
-                                        WHERE {{
-                                        ?microservice a tc:Microservice .
-                                        ?microservice :instantiates ?dependant . 
-                                        ?step a tc:PipelineStep .
-                                        ?step p-plan:hasInputVar ?assignment .
-                                        ?assignment a tc:Assignment .
-                                        ?assignment tc:component ?dependant .
-                                        }}
-                                """
-        step_graph = GraphReader(self.graph_dict.to_graph()).execute_query(step_query)
-
-        # Now I integrate the resulting triples into the existing new branch :hasMicroservice
-        microservice_graph = self.graph_dict.to_graph(":hasPipelineBuild")
-        microservice_graph = merge_graphs([microservice_graph, step_graph])
-
-        microservice_list = []
-        for microservice_id in self._lookup_microservices():
-            microservice_list += [
-                GraphDict(microservice_graph, microservice_id).serialize(format="dict")
-            ]
-        return microservice_list
-
-    def simplify_steps(self) -> None:
-        """
-        Adds 'isCarriedOutBy' - triples to each step
-        """
-        # Creating new triples
-        query = f"""
-            CONSTRUCT {{
-            ?step :isCarriedOutBy ?component .
-            }}
-            WHERE {{
-            ?step p-plan:hasInputVar ?assignment .
-            ?assignment tc:component ?component .
-            }}
+        def _lookup_dependants(microservice_id: str) -> list[str]:
             """
+            Helper function that looks up which components are dependant on a specific docker container
+            """
+            dependants = set()  # all discovered dependants
+            to_process = [microservice_id]  # queue (or stack)
 
-        new_triples = self.graph_reader.execute_query(query)
+            while to_process:
+                current = to_process.pop()
 
-        # Updating each branch of steps with the new triples
-        step_list = self.graph_reader.get_triples(
-            pred="rdf:type", obj="tc:PipelineStep"
-        )["sub"].to_list()
+                new_deps = df_requirements.loc[
+                    (df_requirements["requirement"] == current)
+                    & (df_requirements["microservice"] == False),
+                    "component",
+                ].tolist()
 
-        for step_id in step_list:
-            path_to_step_id = self.graph_dict.find("^:hasStep.[0-9]*.@id$", step_id)[
-                "path"
-            ].to_list()[0]
-            self.graph_dict.add_triples(new_triples, path_to_step_id)
+                for dep in new_deps:
+                    if dep not in dependants:
+                        dependants.add(dep)
+                        to_process.append(dep)
 
-    def assign_configs_to_components(self) -> None:
+            dependants_list = list(dependants)
+            return dependants_list
+
+        # For each docker container, add the respective statements to the graph
+        for i in range(len(microservice_list)):
+            # tcs:PipelineBuild dct:hasPart tcs:DockerContainer
+            container_id = ":container_" + str(i)
+            microservice_id = microservice_list[i]
+
+            construct_statement = f"""
+            {container_id} a tcs:DockerContainer .
+            ?build_id dct:hasPart {container_id}. 
+            {container_id} tcs:instantiates {microservice_id} .
+            """
+            new_triples = self.graph_reader.query(
+                construct=construct_statement, where="?build_id a tcs:PipelineBuild"
+            ).graph
+            self.graph_reader = self.graph_reader.add(new_triples)
+
+            # tcs:DockerContainer tcs:instantiates tcs:PipelineComponent
+            dependants_list = _lookup_dependants(microservice_id)
+            for dependant in dependants_list:
+                new_dependant_triples = self.graph_reader.query(
+                    construct=f"{container_id} tcs:instantiates {dependant}.",
+                    where="?s ?p ?o .",
+                ).graph
+                self.graph_reader = self.graph_reader.add(new_dependant_triples)
+
+    def describe_step(self) -> None:
         """
-        Finds all configs and attaches them to the correct component via
-        isDefault, isRequired or isAssigned
-        """
-
-        ###############
-        # Sort out which configs are default, required or assigned
-        ###############
-
-        default_config_query = f"""
-                                        CONSTRUCT {{
-                                        ?component_id :isDefault ?default_config_id  .
-                                        }}
-                                        WHERE {{
-                                        ?pipeline_id :hasComponent ?component_id .
-                                        ?component_id tc:config ?default_config_id .
-                                        }}
-                                    """
-
-        required_config_query = f"""
-                                        CONSTRUCT {{
-                                        ?component_id :isRequired ?required_config_id  .
-                                        }}
-                                        WHERE {{
-                                        ?pipeline_id :hasAssignment ?assignment_id .
-                                        ?assignment_id tc:component ?component_id .
-                                        ?assignment_id tc:config ?required_config_id .
-                                        ?anything dct:requires ?assignment_id .
-                                        }}
-                                    """
-
-        assigned_config_query = f"""
-                                        CONSTRUCT {{
-                                        ?component_id :isAssigned ?assigned_config_id  .
-                                        }}
-                                        WHERE {{
-                                        ?pipeline_id :hasAssignment ?assignment_id .
-                                        ?assignment_id tc:component ?component_id .
-                                        ?assignment_id tc:config ?assigned_config_id .
-                                        ?anything p-plan:hasInputVar ?assignment_id .
-                                        }}
-                                    """
-
-        another_assigned_config_query = f"""
-                                        CONSTRUCT {{
-                                        ?component_id :isAssigned ?assigned_config_id  .
-                                        }}
-                                        WHERE {{
-                                        ?pipeline_id :hasAssignment ?assignment_id .
-                                        ?assignment_id tc:component ?component_id .
-                                        ?assignment_id tc:config ?assigned_config_id .
-                                        ?assignment_id p-plan:isVariableOfPlan ?anything .
-                                        }}
-                                    """
-
-        query_list = [
-            default_config_query,
-            required_config_query,
-            assigned_config_query,
-            another_assigned_config_query,
-        ]
-        graph_list = []
-
-        for query in query_list:
-            new_graph = self.graph_reader.execute_query(query)
-            graph_list += [new_graph]
-
-        config_table = GraphTable(merge_graphs(graph_list))
-
-        ###############
-        # Update info of each component accordingly
-        ###############
-
-        for component_id in set(config_table["sub"].to_list()):
-            # finding the right reference path
-            component_path = self.graph_dict.find("^:hasComponent.*@id$", component_id)[
-                "path"
-            ].to_list()[0]
-            component_path = component_path.removesuffix(".@id")
-
-            # merging the dict data of a component with new triples describing the component
-            component_graph = self.graph_dict.to_graph(component_path)
-            sub_table = GraphTable(
-                config_table.subset({"sub": component_id}),
-                prefix_store=config_table.prefix_store,
-            )
-            config_graph = sub_table.to_graph()
-            merged_graph = merge_graphs([component_graph, config_graph])
-
-            # Creating new dict data with the triples added to it
-            config_dict = GraphDict(merged_graph, component_id)
-            # Overwriting the existing dict data with the new one which has new triples added to it
-            self.graph_dict.set(component_path, config_dict.dict_data)
-
-    def simplify_configs(self) -> None:
-        """
-        Annotates each config so that it is clear to which component each config belongs to,
-        and how the config relates to the component (isDefault, isRequired, isAssigned) .
-        Finally parses each config.
+        Adds:
+            - tcs:DockerContainer tcs:runs tcs:InstancePipelineComponent
         """
 
-        config_query = f"""
-            CONSTRUCT {{
-                ?config_id :configForComponent ?component  .
-                ?config_id :config_relation ?pred .
-            }}
-            WHERE {{
-                ?component ?pred ?config_id .
-                ?component rdf:type tc:PipelineComponent .
-                ?config_id rdf:type tc:Config .
-            }}
+        step_description = f"""
+        ?microservice a tcs:DockerContainer .
+        ?microservice tcs:instantiates ?component . 
+        ?step a tcs:InstancePipelineComponent .
+        ?step prov:specializationOf ?component .
         """
 
-        new_triples = GraphReader(self.graph_dict.to_graph()).execute_query(
-            config_query
-        )
+        new_triples = self.graph_reader.query(
+            construct="?microservice tcs:runs ?step .", where=step_description
+        ).graph
+        self.graph_reader = self.graph_reader.add(new_triples)
 
-        # I want to ensure that the config_relation points to a literal
-        new_table = GraphTable(new_triples)
-        mask = new_table.df["pred"] == ":config_relation"
-        new_table.df.loc[mask, "obj"] = new_table.df.loc[mask, "obj"].str.removeprefix(
-            ":"
-        )
-        new_table.df.loc[mask, "obj_type"] = Literal
-        new_triples = new_table.to_graph()
-
-        df_config = self.graph_dict.find("^:hasConfig.[0-9]+.@id$")
-
-        # Adding new triples to each config
-        # And also parse each config
-        for path_to_config_id in df_config["path"].to_list():
-            self.graph_dict.add_triples(new_triples, path_to_config_id)
-            config_dict = self.graph_dict.get(path_to_config_id.removesuffix(".@id"))
-            config_dict = self.parse_config(config_dict)
-            self.graph_dict.set(path_to_config_id.removesuffix(".@id"), config_dict)
-
-    def simplify_components(self) -> None:
+    def describe_config_assignment(self) -> None:
         """
-        Simplifies the 'dct:requires'-structure by having dct:requires point to a PipelineComponent directly.
+        Adds:
+            - tcs:PipelineComponent :isAssigned tcs:Config .
         """
 
-        # CREATING THE NEW TRIPLES
-
-        requires_query = f"""
-                    CONSTRUCT {{
-                        ?component dct:requires ?another_component  .
-                    }}
-                    WHERE {{
-                        ?component dct:requires ?assignment_id .
-                        ?assignment_id tc:component ?another_component .
-                    }}
-                """
-
-        new_triples = self.graph_reader.execute_query(requires_query)
-        new_triples_table = GraphTable(new_triples)
-
-        # REPLACING THE OLD TRIPLES WITH THE NEW ONES
-        component_list = [d.get("@id") for d in self.graph_dict.get(":hasComponent")]
-
-        # For each component, delete the old dct:requires and replace with the new one
-        for component_id in component_list:
-            component_path = self.graph_dict.find(
-                "^:hasComponent.[0-9]+.@id$", component_id
-            )["path"].to_list()[0]
-
-            # Delete the old dct:requires path
-            requires_path = component_path.removesuffix("@id") + "dct:requires"
-            if "dct:requires" in self.graph_dict.get(
-                component_path.removesuffix(".@id")
-            ):
-                self.graph_dict.set(requires_path, [])
-
-            # I create a separate graph explicitly for this component
-            component_table = deepcopy(new_triples_table)
-            component_table.df = component_table.subset({"sub": component_id})
-            component_triples = component_table.to_graph()
-
-            # Add the new triples
-            self.graph_dict.add_triples(component_triples, component_path)
-
-    def trim_graph_dict(self) -> None:
-        """
-        As a last step, it does some cleanup by removing branches from the GraphDict,
-        which are no longer needed
+        assignment_description = f"""
+        ?step a tcs:InstancePipelineComponent .
+        ?step prov:specializationOf ?component .
+        ?step p-plan:hasInputVar ?config .
         """
 
-        # After assigning configs to components, I can trim the graph_dict a bit
-        del self.graph_dict[":hasAssignment"]
-
-        # finding all branches that I do no longer require
-        remove_pred_list = [
-            "tc:config",
-            "p-plan:hasInputVar",
-            "p-plan:isVariableOfPlan",
-            "p-plan:isStepOfPlan",
-        ]
-        remove_path_list = []
-        for remove_pred in remove_pred_list:
-            remove_paths = self.graph_dict.find(remove_pred)["path"].to_list()
-            remove_path_list += remove_paths
-
-        # deleting each of these branches
-        for path in remove_path_list:
-            self.graph_dict.set(path, [])
-        self.graph_dict.drop_empty()
-
-    def parse_config(self, input_dict: dict) -> dict:
-        """
-        HAS TO BECOME A COMPILER UTIL, NOT ALL CONFIG CAN BE FULLY INTEGRATED INTO GRAPHS
-        If a data tree is initialized with a dictionary that holds a tc:Config,
-        this function can parse the config to a predefined structure.
-        """
-
-        dict_data = input_dict.copy()
-
-        if "tc:literal" in dict_data:
-            literal_value = dict_data["tc:literal"]
-            del dict_data["tc:literal"]
-
-            # Clean up trailing double_quotes
-            literal_value = literal_value.removeprefix('""')
-            literal_value = literal_value.removesuffix('""')
-
-            # Removing '\\r' at the end of a line
-            lines = literal_value.splitlines()
-            lines = [line.removesuffix("\\r") for line in lines]
-            literal_value = "\n".join(lines)
-            literal_value = textwrap.dedent(literal_value).strip()
-
-            dict_data[":config"] = yaml.load(literal_value, Loader=yaml.FullLoader)
-        elif "tc:embedded" in dict_data:
-            embedded_value = dict_data["tc:embedded"]
-            del dict_data["tc:embedded"]
-            dict_data[":config"] = embedded_value
-        else:
-            raise LookupError(
-                "Neither predicates 'tc:embedded' nor 'tc:literal' found in data."
-            )
-
-        return dict_data
-
-    def merge_docker_compose(self) -> dict:
-        # Fetching the ids of configs which are both DefaultConfigs and DockerComposeConfigs
-        docker_compose_config_list = self.graph_reader.get_triples(
-            pred="rdf:type", obj="tc:DockerComposeConfig"
-        )["sub"].to_list()
-        default_config_list = self.graph_reader.get_triples(
-            pred="rdf:type", obj="tc:DefaultConfig"
-        )["sub"].to_list()
-        microservice_config_list = list(
-            set(docker_compose_config_list) & set(default_config_list)
-        )
-
-        # Fetching the dict_data of each config id
-        docker_compose_config = {}
-        for config_id in microservice_config_list:
-            config_path = self.graph_dict.find("^:hasConfig.*@id$", config_id)[
-                "path"
-            ].to_list()[0]
-            config_path = config_path.removesuffix(".@id")
-            config_dict = self.graph_dict.get(config_path)
-            docker_compose_config.update(config_dict[":config"])
-
-        return docker_compose_config
+        new_triples = self.graph_reader.query(
+            construct="?component :isAssigned ?config .", where=assignment_description
+        ).graph
+        self.graph_reader = self.graph_reader.add(new_triples)

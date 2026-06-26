@@ -23,7 +23,7 @@
 <br><br>
 The goal is to design a framework-agnostic, streaming-oriented pipeline orchestration system for Linked Data. Pipelines are described semantically using RDF, and execution is realized across multiple frameworks (currently LDIO, RDF Connect, semantic.works) using Docker containers and RDF Connect for orchestration. For this purpose, the *toolchain* ontology is developed.
 
-The *toolchain* ontology allows to describe data pipelines for the purpose of replicability. Four Core Classes are established, each of which are concerned with different responsibilities. Providing a minimal **Pipeline Definition** is sufficient to allow replication of a pipeline. Pipelines are defined as a series of data transformation steps, which are executed by Pipeline Components. These Pipeline Components are collected in a **Component Catalog**, which hence provides the resources for building a pipeline. A Pipeline Generator takes a Pipeline Definition and attempts to build an executable pipeline based on the resources at its disposal in the Component Catalog. The **Pipeline Build** is the output of the Pipeline Generator and reflects a deployable pipeline.
+The *toolchain* ontology allows to describe data pipelines for the purpose of replicability. Four Core Classes are established, each of which are concerned with different responsibilities. Providing a minimal **Pipeline Definition** is sufficient to allow replication of a pipeline. Pipelines are defined as a series of data transformation steps, which are executed by Pipeline Components. These Pipeline Components are collected in a **Catalog**, which hence provides the resources for building a pipeline. A Pipeline Generator takes a Pipeline Definition and attempts to build an executable pipeline based on the resources at its disposal in the Component Catalog. The **Pipeline Build** is the output of the Pipeline Generator and reflects a deployable pipeline.
 <br><br>
 Splitting the *toolchain* ontology into these four Core Classes leaves a clean separation of concerns: The Pipeline Definition allows the user to create new pipelines with minimal effort: It is sufficient to describe which Pipeline Components provide data to other Pipeline Components, and to provide Configs to configure each one used in the Pipeline. The Component Catalog is based on the idea that each Pipeline Component is modular and should be easy to reuse. Hence, all information that is known about a Pipeline Component (and which may be relevant for a Pipeline Generator) should be included in the Component Catalog. This allows a user to merely point to the Pipeline Component in the Component Catalog when defining a particular Pipeline Step. Hence, essential details about the component do not need to be repeated with each new Pipeline Definition. Likewise, distinguishing between the Pipeline Definition and the Pipeline Build allows defining Pipelines without having to be concerned with their implementation. It is up to the Pipeline Generator to figure out a feasible implementation of the pipeline, allowing to largely automate this process: Based on what is known about each Pipeline Component, the feasibility of the defined Pipeline can be evaluated and a corresponding Pipeline Build can be generated.  
 <br>
@@ -45,31 +45,31 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ## 2.1. Namespaces
 | prefix |	namespace IRI | documentation |
 |----------|----------|----------|
-| tc  | toolchain  | the document you are currently reading |
-| rdf  | http://www.w3.org/1999/02/22-rdf-syntax-ns#  | https://www.w3.org/TR/rdf11-concepts/ |
-| rdfs | http://www.w3.org/2000/01/rdf-schema#  | https://www.w3.org/TR/rdf-schema/ |
-| rdfc | https://w3id.org/rdf-connect# | https://rdf-connect.github.io/specification/ |
+| dcat  | http://www.w3.org/ns/dcat#  | https://www.w3.org/TR/vocab-dcat-3/ |
+| dct | http://purl.org/dc/terms/ | https://www.dublincore.org/specifications/dublin-core/dcmi-terms/ |
 | p-plan  | http://purl.org/net/p-plan# | https://vocab.linkeddata.es/p-plan/index.html |
 | prov  | http://www.w3.org/ns/prov# | https://www.w3.org/TR/prov-o/ |
+ rdf  | http://www.w3.org/1999/02/22-rdf-syntax-ns#  | https://www.w3.org/TR/rdf11-concepts/ |
+| rdfs | http://www.w3.org/2000/01/rdf-schema#  | https://www.w3.org/TR/rdf-schema/ |
 | sh  | http://www.w3.org/ns/shacl#  | https://www.w3.org/TR/shacl/ |
-| dcat  | http://www.w3.org/ns/dcat#  | https://www.w3.org/TR/vocab-dcat-3/ |
-| dcterms | http://purl.org/dc/terms/ | https://www.dublincore.org/specifications/dublin-core/dcmi-terms/ |
+| tcs  | toolchain specification | the document you are currently reading |
+
 <br><br>
 
 ## 2.2. Relation to other ontologies
 - The [p-plan ontology](https://vocab.linkeddata.es/p-plan/index.html) is used for the *Pipeline Definition*. This is because the *Pipeline Definition* reflects a plan of a pipeline to be built and executed.
 - The [dcat-ontology](https://www.w3.org/TR/vocab-dcat-3/) is used for the *Component Catalog* , which allows expressing Pipeline Components as resources in a catalog. 
-- The [prov-ontology](https://www.w3.org/TR/prov-o/) is used for the *Pipeline Build*. This allows to express the link between dcat:datasets and the pipelines that generated them. 
+- The [prov-ontology](https://www.w3.org/TR/prov-o/) is used to express provenance. 
 <br><br>
 
 ## 2.3. Core Classes
 <br>
 
-### Component Catalog
+### Catalog
 ![Component catalog](diagrams/component_catalog.svg)
 | | |
 |----------|----------|
-| **Definition** | A Component Catalog is a collection of the Pipeline Components. Each Pipeline Component is a modular unit that can be instanced within a pipeline build. Th Component Catalog stores information for each Pipeline Component, which is relevant for instancing. Such information are for example dependencies or constraints that come with including a pipeline component in a pipeline.
+| **Definition** | A Catalog is a collection of resources, such as Pipeline Components. Each Pipeline Component is a modular unit that can be instanced within a pipeline build. The Catalog stores information for each Pipeline Component, which is relevant for instancing. Such information are for example dependencies or constraints that come with including a pipeline component in a pipeline.
 | **subclass of** | dcat:Catalog |
 <br>
 
@@ -77,7 +77,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ![Pipeline Definition](diagrams/pipeline_definition.svg)
 | | |
 |----------|----------|
-| **Definition** | A Pipeline Definition describes the intented pipeline to be run. It is hence a plan for a pipeline that needs to be build. It is sufficient to define which Pipeline Component is responsible for which Pipeline Step (via Assignment) and to give this Pipeline Component a Config to define its behavior. |
+| **Definition** | A Pipeline Definition describes the intented pipeline to be run. It is hence a plan for a pipeline that needs to be build. It is sufficient to define which Pipeline Components make part of a pipeline, to define their sequence, and to give Pipeline Components Configs to define their behavior. |
 | **subclass of** | p-plan:Plan |
 <br>
 
@@ -85,15 +85,14 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ![Pipeline Generator](diagrams/pipeline_generator.svg)
 | | |
 |----------|----------|
-| **Definition** | A Pipeline Generator compiles a system capable of executing a Pipeline Definition by looking up the Pipeline Components implicated in the pipeline. Based on a Pipeline Definition and the Component Catalog, it produces a Pipeline Build. Therefore it is up to the Generator to decide how the information in the Pipeline Definition and Component Catalog can be interpreted to produce a deployable pipeline. |
+| **Definition** | A Pipeline Generator compiles a system capable of executing a Pipeline Definition by looking up the Pipeline Components implicated in the pipeline. Based on a Pipeline Definition and the Catalog, it produces a Pipeline Build. Therefore it is up to the Generator to decide how the information in the Pipeline Definition and Component Catalog can be interpreted to produce a deployable pipeline. |
 | **subclass of** | prov:SoftwareAgent |
 
 
 ### Pipeline Build
-![Pipeline Build](diagrams/pipeline_build.svg)
 | | |
 |----------|----------|
-| **Definition** | A Pipeline Build reflects the pipeline that was generated by the Pipeline Generator, and which is ready for deployment. A Pipeline Run of a deployed pipeline may have generated or consumed a dataset. By hence linking a pipeline run to a pipeline build, it is possible to provide full provenance for datasets. |
+| **Definition** | A Pipeline Build reflects the pipeline that was generated by the Pipeline Generator, and which is ready for deployment. It consists of one or more DockerContainers, which instantiate the Pipeline Components and hence provide the environment for executing the pipeline. |
 | **subclass of** | prov:SoftwareAgent |
 <br>
 
@@ -103,19 +102,18 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 <br>
 
 ![Toolchain Model](diagrams/toolchain_model.svg)
-
-### PipelineStep
-| | |
-|----------|----------|
-| **Definition** | A PipelineStep is any step in a pipeline which acts on data. This can mean producing, transforming, consuming data (ETL) or a combination of these. As part of the Pipeline Definition, a Pipeline Step declares intent, it is up to the Pipeline Generator to generate a Pipeline Build capable of executing the Pipeline Step. |
-| **subclass of** | p-plan:Step |
-<br>
-
 ### PipelineComponent
 | | |
 |----------|----------|
-| **Definition** | A Pipeline Component is any modular unit that can be included in a pipeline to help execute a PipelineStep. It may be a component which produces or transforms data. It may also be a component which is not responsible for forwarding data, but which is needed because another Pipeline Components depends on it. Pipeline Components are resources of the Component Catalog. Therefore, the need to be described with information relevant for their deployment, such as dependencies and constraints. |
-| **subclass of** | osw:Software |
+| **Definition** | A Pipeline Component is any modular unit that can be included in a pipeline to help execute a task. It may be a component which produces or transforms data. It may also be a component which is not responsible for forwarding data, but which is needed because another Pipeline Components depends on it. Pipeline Components are resources of the Catalog. Therefore, the need to be described with information relevant for their deployment, such as dependencies and constraints. |
+| **subclass of** | --- |
+<br>
+
+### InstancePipelineComponent
+| | |
+|----------|----------|
+| **Definition** | A InstancePipelineComponent is any component in a pipeline which acts on data. This can mean producing, transforming, consuming data (ETL) or a combination of these. t is a specialization of a Pipeline Component in that it is instanced by a Docker Container as part of a Pipeline Build. |
+| **subclass of** | p-plan:Step |
 <br>
 
 ### Config
@@ -124,13 +122,6 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 | **Definition** | A Config is a set of input parameters for a Pipeline Component, which defines its behavior in a pipeline. In its simplest case, it is a set of key-value pairs. However, also nested configurations are possible. As a data structure a Config is equivalent to the "object" type in JSON, consisting of an unordered set of name/value pairs. The name is a string and the value is a string, number, boolean, array, or object (same concept as in the [Common Workflow Language](https://www.commonwl.org/v1.2/Workflow.html#Data_concepts)), resulting in an unordered, tree-like (acyclic) structure. Each Config requires either a tc:embedded or tc:literal-predicate. This tells the Pipeline Generator whether the Config is contained in the graph or must be parsed from a string-literal. If tc:embedded is used, the Config points to a blank node representing a data object: Predicates serve as keys and objects as values. If tc:literal is used, the Config points to a string of either json- or yaml-format. In this case the Pipeline Generator parses the string to extract the configuration data. A Config can be stored as a preset in the Component Catalog. In this case a Pipeline Component can point to its associated Configs via tc:storedConfig. This is ideal for attaching default configurations, or attaching configurations often needed for specific use cases. As part of an Assignment and hence Pipeline Definition (see below), tc:config can either point to one of these pre-made Configs or to a newly defined Config. 
 |
 | **subclass of** | --- |
-<br>
-
-### Assignment 
-| | |
-|----------|----------|
-| **Definition** | An assignment reflects the attribution of responsibility to a Pipeline Component, for executing part of a Pipeline Definition. An Assignment points to a Pipeline Component, and optionally to a Config which defines the required behavior of the Pipeline Component. If an Assignment is the Input Var of a Pipeline Step, it describes the Pipeline Component responsible for that Pipeline Step. An Assignment can also be more generally be declared as variable of a Pipeline Definition, in which case it is declared that a Pipeline Component needs to be included in the Pipeline Build generated to execute the Pipeline Definition. Pipeline Components can require Assignments, which means that they require other Pipeline Components to be included in a Pipeline Build (optionally with a specific Config) to function properly. |
-| **subclass of** | p-plan:Variable |
 <br>
 
 
@@ -142,33 +133,27 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 <br>
 
 
-### Microservice
+### DockerContainer
 | | |
 |----------|----------|
-| **Definition** | A Microservice is the core entity of a Pipeline Build. Each Pipeline Build consists of one or more Microservices, which are responsible for executing one or more Pipeline Steps. For this purpose, one or more Pipeline Components are instantiated within the Microservice. A Microservice is defined through several Configs, which are generated by the Pipeline Generator as part of the Pipeline Build. These Configs define how the Microservice should be build, started up, and configured for its task. 
+| **Definition** | A DockerContainer is the core entity of a Pipeline Build. Each Pipeline Build consists of one or more DockerContainers, which are responsible for executing one or more Pipeline Steps. For this purpose, one or more Pipeline Components are instantiated within the DockerContainer. A DockerContainer is defined through several Configs, which are generated by the Pipeline Generator as part of the Pipeline Build. These Configs define how the DockerContainer should be build, started up, and configured for its task. 
 | **subclass of** | --- |
 <br>
 
 
 ## 2.5. Subclasses of Config
 
-### DockerImageConfig
-| | |
-|----------|----------|
-| **Definition** | The DockerImageConfig defines how the Docker Image must be build to include the necessary dependencies for the Microservice. |
-| **subclass of** | tc:Config |
-
 ### DockerComposeConfig
 | | |
 |----------|----------|
-| **Definition** | The DockerComposeConfig defines how the Microservice should be started up, for example which volumes should be mounted and which ports should be opened. |
+| **Definition** | The DockerComposeConfig defines how the DockerContainer should be started up, for example which volumes should be mounted and which ports should be opened. |
 | **subclass of** | tc:Config |
 <br>
 
 ### PipelineConfig
 | | |
 |----------|----------|
-| **Definition** | The PipelineConfig are those input parameters that the Microservice requires to execute the Pipeline Steps as intended.  |
+| **Definition** | The PipelineConfig are those input parameters that the DockerContainer requires to execute the Pipeline Steps as intended.  |
 | **subclass of** | tc:Config |
 <br>
 
@@ -179,366 +164,6 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 | **subclass of** | tc:Config |
 <br>
 
-## 2.6. Future Directions 
-- We may want to be able to express that a PipelineComponent requires one of several Pipeline Components, i.e. the concrete Assignment is optional.
-<br>
-
-
 # 3. Examples
 
-## LDIO example of a Pipleline Definition:
-~~~
-:LdioExamplePipeline a tc:PipelineDefinition;
-    rdfs:label "LDIO Example Pipeline";
-    rdfs:comment "A simple example pipeline using components of the LDIO framework.".
-
-:LDESClientStep a tc:PipelineStep;
-        p-plan:isStepOfPlan :LdioExamplePipeline;
-        p-plan:hasInputVar [ 
-            a tc:Assignment;
-            tc:component ldio:LdesClient;
-            tc:config :LdesClientConfig
-        ] .
-        
-:ConsoleOutStep a tc:PipelineStep;
-        p-plan:isStepOfPlan :LdioExamplePipeline;
-        p-plan:hasInputVar [ 
-            tc:component ldio:ConsoleOut;
-            tc:config :ConsoleOutConfig
-        ] .
-        
-:ConsoleOutStep p-plan:isPrecededBy :LDESClientStep .
-
-:LdesClientConfig a tc:Config;
-    tc:embedded [
-        :urls "https://ca-westtoerwin-nginx-prod.livelyisland-1fa58ea1.westeurope.azurecontainerapps.io/touristattractions/latestView";
-        :retries [ :enabled true] ;
-    ] .
-
-:ConsoleOutConfig a tc:Config;
-    tc:embedded [
-        :rdf-writer 
-            [:content-type "text/turtle"] ;
-    ] .
-~~~
-
-Based on this pipeline, the pipeline generator looks up the referenced pipeline components in the component catalog:
-~~~
-:DishacledComponentCatalog a tc:ComponentCatalog, dcat:Catalog;
-    dcat:resource  
-            ldio:LdesClient, 
-            ldio:SparqlConstructTransformer,
-            ldio:ConsoleOut,
-            ldio:LinkedDataInteractionsOrchestrator,
-            rdfc:LdesClient,
-            rdfc:NodeRunner,
-            rdfc:Orchestrator
-            ... 
-
-
-ldio:ConsoleOut a tc:PipelineComponent ;
-    rdfs:label "Ldio:ConsoleOut" ; 
-    dcterms:requires [tc:component ldio:LinkedDataInteractionsOrchestrator ] ;
-    ldio:type "Output" ; # Specific property of Ldio
-    dcat:qualifiedRelation [
-        dcterms:relation :LdioConsoleOutConfigShape ;
-        dcat:hadRole :configShape ; # This tells the PipelineGenerator that any Config assigned to ldio:ConsoleOut has to be validated by this shape, whenever ldio:ConsoleOut is included in a Pipeline Build. 
-    ] .
-
-
-:LdioConsoleOutConfigShape
-        a sh:NodeShape ;
-        sh:targetClass tc:PipelineConfig ; # Constraints the target further to a specific subclass of tc:Config.  
-        sh:property [
-            sh:path tc:embedded ;
-            sh:node [
-                a sh:NodeShape ;
-                sh:property [
-                sh:path ( :rdf-writer :content-type ) ;
-                    sh:datatype xsd:string ;
-                    sh:minCount 0 ;
-                    sh:maxCount 1 ;
-                    sh:message "content-type may have max one value of type string." ;
-                ] ;
-            ] ;
-        ] . 
-
-ldio:LinkedDataInteractionsOrchestrator
-    a tc:PipelineComponent ;
-    rdfs:label "Linked Data Interactions Orchestrator" ;
-    osw:hasProjectWebsite "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
-    osw:hasSoftwareVersion [
-          osw:hasVersionId "2.8.0-SNAPSHOT"
-          ] ;
-    
-    tc:config [
-        a tc:DefaultConfig, tc:DockerComposeConfig ;
-        tc:literal """
-  ldio-workbench:
-    container_name: ldio-workbench
-    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
-    ports:
-      - "8080:8080"
-"""
-    ] ;
-    dcterms:requires [tc:component ldio:LdioPipelineStarterService ] ;
-    dcat:qualifiedRelation [
-        dcterms:relation :LdioProcessorTypeConstraintShape, # Specific constraints checking the validity of Ldio pipeline segments
-                         :LdioSingleFlowChainShape , 
-                         :LdioTypeOrderShape ;
-    ] .
-
-
-ldio:LdioPipelineStarterService  # Service that will start the Ldio pipeline segment once the ldio workbench is up
-    a tc:PipelineComponent ;
-    rdfs:label "Ldio Pipeline Starter Service" ;
-    tc:config [
-        a tc:DefaultConfig, tc:DockerComposeConfig ;
-        tc:literal '''
-ldio-pipeline-starter:
-    image: curlimages/curl
-    volumes:
-      - ./ldio_pipeline.yml:/pipeline.yml:ro
-    command: >
-      sh -c "
-      sleep 30 &&
-      curl -X POST
-      -H 'content-type: application/yaml'
-      http://ldio-workbench:8080/admin/api/v1/pipeline
-      --data-binary @/pipeline.yml
-      "         
-''' ;
-] .
-   	
-~~~
-
-## RDF Connect example of a Pipleline Definition:
-~~~
-:RdfcExamplePipeline a tc:PipelineDefinition;
-    rdfs:label "RDF Connect Example Pipeline";
-    rdfs:comment "An example of a RDF Connect pipeline which uses Javascript and Python components".
-
-:step_1 a tc:PipelineStep;
-        p-plan:isStepOfPlan :RdfcExamplePipeline;
-        p-plan:hasInputVar [ 
-            tc:component rdfc:LdesClient;
-            tc:config :step_1_config
-        ] .
-
-:step_2 a tc:PipelineStep;
-        p-plan:isStepOfPlan :RdfcExamplePipeline;
-        p-plan:hasInputVar [ 
-            tc:component rdfc:Buffer;
-            tc:config :step_2_config
-        ] .
-
-:step_3 a tc:PipelineStep;
-        p-plan:isStepOfPlan :RdfcExamplePipeline;
-        p-plan:hasInputVar [ 
-            tc:component rdfc:LogProcessorPy;
-            tc:config :step_3_config
-        ] .
-
-:step_3 p-plan:isPrecededBy :step_2 .
-:step_2 p-plan:isPrecededBy :step_1 .
-
-:step_1_config a tc:Config;
-    tc:embedded [
-        rdfc:url <https://ca-westtoerwin-nginx-prod.livelyisland-1fa58ea1.westeurope.azurecontainerapps.io/touristattractions/latestView>;
-        rdfc:follow true
-    ] .
-
-:step_2_config a tc:Config;
-    tc:embedded [
-        rdfc:interval 5000; 
-        rdfc:amount 0  
-    ] .
-
-:step_3_config a tc:Config;
-    tc:embedded [
-        rdfc:level "debug";
-        rdfc:label "test"
-    ] .
-~~~
-
-Based on this pipeline, the pipeline generator looks up the referenced pipeline components in the component catalog:
-
-~~~
-rdfc:LdesClient
-    a tc:PipelineComponent, rdfc:Processor;
-    rdfs:label "ldes client";
-    rdfs:comment "An LDES client that can read a stream of members from an LDES."; 
-    dcterms:requires [tc:component rdfc:NodeRunner];
-    dcterms:requires # This declares that th rdfc:LdesClient requirs a rdfc:Orchestrator as part of the Pipeline Build, which has a specific import-statement as part of its config. 
-    [
-        tc:component rdfc:Orchestrator ;
-        tc:config [
-            a tc:PipelineConfig ; 
-            tc:embedded [ owl:imports <./node_modules/ldes-client/processor.ttl> ]
-        ];
-    ] ;
-    dcat:qualifiedRelation [
-        dcterms:relation :RdfcLdesClientConfigShape,
-                         :RdfcLdesClientFetchConfigShape, 
-                         :RdfcLdesClientFetchRetryConfigShape,
-                         :RdfcLdesClientAuthConfigShape;
-        dcat:hadRole :configShape ; 
-    ] .
-    
-
-rdfc:Buffer a tc:PipelineComponent, rdfc:Processor;
-    rdfs:label "Buffer Processor" ;
-    rdfs:comment " At a certain interval, the processor will pipe through a given amount of data from the incoming stream to the outgoing stream.";
-    dcterms:requires [tc:component rdfc:NodeRunner] ;
-    dcterms:requires 
-    [
-        tc:component rdfc:Orchestrator ;
-        tc:config [
-            a tc:PipelineConfig ; 
-            tc:embedded [ owl:imports <./node_modules/@rdfc/buffer-processor-ts/processor.ttl> ]
-        ];
-    ] ;
-    dcat:qualifiedRelation [
-        dcterms:relation :RdfcBufferConfigShape ;
-        dcat:hadRole :configShape ; 
-    ] . 
-
-rdfc:LogProcessorPy a tc:PipelineComponent, rdfc:Processor;
-    rdfs:label "Python Log Processor";
-    dcterms:requires [tc:component rdfc:PyRunner] ;
-    dcat:qualifiedRelation [
-        dcterms:relation :RdfcLogProcessorPyConfigShape ;
-        dcat:hadRole :configShape ; 
-    ] ;
-    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_log_processor/processor.ttl>. # Relative path inside docker container
-
-
-rdfc:NodeRunner a tc:PipelineComponent, rdfc:Runner;
-    rdfs:label "RDF Connect Javascript Node Runner" ; 
-    dcat:qualifiedRelation [
-        dcterms:relation :NodeRunnerConfig ;
-        dcat:hadRole :configShape ; 
-    ] ;
-    dcterms:requires 
-    [
-        tc:component rdfc:Orchestrator ;
-        tc:config [
-            a tc:PipelineConfig ; 
-            tc:embedded [ owl:imports owl:imports <./node_modules/@rdfc/js-runner/index.ttl> ]
-        ];
-    ] .
-
-rdfc:PyRunner a tc:PipelineComponent, rdfc:Runner;
-    rdfs:label "RDF Connect Python Runner" ; 
-    dcterms:requires 
-    [
-        tc:component rdfc:Orchestrator ;
-        tc:config [
-            a tc:PipelineConfig ; 
-            tc:embedded [ owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl> ]
-        ];
-    ] .
-    
-
-rdfc:Orchestrator a tc:PipelineComponent ;
-    rdfs:label "RDF Connect Orchestrator" ;
-    tc:config [
-        a tc:Config, tc:DefaultConfig, tc:DockerComposeConfig ;
-        tc:literal """
-  rdf-connect:
-    container_name: rdf-connect
-    image: rdf-connect:latest
-    build: ../../resources/rdfc-docker
-    volumes:
-      - ./rdfc_pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro
-    environment:
-      LOG_LEVEL: debug
-    command: npx rdfc /workspace/pipeline/pipeline.ttl
-"""
-] .
-~~~
-
-Based on a Pipeline Definition, the Pipeline Generator looks up all implicated dependencies via dcterms:requires. It finds the PipelineComponent that has a DockerComposeConfig, as well as a DefaultConfig. This is because it is assumed that dcterms:requires always points to the PipelineComponent, which resolves the dependencies of the component pointing to it (either directly or indirectly). In this example it is hence assumed that the stored DockerComposeConfig of the rdfc:Orchestrator can resolve all dependencies of all PipelineComponents implicated by the Pipeline Definition, as well as its own dependencies. 
-<br><br>
-You can also see in this example that rdfc:Processors are attached to a default rdfc:Runner via dcterms:requires. In some cases, you may want to attach a PipelineComponent to a different PipelineComponent and hence override this default. This is possible via tc:Assignment. See this example:
-
-~~~
-:step_1 a tc:PipelineStep;
-        p-plan:isStepOfPlan :RdfcExamplePipeline;
-        p-plan:hasInputVar [ 
-            tc:component rdfc:LdesClient;
-            tc:config :step_1_config;
-        ], 
-        [ tc:component rdfc:JsRunner ]
-         .
-~~~
-
-Here, Step 1 is configured to use the rdfc:LdesClient in combination with rdfc:JsRunner. In this case, dcterms:requires is overwritten for this specific Pipeline Step. It is also possible to give rdfc:Orchestrator a different Config than the DefaultConfig. You can do it like so:
-
-~~~
-:step_1 a tc:PipelineStep;
-        p-plan:isStepOfPlan :RdfcExamplePipeline;
-        p-plan:hasInputVar [ 
-            tc:component rdfc:LdesClient;
-            tc:config :step_1_config;
-        ] ,
-        [ tc:component rdfc:JsRunner ] ,
-         [ 
-            tc:component rdfc:Orchestrator;
-            tc:config :customOrchestratorConfig;
-        ] . 
-~~~
-
-In this case, only step_1 will be executed with the custom Orchestrator. If you want the whole pipeline to run with the custom Orchestrator, you can give each PipelineStep the same Assignment (give the Assignment a proper uri and link each step to it). While this is more verbose, this is only needed if you want to overwrite the default settings. The Pipeline Generator and semantic model are designed to take most work away from the user, so in most cases the default settings should work just fine. It is of course also possible to modify the component catalog itself and assign a different Config as DefaultConfig, in which case all steps will automatically refer to this new Config. 
-
-Another possibility is to define the pipeline on the level of the rdfc:Orchestrator from the get-go:
-~~~
-:step_1 a tc:PipelineStep;
-        p-plan:isStepOfPlan :RdfcExamplePipeline;
-        p-plan:hasInputVar [ 
-            tc:component rdfc:Orchestrator;
-            tc:config :pipelineConfig;
-        ] .
-
-:pipelineConfig a tc:PipelineConfig ;
-    tc:embedded [
-        a rdfc:Pipeline ;
-        owl:imports <file:///usr/local/lib/python3.13/site-packages/rdfc_log_processor/processor.ttl>,
-            <file:///usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl>,
-            <node_modules/@rdfc/buffer-processor-ts/processor.ttl>,
-            <node_modules/@rdfc/js-runner/index.ttl>,
-            <node_modules/ldes-client/processor.ttl> ;
-        rdfc:consistsOf :env_1,
-            :env_2 .
-    ] .
-
-:env_1 rdfc:instantiates rdfc:JsRunner ;
-    rdfc:processor :step_1, :step_2 .
-
-:env_2 rdfc:instantiates rdfc:PyRunner ;
-    rdfc:processor :step_3 .
-
-:step_1 a rdfc:LdesClient ;
-    rdfc:follow true ;
-    rdfc:output :channel_1 ;
-    rdfc:url <https://ca-westtoerwin-nginx-prod.livelyisland-1fa58ea1.westeurope.azurecontainerapps.io/touristattractions/latestView> .
-
-:step_2 a rdfc:Buffer ;
-    rdfc:amount 0 ;
-    rdfc:incoming :channel_1 ;
-    rdfc:interval 5000 ;
-    rdfc:outgoing :channel_2 .
-
-:step_3 a rdfc:LogProcessorPy ;
-    rdfc:label "test" ;
-    rdfc:level "debug" ;
-    rdfc:reader :channel_2 .
-
-:channel_1 a rdfc:Reader,
-    rdfc:Writer .
-
-:channel_2 a rdfc:Reader,
-    rdfc:Writer .
-~~~
-
-In this case, the entire generatedConfig for the Orchestrator is directly passed to the Orchestrator. You can picture this as defining the Orchestrator as a Pipeline Component which performs one step of a pipeline. Although this step is an entire pipeline in and of itself, the PipelineGenerator "sees" the Orchestrator as a regular PipelineStep within a possibly bigger pipeline. 
+For a concrete example [check the catalog used by the pipeline generator](../pipeline%20generator/data/graph.ttl). 

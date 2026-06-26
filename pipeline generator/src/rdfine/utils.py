@@ -1,12 +1,8 @@
 from rdflib import Graph
 import yaml
 from boltons.iterutils import remap
-
-"""
-- load_yaml
-- merge_graphs
-- collapse_ids
-"""
+from copy import deepcopy
+import textwrap
 
 
 def load_yaml(filename):
@@ -15,17 +11,6 @@ def load_yaml(filename):
             return yaml.safe_load(stream)
         except yaml.YAMLError as exc:
             print(exc)
-
-
-def merge_graphs(graph_list: list[Graph], base="file:///workspace/pipeline/") -> Graph:
-    output_graph = Graph()
-
-    for graph_to_be_added in graph_list:
-        # To deal with blank nodes, each graph has to be serialized and reparsed
-        graph_turtle = graph_to_be_added.serialize(format="turtle", base=base)
-        output_graph.parse(data=graph_turtle, format="turtle", publicID=base)
-
-    return output_graph
 
 
 def collapse_ids(obj):
@@ -56,3 +41,37 @@ def drop_empty(obj, empty_values=[None, [], {}, ""]):
             return True
 
     return remap(obj, visit=visit)
+
+
+def parse_config(input_dict: dict) -> dict:
+    """
+    Parses a dict containing a "tcs:literal" or "tcs:embedded"
+    """
+
+    dict_data = deepcopy(input_dict)
+
+    if "tcs:literal" in dict_data:
+        literal_value = dict_data["tcs:literal"]
+        del dict_data["tcs:literal"]
+
+        # Clean up trailing double_quotes
+        literal_value = literal_value.removeprefix('""')
+        literal_value = literal_value.removesuffix('""')
+
+        # Removing '\\r' at the end of a line
+        lines = literal_value.splitlines()
+        lines = [line.removesuffix("\\r") for line in lines]
+        literal_value = "\n".join(lines)
+        literal_value = textwrap.dedent(literal_value).strip()
+
+        dict_data[":config"] = yaml.load(literal_value, Loader=yaml.FullLoader)
+    elif "tcs:embedded" in dict_data:
+        embedded_value = dict_data["tcs:embedded"]
+        del dict_data["tcs:embedded"]
+        dict_data[":config"] = embedded_value
+    else:
+        raise LookupError(
+            "Neither predicates 'tcs:embedded' nor 'tcs:literal' found in data."
+        )
+
+    return dict_data

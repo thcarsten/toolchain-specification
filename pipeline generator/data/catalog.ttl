@@ -1,0 +1,450 @@
+@prefix : <http://example.org/example/> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix dct: <http://purl.org/dc/terms/>.
+@prefix mu: <http://mu.semte.ch/vocabularies/core/>.
+@prefix nfo: <http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix sw: <https://semantic.works/services/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix schema: <https://schema.org/> .
+
+
+#################################################################
+# Catalog
+#################################################################
+
+:DishacledCatalog
+  a dcat:Catalog;
+  dct:title "Datasets and processors used in DiSHACLed demonstrator.";
+  dcat:dataset :waterLevelsInCm, :waterLevelsInMm ;
+  dcat:resource
+    # LDIO  
+    ldio:HttpInPoller,
+    ldio:RmlAdapter, 
+    ldio:RdfAdapter, 
+    ldio:SparqlConstructTransformer,
+    ldio:ConsoleOut,
+    ldio:HttpOut, 
+    ldio:HttpIn,
+    ldio:LinkedDataInteractionsOrchestrator,
+    ldio:LdioPipelineStarterService,
+    # RDF Connect
+    rdfc:HttpFetch,
+    rdfc:HttpIn,
+    rdfc:thresholdMonitoringProcessor,
+    rdfc:SparqlIngest,
+    rdfc:LogProcessorPy,
+    rdfc:HttpOut,
+    rdfc:NodeRunner,
+    rdfc:PyRunner,
+    rdfc:Orchestrator, 
+    # Semantic works
+    sw:loket-error-alert-service,
+    sw:deliver-email-service ,
+    sw:triple-store .
+
+
+#################################################################
+# Datasets
+#################################################################
+
+# Source dataset published by the mock JSON-LD APIs, but could also be others like LDES or SPARQL
+:waterLevelsInCm a dcat:Dataset ;
+  dct:conformsTo :waterLevelsInCmShape .
+
+:waterLevelsInMm a dcat:Dataset ;
+  dct:conformsTo :waterLevelsInMmShape .
+
+# The mock JSON-LD APIs
+:rawDataStreamInCm a dcat:DataService ;
+  dcat:servesdataset :waterLevelsInCm ;
+  # Optional, because dataset already provides this shape
+  dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole :outputShape ;
+        dct:relation :waterLevelsInCmShape
+    ] .
+
+:rawDataStreamInMm a dcat:Service ;
+  dcat:servesdataset :waterLevelsInMm ;
+  # Optional, because dataset already provides this shape
+  dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole :outputShape ;
+        dct:relation :waterLevelsInMmShape
+    ] .
+
+#################################################################
+# Pipeline Definition
+#################################################################
+
+
+:DemonstratorPipeline a tcs:PipelineDefinition;
+    rdfs:label "Demonstrator Pipeline.";
+    rdfs:comment "Polls API, transforms to RDF, detects threshold, triggers email alert.".
+
+
+:ApiPoll a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:HttpInPoller ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    p-plan:hasInputVar [ a tcs:PipelineConfig ;
+                tcs:embedded 
+                    [
+                        :url "https://dishacled-api.azurewebsites.net/api/v1/source-a/current" ;
+                        :cron "*/10 * * * * *" # Every 10 seconds
+            ] 
+    ] .
+
+    
+:RdfConversion a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:RdfAdapter ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    p-plan:isPrecededBy :ApiPoll .
+
+
+:SparqlConstruct a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:SparqlConstructTransformer ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    p-plan:isPrecededBy :RdfConversion ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig;
+        tcs:embedded
+        [
+          :query """
+            PREFIX dct: <http://purl.org/dc/terms/> .
+            PREFIX prov: <http://www.w3.org/ns/prov#> .
+            CONSTRUCT {
+              ?versionedS ?p ?o ;
+                  prov:generatedAtTime ?generatedAtTime ;
+                  dct:isVersionOf ?s .
+            } WHERE {
+              ?s ?p ?o .
+              BIND(URI(CONCAT(STR(?s), '/', STR(?now))) as ?versionedS)
+              BIND (NOW() as ?generatedAtTime)
+            }
+          """
+        ]
+    ] .
+
+:HttpOut a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:HttpOut ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    p-plan:isPrecededBy :SparqlConstruct .
+
+
+:HttpIn a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:HttpIn ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    p-plan:isPrecededBy :HttpOut .
+
+
+:ThresholdMonitoring  a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:thresholdMonitoringProcessor ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    p-plan:isPrecededBy :HttpIn ;
+      p-plan:hasInputVar [
+    a tcs:PipelineConfig;
+    tcs:embedded
+    [
+      rdfc:value 30 ;
+      rdfc:unit <http://qudt.org/vocab/unit/CentiM>
+    ]
+  ] .
+
+:SparqlIngest a tcs:InstancePipelineComponent ;
+  prov:specializationOf rdfc:SparqlIngest ;
+  p-plan:isStepOfPlan :DemonstratorPipeline ;
+  p-plan:isPrecededBy :ThresholdMonitoring ;
+  p-plan:hasInputVar [
+    a tcs:Config;
+    tcs:embedded
+    [
+      :ingestConfig [
+        :operationMode "Replication"
+      ]
+    ]
+  ] .
+
+:TriggerAlert a tcs:InstancePipelineComponent ;
+  prov:specializationOf sw:loket-error-alert-service ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;  
+    p-plan:isPrecededBy :SparqlIngest ;
+    p-plan:hasInputVar [
+      a tcs:Config;
+      tcs:embedded
+      [
+        :EMAIL_FROM "info@dishacled.com" ;
+        :EMAIL_TO "everyone@world.com";
+        :DEBUG false
+      ]
+] .
+
+:DeliverEmail a tcs:InstancePipelineComponent ;
+  prov:specializationOf sw:deliver-email-service ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    p-plan:isPrecededBy :TriggerAlert ;
+    p-plan:hasInputVar [
+        a tcs:Config;
+        tcs:embedded
+        [
+          :MAILFOLDER_URI "http://data.lblod.info/id/mail-folders/2" ;
+          :EMAIL_CRON_PATTERN '*/1 * * * * *' ;
+          :HOURS_DELIVERING_TIMEOUT '1' ;
+        ]
+] .
+
+
+
+#################################################################
+# LDIO Components
+#################################################################
+
+ldio:HttpInPoller a tcs:PipelineComponent;
+    rdfs:label "Ldio:HttpInPoller" ; 
+    ldio:type "Input" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-http-in-poller" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator .
+
+
+ldio:RdfAdapter a tcs:PipelineComponent;
+    rdfs:label "Ldio:RdfAdapter" ; 
+    ldio:type "Adapter" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-adapters/ldio-rdf-adapter" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator .
+
+
+ldio:SparqlConstructTransformer 
+    a tcs:PipelineComponent ;
+    rdfs:label "Ldio:SparqlConstructTransformer" ; 
+    ldio:type "Transformer" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator .
+
+
+ldio:HttpOut a tcs:PipelineComponent;
+    rdfs:label "Ldio:HttpOut" ; 
+    rdfs:description "The LDIO HTTP Out is a basic Http Client that will send the given Linked Data model to a target url.";
+    ldio:type "Output" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-outputs/ldio-http-out" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator . 
+
+
+ldio:LinkedDataInteractionsOrchestrator
+    a tcs:PipelineComponent ;
+    rdfs:label "Linked Data Interactions Orchestrator" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
+    schema:version "2.8.0-SNAPSHOT";
+    tcs:config :LdioDefaultDockerComposeConfig ;
+    dct:requires ldio:LdioPipelineStarterService .
+
+
+:LdioDefaultDockerComposeConfig
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    tcs:literal """
+ldio-workbench:
+    container_name: ldio-workbench
+    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
+    ports:
+      - "8080:8080"
+""" .
+
+
+ldio:LdioPipelineStarterService 
+    a tcs:PipelineComponent ;
+    rdfs:label "Ldio Pipeline Starter Service" ;
+    tcs:config :LdioPipelineStarterDockerComposeConfig. 
+
+
+:LdioPipelineStarterDockerComposeConfig
+        a tcs:Config, tcs:DockerComposeConfig ;
+        tcs:literal '''
+ldio-pipeline-starter:
+    image: curlimages/curl
+    volumes:
+      - ./ldio_pipeline.yml:/pipeline.yml:ro
+    command: >
+      sh -c "
+      sleep 30 &&
+      curl -X POST
+      -H 'content-type: application/yaml'
+      http://ldio-workbench:8080/admin/api/v1/pipeline
+      --data-binary @/pipeline.yml
+      "         
+''' .
+
+
+#################################################################
+# RDF Connect Components
+#################################################################
+
+rdfc:SparqlIngest a tcs:PipelineComponent;
+    rdfs:label "Sparql Ingst";
+    rdfs:description "This processor takes a stream of RDF records, transforms them into corresponding SPARQL Update queries, and executes them against a SPARQL Graph Store via the SPARQL Protocol." ; 
+    dcat:landingPage "https://github.com/rdf-connect/sparql-ingest-processor-ts";
+    dct:requires rdfc:NodeRunner;
+    owl:imports <./node_modules/@rdfc/sparql-ingest-processor-ts/processors.ttl> ;
+    dcat:qualifiedRelation [
+      dct:relation :SparqlIngestConfigShape, :SparqlIngestPerformanceShape;
+      dcat:hadRole "configShape" ;
+    ] .
+
+
+:SparqlIngestConfigShape a sh:NodeShape;
+  sh:targetClass rdfc:SPARQLIngest;
+  sh:property [
+    sh:path rdfc:memberStream;
+    sh:name "memberStream";
+    sh:class rdfc:Reader;
+    sh:minCount 1;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:ingestConfig;
+    sh:name "config";
+    sh:class rdfc:IngestConfig;
+    sh:minCount 1;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:sparqlWriter;
+    sh:name "sparqlWriter";
+    sh:class rdfc:Writer;
+    sh:maxCount 1;
+  ].
+
+:SparqlIngestPerformanceShape a sh:NodeShape;
+  sh:targetClass rdfc:PerformanceConfig;
+  sh:property [
+    sh:path rdfc:name;
+    sh:datatype xsd:string;
+    sh:name "name";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:path rdfc:outputPath;
+    sh:datatype xsd:string;
+    sh:name "outputPath";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:path rdfc:failureIsFatal;
+    sh:datatype xsd:boolean;
+    sh:name "failureIsFatal";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:queryTimeout;
+    sh:datatype xsd:integer;
+    sh:name "queryTimeout";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ].
+
+
+rdfc:HttpIn a tcs:PipelineComponent;
+    rdfs:label "RDF Connect Http In";
+    dct:requires rdfc:PyRunner;
+    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_in/processor.ttl> . # I still need to build this component
+
+
+rdfc:HttpOut a tcs:PipelineComponent;
+    rdfs:label "RDF Connect Http Out";
+    dct:requires rdfc:PyRunner;
+    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl> . 
+
+
+rdfc:thresholdMonitoringProcessor a :PipelineComponent ; # I still need to build this component
+  dct:requires rdfc:NodeRunner ;
+   owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_threshold_monitoring/processor.ttl> . 
+
+
+rdfc:thresholdMonitoringProcessor a :PipelineComponent ; # I still need to build this component
+  dct:requires rdfc:NodeRunner ;
+   owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_threshold_monitoring/processor.ttl> . 
+
+
+rdfc:NodeRunner a tcs:PipelineComponent, rdfc:Runner;
+    rdfs:label "RDF Connect Javascript Node Runner" ; 
+    dct:requires rdfc:Orchestrator ;
+    owl:imports <./node_modules/@rdfc/js-runner/index.ttl> . # This is specific to RDF Connect
+
+
+rdfc:PyRunner a tcs:PipelineComponent, rdfc:Runner;
+    rdfs:label "RDF Connect Python Runner" ; 
+    dct:requires rdfc:Orchestrator ;
+    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl> . 
+
+
+rdfc:Orchestrator a tcs:PipelineComponent ;
+    rdfs:label "RDF Connect Orchestrator" ;
+    tcs:config [
+        a tcs:Config, tcs:DockerComposeConfig ;
+        tcs:literal """
+  rdf-connect:
+    container_name: rdf-connect
+    image: rdf-connect:latest
+    build: ../../resources/rdfc-docker
+    volumes:
+      - ./rdfc_pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro
+    environment:
+      LOG_LEVEL: debug
+    command: npx rdfc /workspace/pipeline/pipeline.ttl
+"""
+] .
+
+
+#################################################################
+# Semantic.works Components
+#################################################################
+
+sw:loket-error-alert-service a tcs:PipelineComponent, mu:Microservice ;
+  rdfs:description "Service that is responsible for sending out alerts when errors are inserted in the store. Build using the MU Javascript template.";
+  dcat:landingPage <https://github.com/lblod/loket-error-alert-service> ;
+  dct:requires sw:triple-store ;
+  tcs:config [
+        a tcs:DefaultConfig, tcs:DockerComposeConfig ;
+        tcs:literal """
+error-alert:
+    image: lblod/loket-error-alert-service
+    volumes:
+        - ./config/error-alert/:/config/
+"""
+] .
+
+
+sw:deliver-email-service a tcs:PipelineComponent, mu:Microservice ;
+  rdfs:description "Microservice that delivers emails from a mail folder" ;
+  dcat:landingPage <https://github.com/lblod/berichtencentrum-deliver-email-service> ;
+  dct:requires sw:triple-store ;
+  tcs:config [
+        a tcs:DefaultConfig, tcs:DockerComposeConfig ;
+        tcs:literal """
+  berichtencentrum-deliver-email-service:
+    image: lblod/berichtencentrum-deliver-email-service
+"""
+] .
+
+
+sw:triple-store a tcs:PipelineComponent;
+  dcat:landingPage <https://virtuoso.dev/react-virtuoso/> ;
+    tcs:config [
+        a tcs:DefaultConfig, tcs:DockerComposeConfig ;
+        tcs:literal """
+virtuoso:
+  image: redpencil/virtuoso:1.4.0
+  environment:
+    SPARQL_UPDATE: 'true'
+"""
+] .
+
+
+
+
+
+
+
