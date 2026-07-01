@@ -1,38 +1,27 @@
-from rdflib import Graph
+import textwrap
+from copy import deepcopy
+
 import yaml
 from boltons.iterutils import remap
-from copy import deepcopy
-import textwrap
 
 
 def load_yaml(filename):
-    with open(filename) as stream:
-        try:
-            return yaml.safe_load(stream)
-        except yaml.YAMLError as exc:
-            print(exc)
-
-
-def collapse_ids(obj):
     """
-    Recursively traverse nested dicts/lists and replace any dict of the exact form
-    {'@id': '...'} with just the string value.
+    Load a YAML file and return its parsed contents.
+
+    Any ``yaml.YAMLError`` raised during parsing is propagated to the caller.
     """
-
-    def visit(path, key, value):
-        if isinstance(value, dict) and set(value.keys()) == {"@id"}:
-            # Replace dicts that contain exactly one key: '@id'
-            return key, value["@id"]
-        return True  # continue traversal
-
-    return remap(obj, visit=visit)
+    with open(filename, encoding="utf-8") as stream:
+        return yaml.safe_load(stream)
 
 
-def drop_empty(obj, empty_values=[None, [], {}, ""]):
+def drop_empty(obj, empty_values=None):
     """
     Recursively traverse the tree and drop any key-value pairs,
     where the value is empty (either None, '', [] or {}).
     """
+    if empty_values is None:
+        empty_values = [None, [], {}, ""]
 
     def visit(path, key, value):
         if value in empty_values:
@@ -64,7 +53,7 @@ def parse_config(input_dict: dict) -> dict:
         literal_value = "\n".join(lines)
         literal_value = textwrap.dedent(literal_value).strip()
 
-        dict_data[":config"] = yaml.load(literal_value, Loader=yaml.FullLoader)
+        dict_data[":config"] = yaml.safe_load(literal_value)
     elif "tcs:embedded" in dict_data:
         embedded_value = dict_data["tcs:embedded"]
         del dict_data["tcs:embedded"]

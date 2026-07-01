@@ -3,14 +3,27 @@ from rdfine import GraphReader, GraphDict, parse_config
 import pandas as pd
 import json
 
+from .utils import receive_first
+from .base import Compiler, Tier
 
-class SemanticWorksCompiler:
+
+class SemanticWorksCompiler(Compiler):
     """
     Updates DockerComposeConfigs of mu:Microservices by the environment variables which were assigned to InstancePipelineComponents as part of the PipelineDefinition.
     """
 
-    def __init__(self, build_graph: Graph) -> None:
-        self.graph_reader = GraphReader(build_graph)
+    tier = Tier.BUILD
+
+    def __init__(self, graph: Graph) -> None:
+        super().__init__(graph)
+        # Intermediate state — populated in ``compile``.
+        self.component_df: pd.DataFrame = pd.DataFrame()
+
+    @classmethod
+    def applies_to(cls, graph_reader: GraphReader) -> bool:
+        """Triggered by any ``tcs:PipelineComponent`` in the ``sw:`` namespace."""
+        df = graph_reader.filter(pred="rdf:type", obj="tcs:PipelineComponent").df
+        return bool(df["sub"].str.startswith("sw:").any())
 
     def compile(self) -> Graph:
         self.fetch_components()
@@ -24,9 +37,9 @@ class SemanticWorksCompiler:
         """
 
         # Checking that a bunch of conditions are met
-        component_df = self.graph_reader.query(
-            select="?component ?step ?step_config ?docker_config",
-            where=f"""
+        component_df = self.graph_reader.select(
+            "?component ?step ?step_config ?docker_config",
+            """
             ?component a tcs:PipelineComponent .
             ?step prov:specializationOf ?component .
             ?step p-plan:hasInputVar ?step_config .
@@ -41,7 +54,7 @@ class SemanticWorksCompiler:
 
     # Extracting the docker_config_dict
     def extract_config(self, config_id) -> GraphDict:
-        config_dict = GraphDict.from_graph(self.graph_reader.traverse(config_id).graph)
+        config_dict = GraphDict(self.graph_reader.traverse(config_id).graph)
         config_dict = config_dict.frame({"@id": config_id})
         config_dict.dict = parse_config(config_dict.dict)
         config_dict = config_dict.get(":config")
@@ -59,21 +72,25 @@ class SemanticWorksCompiler:
         """
 
         # Grabbing the right references
-        step_config_id = self.component_df.loc[
-            self.component_df["component"] == component_id, "step_config"
-        ].to_list()[0]
-        docker_config_id = self.component_df.loc[
-            self.component_df["component"] == component_id, "docker_config"
-        ].to_list()[0]
+        step_config_id = receive_first(
+            self.component_df.loc[
+                self.component_df["component"] == component_id, "step_config"
+            ],
+        )
+        docker_config_id = receive_first(
+            self.component_df.loc[
+                self.component_df["component"] == component_id, "docker_config"
+            ],
+        )
 
         # Extracting the two configs
         step_config_dict = self.extract_config(step_config_id)
         docker_config_dict = self.extract_config(docker_config_id)
 
         # Finding the right level in docker_config_dict to append step_config_dict to
-        path_to_image = docker_config_dict.find(path_pattern="image$")[
-            "path"
-        ].to_list()[0]
+        path_to_image = receive_first(
+            docker_config_dict.find(path_pattern="image$")["path"],
+        )
         target_path = path_to_image.rsplit(".", 1)[0]
         target_dict = docker_config_dict.get(target_path).dict
 
@@ -104,7 +121,7 @@ class SemanticWorksCompiler:
             "sub_type": URIRef,
             "obj_type": Literal,
         }
-        add_triples = GraphReader.from_df(
+        add_triples = GraphReader(
             pd.DataFrame.from_records([config_record]), self.graph_reader.prefix_store
         ).graph
         self.graph_reader = self.graph_reader.add(add_triples)

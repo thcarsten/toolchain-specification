@@ -1,17 +1,21 @@
-from rdflib import Graph, URIRef
-from rdfine import GraphReader
+from rdflib import Graph
+
+from .utils import receive_first
+from .base import Compiler, Tier
 
 
-class PipelineExtractor:
+class PipelineExtractor(Compiler):
     """
     Compiler Class to extract all relevant data for one single pipeline.
     It does NOT yet perform any form of reasoning,
     its sole responsibility is grabbing the data and returning it in line with the internal model.
     """
 
+    tier = Tier.BOOTSTRAP
+
     def __init__(self, pipeline_id: str, graph: Graph) -> None:
+        super().__init__(graph)
         self.pipeline_id = pipeline_id
-        self.graph_reader = GraphReader(graph)
 
     def compile(self) -> Graph:
         self.extract_pipeline()
@@ -22,7 +26,7 @@ class PipelineExtractor:
         # Extracting the pipeline
         graph_inverse_steps = (
             self.graph_reader.filter(pred="p-plan:isStepOfPlan", obj=self.pipeline_id)
-            .query(construct="?o :hasStep ?s", where="?s ?p ?o.")
+            .construct("?o :hasStep ?s", "?s ?p ?o.")
             .graph
         )
         # Filtering down to triples concerning the pipeline
@@ -45,17 +49,17 @@ class PipelineExtractor:
         )
         rename_ids = list(set(rename_ids))
 
-        for i in range(len(rename_ids)):
-            rename_id = rename_ids[i]
+        for i, rename_id in enumerate(rename_ids):
             type_list = (
                 self.graph_reader.filter(sub=rename_id, pred="rdf:type")
                 .df["obj"]
                 .to_list()
             )
             type_list.sort()
+            first_type = receive_first(type_list)
             new_name = (
                 ":"
-                + self.graph_reader.prefix_store.drop(type_list[0]).lower()
+                + self.graph_reader.prefix_store.drop_string(first_type).lower()
                 + f"_{i}"
             )
             self.graph_reader = self.graph_reader.rename(rename_id, new_name)

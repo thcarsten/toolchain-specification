@@ -1,11 +1,8 @@
 from .prefix_store import PrefixStore
 from .utils import load_yaml
-from rdflib import Graph, URIRef, BNode
+from rdflib import Graph, URIRef, BNode, Literal
 import pandas as pd
-from copy import deepcopy
 from typing import Self
-from pyld import jsonld
-import json
 
 
 class GraphReader:
@@ -17,24 +14,24 @@ class GraphReader:
             - prefix_store: a PrefixStore with the prefixes loaded from the graph
             - df: Dataframe view on the graph
             - _basepath: Used for resolving relative filepaths
-            - _blanknode_prefix: # The prefix being used to indicate materialized blanknodes
     Public methods:
             - add
+            - ask
             - check_exists
+            - construct
             - filter
             - infer
-            - query
             - remove
             - rename
+            - select
             - serialize
             - sparql
             - traverse
-            - validate (TBA)
     Private methods:
             - _df_to_graph
+            - _filter_via_dataframe
+            - _filter_via_triples
             - _graph_to_df
-            - _materialize_blank_nodes
-            - _restore_blank_nodes
 
     """
 
@@ -43,25 +40,38 @@ class GraphReader:
     ###########################
 
     _basepath = "file:///workspace/pipeline/"  # Has to match working directory path in docker file. TODO: THis has to be read out dynamically in the future
-    _blanknode_prefix = {"bn_": "https://materialized_blanknode.com/"}
-    _placeholder_prefix = {"na_": "https://no_prefix_available.com/"}
 
     ###########################
     # Constructors
     ###########################
 
-    def __init__(self, graph: Graph):
-        self.graph = graph  # Initiate an empty graph
-        self._df: pd.DataFrame | None = None  # The cache for the graph to df conversion
-        self.prefix_store = PrefixStore(graph)
-        # The prefix being used to indicate blanknodes
-        self.prefix_store.bind_to_namespace(self.graph)
-        # self._materialize_blank_nodes()
+    def __init__(
+        self,
+        data: Graph | pd.DataFrame,
+        prefix_store: PrefixStore | None = None,
+    ) -> None:
+        # Normalize ``data`` to an rdflib.Graph and pick a default
+        # prefix_store source.
+        if isinstance(data, Graph):
+            graph = data
+            if prefix_store is None:
+                prefix_store = PrefixStore(graph)
+        elif isinstance(data, pd.DataFrame):
+            if prefix_store is None:
+                raise ValueError(
+                    "To construct a GraphReader from a DataFrame, a PrefixStore is required."
+                )
+            graph = self._df_to_graph(data, prefix_store)
+        else:
+            raise TypeError(
+                "GraphReader expects an rdflib.Graph or pandas.DataFrame; got "
+                f"{type(data).__name__}."
+            )
 
-    @classmethod
-    def from_df(cls, df: pd.DataFrame, prefix_store: PrefixStore) -> Self:
-        new_graph = cls._df_to_graph(df, prefix_store)
-        return cls(new_graph)
+        self.graph = graph
+        self._df: pd.DataFrame | None = None  # The cache for the graph to df conversion
+        self.prefix_store = prefix_store
+        self.prefix_store.bind_to_namespace(self.graph)
 
     ###########################
     # Public
@@ -94,7 +104,7 @@ class GraphReader:
         """
 
         # Making sure node_id is compacted
-        node_id = self.prefix_store._compact_string(node_id)
+        node_id = self.prefix_store.compact_string(node_id)
 
         # Query checking whether node_id occurs as subject
         is_subject_query = f"""
@@ -146,6 +156,85 @@ class GraphReader:
             If False, exact matching is used.
         """
 
+        if action not in ("keep", "drop"):
+            raise ValueError("action must be 'keep' or 'drop'")
+
+        # The fast path operates directly on the rdflib graph via
+        # ``graph.triples`` and avoids the round-trip through the DataFrame
+        # view. It only handles plain sub/pred/obj patterns; regex matching and
+        # sub_type/obj_type filters require the DataFrame path.
+        needs_dataframe = regex or sub_type is not None or obj_type is not None
+        if needs_dataframe:
+            return self._filter_via_dataframe(
+                sub=sub,
+                pred=pred,
+                obj=obj,
+                sub_type=sub_type,
+                obj_type=obj_type,
+                action=action,
+                regex=regex,
+            )
+
+        return self._filter_via_triples(sub=sub, pred=pred, obj=obj, action=action)
+
+    def _filter_via_triples(self, sub, pred, obj, action) -> Self:
+        """
+        Fast filter path using ``rdflib.Graph.triples`` for exact pattern
+        matching. String values are expanded with the prefix store; values in
+        the object position are also matched as ``Literal`` so that primitive
+        literal triples are not lost.
+        """
+
+        def _to_pattern_nodes(value, allow_literal: bool):
+            if value is None:
+                return [None]
+            values = value if isinstance(value, (list, tuple, set)) else [value]
+            nodes = []
+            for v in values:
+                if isinstance(v, (URIRef, BNode, Literal)):
+                    nodes.append(v)
+                    continue
+                if isinstance(v, str):
+                    # Blank-node identifiers in N3 form (``_:xxx``) must be
+                    # wrapped as ``BNode`` — wrapping them as ``URIRef`` would
+                    # never match the actual blank node in the graph. They
+                    # also can't be Literals, so skip the literal alternative.
+                    if v.startswith("_:"):
+                        nodes.append(BNode(v[2:]))
+                        continue
+                    nodes.append(URIRef(self.prefix_store.expand_string(v)))
+                    if allow_literal:
+                        nodes.append(Literal(v))
+                    continue
+                # Non-string scalar (int, float, bool, ...) — only meaningful
+                # in the object position; wrap as Literal.
+                nodes.append(Literal(v))
+            return nodes
+
+        sub_patterns = _to_pattern_nodes(sub, allow_literal=False)
+        pred_patterns = _to_pattern_nodes(pred, allow_literal=False)
+        obj_patterns = _to_pattern_nodes(obj, allow_literal=True)
+
+        matched = Graph()
+        for s_pat in sub_patterns:
+            for p_pat in pred_patterns:
+                for o_pat in obj_patterns:
+                    for triple in self.graph.triples((s_pat, p_pat, o_pat)):
+                        matched.add(triple)
+
+        result = matched if action == "keep" else self.graph - matched
+
+        self.prefix_store.bind_to_namespace(result)
+        return type(self)(result, prefix_store=self.prefix_store)
+
+    def _filter_via_dataframe(
+        self, sub, pred, obj, sub_type, obj_type, action, regex
+    ) -> Self:
+        """
+        DataFrame-based filter path. Required when regex matching or
+        sub_type/obj_type filtering is requested.
+        """
+
         dict_filters = {
             "sub": sub,
             "pred": pred,
@@ -189,14 +278,15 @@ class GraphReader:
 
         if action == "keep":
             df_subset = df_subset.loc[mask]
-        elif action == "drop":
+        else:  # "drop"
             df_subset = df_subset.loc[~mask]
-        else:
-            raise ValueError("action must be 'keep' or 'drop'")
 
         df_subset = df_subset.reset_index(drop=True)
 
-        return type(self)(self._df_to_graph(df_subset, self.prefix_store))
+        return type(self)(
+            self._df_to_graph(df_subset, self.prefix_store),
+            prefix_store=self.prefix_store,
+        )
 
     def infer(self, filepath, max_repetitions: int = 10) -> Self:
         """
@@ -218,8 +308,8 @@ class GraphReader:
         prefix_store.bind_to_namespace(working_graph)
 
         prev_size = len(working_graph)
+        converged = False
 
-        # Startinf inference loop
         for _ in range(max_repetitions):
 
             for rule in inference_rules:
@@ -249,51 +339,50 @@ class GraphReader:
             new_size = len(working_graph)
 
             if new_size == prev_size:
+                converged = True
                 break
 
             prev_size = new_size
-        else:
+
+        if not converged:
             raise RuntimeError("Inference did not converge")
 
         return type(self)(working_graph)
 
-    def query(
-        self,
-        where: str,
-        select: str | None = None,
-        construct: str | None = None,
-        ask: bool | None = None,
-    ):
+    def select(self, select_clause: str, where: str) -> pd.DataFrame:
         """
-        Returns the results of a SPARQL query
+        Run a SPARQL ``SELECT`` query and return the result as a DataFrame.
 
         Args:
-            - where (str) : where-section of a query, specifies the pattern that triples need to match.
-            - select (str)
-            - construct (str)
-            - ask (bool)
-
-        TODO: Add optional argument 'OPTIONAL'
+            select_clause: variables / projection of the SELECT (e.g.
+                ``"?s ?p"`` or ``"DISTINCT ?s"``).
+            where: body of the ``WHERE`` clause (without the surrounding
+                braces).
         """
+        return self.sparql(f"SELECT {select_clause} WHERE {{{where}}}")
 
-        # Checking that only one header_statement is provided
-        header_statements = [select, construct, ask]
-        header_statements = [
-            statement for statement in header_statements if statement is not None
-        ]
-        if len(header_statements) != 1:
-            raise Exception(
-                "One of the following needs to be provided: select, construct or ask"
-            )
+    def construct(self, construct_clause: str, where: str) -> Self:
+        """
+        Run a SPARQL ``CONSTRUCT`` query and return the constructed triples
+        wrapped in a new ``GraphReader``.
 
-        if select:
-            query = f"SELECT {select} WHERE {{{where}}}"
-        elif construct:
-            query = f"CONSTRUCT {{{construct}}} WHERE {{{where}}}"
-        elif ask:
-            query = f"ASK {{{where}}}"
+        Args:
+            construct_clause: body of the ``CONSTRUCT`` clause (without the
+                surrounding braces).
+            where: body of the ``WHERE`` clause (without the surrounding
+                braces).
+        """
+        return self.sparql(f"CONSTRUCT {{{construct_clause}}} WHERE {{{where}}}")
 
-        return self.sparql(query=query)
+    def ask(self, where: str) -> bool:
+        """
+        Run a SPARQL ``ASK`` query and return the boolean result.
+
+        Args:
+            where: body of the ``WHERE`` clause (without the surrounding
+                braces).
+        """
+        return self.sparql(f"ASK {{{where}}}")
 
     def remove(self, graph: Graph) -> Self:
         """
@@ -369,12 +458,12 @@ class GraphReader:
                 self.prefix_store.bind_to_namespace(results.graph)
                 return type(self)(results.graph)
             else:  # if results.graph is empty return empty dataframe
-                raise Exception("Constructed graph returned empty.")
+                raise ValueError("Constructed graph returned empty.")
         elif results.type == "ASK":
             return bool(results)
         else:
             raise TypeError(
-                "SELECT or CONSTRUCT query expected, {results.type} received."
+                f"SELECT or CONSTRUCT query expected, {results.type} received."
             )
 
     def traverse(
@@ -475,77 +564,30 @@ class GraphReader:
         self.prefix_store.bind_to_namespace(subgraph)
         return type(self)(subgraph)
 
-    def validate(self):
-        """
-        SHACL validation
-        """
-        print("not implemented")
-
     ###########################
     # Private
     ###########################
 
-    def _materialize_blank_nodes(self) -> None:
-        """
-        Turns all blank nodes into proper URI's.
-        This allows me to use any functions on blank nodes that were designed with URIs in mind.
-        """
-        # Replacing blank nodes with URIs
-        new_graph = Graph()
-        blanknode_prefix = list(self._blanknode_prefix.keys())[0]
-        blanknode_url = self._blanknode_prefix.get(blanknode_prefix)
-
-        for sub, pred, obj in self.graph:
-            if isinstance(sub, BNode):
-                sub = URIRef(blanknode_url + sub.n3().split(":")[1])
-            if isinstance(obj, BNode):
-                obj = URIRef(blanknode_url + obj.n3().split(":")[1])
-            new_graph.add((sub, pred, obj))
-
-        # Prefix for materialized blank nodes has to be added to the prefix_store as well
-        self.prefix_store.load(self._blanknode_prefix, replace=False)
-
-        # Replacing the existing graph
-        self.prefix_store.bind_to_namespace(new_graph)
-        self.graph = new_graph
-
-    def _restore_blank_nodes(self) -> None:
-        newgraph = Graph()
-
-        blanknode_prefix = list(self._blanknode_prefix.keys())[0]
-        blanknode_url = self._blanknode_prefix.get(blanknode_prefix)
-
-        for sub, pred, obj in self.graph:
-            if isinstance(sub, URIRef):
-                sub_string = self.prefix_store.node_to_python(sub)
-                if sub_string.startswith(blanknode_prefix + ":"):
-                    sub_string = sub_string.removeprefix(blanknode_prefix + ":")
-                    sub = BNode(sub_string)
-            if isinstance(obj, URIRef):
-                obj_string = self.prefix_store.node_to_python(obj)
-                if obj_string.startswith(blanknode_prefix + ":"):
-                    obj_string = obj_string.removeprefix(blanknode_prefix + ":")
-                    obj = BNode(obj_string)
-            newgraph.add((sub, pred, obj))
-
-        # Merging namespaces of graphs
-        self.prefix_store.bind_to_namespace(newgraph)
-        self.graph = newgraph
-
     @staticmethod
     def _graph_to_df(graph: Graph) -> pd.DataFrame:
         """
-        Helper-function which turns a graph into a df
+        Helper-function which turns a graph into a df.
+
+        An empty graph yields an empty DataFrame with the expected columns
+        instead of raising.
         """
+
+        columns = ["sub", "pred", "obj", "sub_type", "obj_type"]
+
+        if len(graph) == 0:
+            return pd.DataFrame(columns=columns)
 
         df = pd.DataFrame.from_records(
             [{"sub": s, "pred": p, "obj": o} for s, p, o in graph]
         )
-        if len(df) == 0:
-            raise Exception("Cannot turn empty graph into df.")
 
-        df["sub_type"] = df.apply(lambda row: type(row["sub"]), axis=1)
-        df["obj_type"] = df.apply(lambda row: type(row["obj"]), axis=1)
+        df["sub_type"] = [type(s) for s in df["sub"]]
+        df["obj_type"] = [type(o) for o in df["obj"]]
         prefix_store = PrefixStore(graph)
         df = df.map(prefix_store.node_to_python)
         return df

@@ -1,17 +1,35 @@
-from rdflib import Graph, URIRef
-from rdfine import GraphReader, GraphDict, PrefixStore, parse_config, drop_empty
+from rdflib import Graph
+from rdfine import GraphReader, GraphDict, parse_config, drop_empty
 import pandas as pd
-from copy import deepcopy
 import yaml
 
+from .utils import receive_first
+from .base import Compiler, Tier
 
-class LdioConfigCompiler:
+
+class LdioConfigCompiler(Compiler):
     """
     Class to generate config file for LDIO.
     """
 
-    def __init__(self, build_graph: Graph) -> None:
-        self.graph_reader = GraphReader(build_graph)
+    tier = Tier.FILE
+
+    def __init__(self, graph: Graph) -> None:
+        super().__init__(graph)
+        # Intermediate state — populated in ``compile``.
+        self.df_steps: pd.DataFrame = pd.DataFrame()
+        self.dict_configs: dict = {}
+        self.output: dict = {}
+
+    @classmethod
+    def applies_to(cls, graph_reader: GraphReader) -> bool:
+        """Triggered when a container instantiates the LDIO orchestrator."""
+        return not graph_reader.filter(
+            pred="tcs:instantiates",
+            obj="ldio:LinkedDataInteractionsOrchestrator",
+        ).df.empty
+
+    def compile(self) -> Graph:
         self.output = {
             "name": "",
             "description": "",
@@ -19,20 +37,23 @@ class LdioConfigCompiler:
             "transformers": [],
             "outputs": [],
         }
-        self.df_steps: pd.DataFrame | None = None
-
-    def compile(self) -> str:
-        # Creating a dataframe for simple retrieval of entry
         self.df_steps = self.fetch_steps()
         self.dict_configs = self.fetch_configs()
         self.fill_in_components()
         self.output = drop_empty(self.output)
-        return yaml.dump(self.output, sort_keys=False)
+        yaml_string = yaml.dump(self.output, sort_keys=False)
+
+        self._attach_file(
+            filename="config.yml",
+            filepath="ldio",
+            content=yaml_string,
+        )
+        return self.graph_reader.graph
 
     def fetch_steps(self) -> pd.DataFrame:
 
         # list all LDIO components
-        where_statement = f"""
+        where_statement = """
         ?container a tcs:DockerContainer .
         ?container tcs:instantiates ldio:LinkedDataInteractionsOrchestrator .
         ?container tcs:instantiates ?pipeline_component .
@@ -40,21 +61,17 @@ class LdioConfigCompiler:
         ?pipeline_step prov:specializationOf ?pipeline_component .
         """
 
-        list_components = self.graph_reader.query(
-            select="?pipeline_component", where=where_statement
+        list_components = self.graph_reader.select(
+            "?pipeline_component", where_statement
         )["pipeline_component"].to_list()
 
         list_records = []
         for component_id in list_components:
-            ldio_label = (
-                self.graph_reader.filter(sub=component_id, pred="rdfs:label")
-                .df["obj"]
-                .to_list()[0]
+            ldio_label = receive_first(
+                self.graph_reader.filter(sub=component_id, pred="rdfs:label").df["obj"],
             )
-            ldio_type = (
-                self.graph_reader.filter(sub=component_id, pred="ldio:type")
-                .df["obj"]
-                .to_list()[0]
+            ldio_type = receive_first(
+                self.graph_reader.filter(sub=component_id, pred="ldio:type").df["obj"],
             )
 
             dict_component = {
@@ -64,13 +81,11 @@ class LdioConfigCompiler:
             }
 
             # If the component has a config assigned, fetch that too
-            if self.graph_reader.query(
-                ask=True, where=f"{component_id} :isAssigned ?config ."
-            ):
-                config_id = (
-                    self.graph_reader.filter(sub=component_id, pred=":isAssigned")
-                    .df["obj"]
-                    .to_list()[0]
+            if self.graph_reader.ask(f"{component_id} :isAssigned ?config ."):
+                config_id = receive_first(
+                    self.graph_reader.filter(sub=component_id, pred=":isAssigned").df[
+                        "obj"
+                    ],
                 )
                 dict_component.update({"config": config_id})
 
@@ -83,7 +98,7 @@ class LdioConfigCompiler:
         config_list = self.df_steps["config"].to_list()
         config_list = [config for config in config_list if isinstance(config, str)]
 
-        graph_dict = GraphDict.from_graph(self.graph_reader.graph)
+        graph_dict = GraphDict(self.graph_reader.graph)
 
         output_dict = {}
         for config_id in config_list:

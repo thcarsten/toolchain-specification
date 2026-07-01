@@ -2,36 +2,64 @@ from rdflib import Graph
 from rdfine import GraphReader, GraphDict, parse_config
 import pandas as pd
 
+from .utils import receive_first
+from .base import Compiler, Tier
 
-class RdfcConfigCompiler:
+
+class RdfcConfigCompiler(Compiler):
     """
     Compiles the pipeline definition file for a Rdf Connect pipeline.
     """
 
-    def __init__(self, build_graph: Graph) -> None:
-        self.input_reader = GraphReader(build_graph)
-        self.output_reader = self.input_reader.query(
-            construct="?pipeline a rdfc:Pipeline .",
-            where="?pipeline a tcs:PipelineDefinition",
-        )
-        self.pipeline_id = (
-            self.input_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition")
-            .df["sub"]
-            .to_list()[0]
-        )
-        self.output = ""
+    tier = Tier.FILE
 
-    def compile(self) -> str:
+    def __init__(self, graph: Graph) -> None:
+        super().__init__(graph)
+        # Intermediate state — populated in ``compile``. ``input_reader``
+        # is an alias for ``graph_reader`` kept for readability in the
+        # helper methods; ``output_reader`` accumulates the RDF-Connect
+        # pipeline triples that are eventually serialized into
+        # ``pipeline.ttl``.
+        self.input_reader: GraphReader = self.graph_reader
+        self.output_reader: GraphReader = GraphReader(Graph())
+        self.pipeline_id: str = ""
+        self.df_channel: pd.DataFrame = pd.DataFrame()
+
+    @classmethod
+    def applies_to(cls, graph_reader: GraphReader) -> bool:
+        """Triggered when a container instantiates the RDF-Connect orchestrator."""
+        return not graph_reader.filter(
+            pred="tcs:instantiates", obj="rdfc:Orchestrator"
+        ).df.empty
+
+    def compile(self) -> Graph:
+        self.input_reader = self.graph_reader
+        self.output_reader = self.input_reader.construct(
+            "?pipeline a rdfc:Pipeline .",
+            "?pipeline a tcs:PipelineDefinition",
+        )
+        self.pipeline_id = receive_first(
+            self.input_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
+                "sub"
+            ],
+        )
+
         self.describe_pipeline()
         self.describe_processors()
         self.describe_configs()
         self.df_channel = self.create_channel_overview()
         self.describe_channels()
 
-        self.output = self.output_reader.serialize("ttl")
-        # Cleaning up the serialized string
-        self.output = self.output.replace(self.pipeline_id, "<>")
-        return self.output
+        ttl_string = self.output_reader.serialize("ttl")
+        # RDF Connect requires the pipeline to be named ``<>``.
+        ttl_string = ttl_string.replace(self.pipeline_id, "<>")
+
+        self._attach_file(
+            filename="pipeline.ttl",
+            filepath="rdfc",
+            content=ttl_string,
+        )
+        return self.graph_reader.graph
 
     def describe_pipeline(self) -> None:
         """
@@ -54,13 +82,13 @@ class RdfcConfigCompiler:
         for runner_id in runner_list:
             env_i += 1
             # The pipeline HAS to be named <>, this is what RDF Connect expects. Otherwise it will not work
-            runner_reader = self.input_reader.query(
-                construct=f"""
+            runner_reader = self.input_reader.construct(
+                f"""
                     {self.pipeline_id} rdfc:consistsOf :env_{env_i} . 
                      {self.pipeline_id} owl:imports ?import .
                     :env_{env_i} rdfc:instantiates {runner_id} .
                     :env_{env_i} rdfc:processor ?step . """,
-                where=f"""
+                f"""
                     ?processor dct:requires {runner_id} .
                     ?processor owl:imports ?import .
                     ?step prov:specializationOf ?processor . 
@@ -76,11 +104,11 @@ class RdfcConfigCompiler:
             - ?processor ?config .
         """
 
-        processor_reader = self.input_reader.query(
-            construct=f"""
+        processor_reader = self.input_reader.construct(
+            """
                 ?step a ?component . 
                 """,
-            where=f"""            
+            """            
                 ?step prov:specializationOf ?component .
                 ?container tcs:instantiates ?component .
                 ?container tcs:instantiates rdfc:Orchestrator .
@@ -103,15 +131,13 @@ class RdfcConfigCompiler:
         config_list = config_df["obj"].to_list()
 
         for config_id in config_list:
-            step_id = (
+            step_id = receive_first(
                 self.input_reader.filter(
                     sub=step_list, pred="p-plan:hasInputVar", obj=config_id
-                )
-                .df["sub"]
-                .to_list()[0]
+                ).df["sub"],
             )
             config_reader = self.input_reader.traverse(config_id)
-            config_graph_dict = GraphDict.from_graph(config_reader.graph)
+            config_graph_dict = GraphDict(config_reader.graph)
             config_dict = config_graph_dict.frame({"@id": config_id}).dict
             config_dict = parse_config(config_dict)[":config"]
             config_dict["@id"] = step_id
@@ -134,17 +160,17 @@ class RdfcConfigCompiler:
             The exact predicates have to be looked up in the node shape of the respective processor
         """
 
-        df_channel = self.input_reader.query(
-            select=f"""
+        df_channel = self.input_reader.select(
+            """
                 ?step ?prev_step ?component 
                 """,
-            where=f"""            
+            """            
                 ?step prov:specializationOf ?component .
                 ?container tcs:instantiates rdfc:Orchestrator .
                 ?container tcs:instantiates ?component .
                 ?container tcs:runs ?step .
-                OPTIONAL {{?step p-plan:isPrecededBy ?prev_step .
-                ?container tcs:runs ?prev_step .}}
+                OPTIONAL {?step p-plan:isPrecededBy ?prev_step .
+                ?container tcs:runs ?prev_step .}
             """,
         )
 
@@ -170,12 +196,12 @@ class RdfcConfigCompiler:
             output_predicate = row["output_predicate"]
 
             # Adding the relevant triples to the output graph
-            channel_reader = self.output_reader.query(
-                construct=f"""
+            channel_reader = self.output_reader.construct(
+                f"""
                     {channel_id} a rdfc:Reader, rdfc:Writer .
                     {prev_step} {output_predicate} {channel_id} .
                     {step} {input_predicate} {channel_id} . """,
-                where="",
+                "",
             )
 
             # Appending the output graph

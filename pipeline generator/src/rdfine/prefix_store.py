@@ -1,91 +1,89 @@
-from rdflib import Graph, URIRef, BNode, Literal, Node
-from bidict import OrderedBidict
-import pandas as pd
+from rdflib import Graph
+
+from . import prefix_apply, rdflib_bridge
+
+
+class PrefixConflictError(ValueError):
+    """
+    Raised when a (prefix, url) pair being added to a :class:`PrefixStore`
+    collides with an existing entry.
+
+    ``kind`` is ``"prefix_collision"`` when the same prefix is being
+    registered to a different URL, or ``"url_collision"`` when a URL is
+    already registered under a different prefix. ``existing`` and
+    ``incoming`` are ``(prefix, url)`` tuples.
+    """
+
+    def __init__(
+        self,
+        kind: str,
+        existing: tuple[str, str],
+        incoming: tuple[str, str],
+    ) -> None:
+        self.kind = kind
+        self.existing = existing
+        self.incoming = incoming
+        super().__init__(f"{kind}: existing={existing}, incoming={incoming}")
 
 
 class PrefixStore:
     """
-    Class to store prefixes and to apply them to various other types
+    Registry of ``(prefix, url)`` pairs and string-level compact / expand /
+    drop operations.
+
+    Polymorphic application across dicts, lists, and DataFrames lives in
+    :mod:`rdfine.prefix_apply`; rdflib glue (graph binding, node conversion)
+    lives in :mod:`rdfine.rdflib_bridge`. The methods of those modules are
+    re-exposed here as thin forwarders so existing call sites keep working.
 
     Properties:
-            - prefixes: an OrderedBidict with prefix:url as key:value-pairs (printed in alphabetical order)
-            - df_ordered_prefixes: a dataframe that ordered the prefixes from longest to shortest url:
-              Prefixes with longer urls are more specific and henc take precedence.
+            - prefixes: ``dict[str, str]`` mapping prefix -> url. Ordered
+              alphabetically for stable display.
 
-    Methods:
-        Interface function: load
-            - _load_from_ttl
-            - _load_from_namespace
-            - _update
-        Apply functions (support primitive, dataframe, list, dict)
-            - compact
-            - expand
-            - drop
-        Hidden functions
-            - _compact_string
-            - _expand_string
-            - _drop_string
-            - apply_prefixes(data, action)
-            - _apply_action_to_object
-        Other functions
-            - fetch_prefix
-            - replace_prefix_in_store
-            - include_in_query
-            - bind_to_namespace
-            - _order_prefixes
-        Type conversions
-            - node_to_python
-            - python_to_node
+    Conflict handling:
+            ``load`` and ``replace_prefix_in_store`` raise
+            :class:`PrefixConflictError` if an incoming entry would clash
+            with an existing one. Conflicts are never resolved silently.
     """
 
     def __init__(self, source):
-        self.prefixes = {}
-        self.df_ordered_prefixes: pd.DataFrame
+        self.prefixes: dict[str, str] = {}
+        # Tuples of (prefix, url) ordered from longest URL to shortest so that
+        # the most specific prefix wins during compaction.
+        self._ordered_prefix_items: list[tuple[str, str]] = []
         self.load(source)
 
     ###########################
     # LOAD PREFIXES
     ###########################
 
-    def load(self, source: str | Graph | dict, replace=True) -> None:
+    def load(self, source: Graph | dict, replace: bool = True) -> None:
         """
-        Loads prefixes from a source. Detects the type of source and calls the corresponding function.
-        If replace is set to false, performs an upsert instead of wiping and replacing stored prefixes.
-        source: str = loads via filepath
-        source: Graph = loads via namespace
-        source: dict = Simple copy of the dict into the class
+        Load prefixes from a source. Dispatches on the type of ``source``.
+
+        If ``replace`` is False, performs an upsert instead of wiping and
+        replacing stored prefixes.
+
+        Supported sources:
+            - ``rdflib.Graph``: prefixes are read from the graph's namespaces.
+            - ``dict``: copied as-is.
+
+        Raises :class:`PrefixConflictError` if any (prefix, url) pair in
+        ``source`` collides with an existing entry. With ``replace=True`` no
+        collisions with prior state are possible, but the source itself is
+        still checked for internal consistency.
         """
-        if isinstance(source, str):
-            prefixes = self._load_from_ttl(source)
-        elif isinstance(source, Graph):
+        if isinstance(source, Graph):
             prefixes = self._load_from_namespace(source)
         elif isinstance(source, dict):
-            prefixes = source
-        elif isinstance(source, OrderedBidict):
             prefixes = dict(source)
         else:
-            raise TypeError(f"Source of type {type(source)} not supported")
+            raise TypeError(
+                f"Source of type {type(source).__name__} not supported. "
+                "Expected rdflib.Graph or dict."
+            )
 
         self._update(prefixes, replace=replace)
-
-    def _load_from_ttl(self, filepath: str) -> dict:
-        """
-        Function to extract the prefixes from a ttl file
-        """
-        dict_prefixes = {}
-        with open(filepath, "r", encoding="utf-8") as file:
-            for line in file:
-                if line.startswith("@prefix"):
-                    prefix = (
-                        line.removeprefix("@prefix")
-                        .split("<")[0]
-                        .strip()
-                        .removesuffix(":")
-                    )
-                    url = line.split("<")[1].split(">")[0]
-                    dict_prefixes[prefix] = url
-
-        return dict_prefixes
 
     def _load_from_namespace(self, graph: Graph) -> dict:
         """
@@ -96,324 +94,209 @@ class PrefixStore:
         for namespace in graph.namespaces():
             prefix = list(namespace)[0]
             url = str(list(namespace)[1])
-            prefixes[prefix] = self._expand_string(
+            prefixes[prefix] = self.expand_string(
                 self.node_to_python(url)
             )  # Url is expanded string version
 
         return prefixes
 
-    def _update(self, dict_prefixes, replace=True) -> None:
+    def _update(self, dict_prefixes: dict[str, str], replace: bool = True) -> None:
         """
-        Updates the prefixes stored as attributes through an upsert.
-        if replace is true, wipes and replaces all stored prefixes instead
-        """
-        # Update attributes with new prefixes
-        if replace:
-            self.prefixes = OrderedBidict(dict_prefixes)
-        else:
-            self.prefixes.update(OrderedBidict(dict_prefixes))
+        Merge ``dict_prefixes`` into ``self.prefixes``.
 
-        # Storing order in which expand should be applied
+        - ``replace=True``: discard current state, then merge.
+        - ``replace=False``: upsert into current state.
+
+        Conflicts are detected against the *post-replace* state. An incoming
+        pair raises :class:`PrefixConflictError` when:
+
+        - its prefix is already registered with a different URL
+          (``"prefix_collision"``), or
+        - its URL is already registered under a different prefix
+          (``"url_collision"``).
+
+        Re-registering an identical ``(prefix, url)`` pair is a no-op.
+        """
+        merged: dict[str, str] = {} if replace else dict(self.prefixes)
+        url_to_prefix: dict[str, str] = {url: p for p, url in merged.items()}
+
+        for prefix, url in dict_prefixes.items():
+            existing_url = merged.get(prefix)
+            if existing_url is not None and existing_url != url:
+                raise PrefixConflictError(
+                    "prefix_collision",
+                    existing=(prefix, existing_url),
+                    incoming=(prefix, url),
+                )
+            existing_prefix = url_to_prefix.get(url)
+            if existing_prefix is not None and existing_prefix != prefix:
+                raise PrefixConflictError(
+                    "url_collision",
+                    existing=(existing_prefix, url),
+                    incoming=(prefix, url),
+                )
+            merged[prefix] = url
+            url_to_prefix[url] = prefix
+
+        self.prefixes = merged
         self._order_prefixes()
 
     ###########################
     # APPLY PREFIXES
     ###########################
 
+    def apply_prefixes(self, data, action: str):
+        """
+        Apply *this store's* prefixes to ``data`` under ``action``
+        (``"compact"`` | ``"expand"`` | ``"drop"``). Dispatches on the type
+        of ``data`` via :func:`rdfine.prefix_apply.apply_prefixes`.
+        """
+        return prefix_apply.apply_prefixes(data, self, action)
+
     def compact(self, data):
         """
-        Interface function for compacting prefixes.
+        Convenience alias for ``apply_prefixes(data, "compact")``. For
+        string-only inputs prefer :meth:`compact_string`.
         """
-        return self.apply_prefixes(data, action="compact")
+        return self.apply_prefixes(data, "compact")
 
     def expand(self, data):
         """
-        Interface function for expanding prefixes.
+        Convenience alias for ``apply_prefixes(data, "expand")``. For
+        string-only inputs prefer :meth:`expand_string`.
         """
-        return self.apply_prefixes(data, action="expand")
+        return self.apply_prefixes(data, "expand")
 
     def drop(self, data):
         """
-        Interface function for dropping prefixes.
+        Convenience alias for ``apply_prefixes(data, "drop")``. For
+        string-only inputs prefer :meth:`drop_string`.
         """
-        return self.apply_prefixes(data, action="drop")
+        return self.apply_prefixes(data, "drop")
 
-    def apply_prefixes(self, data, action: str):
+    def compact_string(self, url: str) -> str:
         """
-        Routing function for compact, expand and drop actions
+        Compact a single IRI string against the registry. Longest-URL match
+        wins; the input is returned unchanged if no prefix applies.
         """
-
-        # Function argument check
-        supported_actions = ["compact", "expand", "drop"]
-        if action not in supported_actions:
-            raise ValueError(f"action not in {supported_actions}")
-
-        if isinstance(data, str):
-            match action:
-                case "compact":
-                    return self._compact_string(data)
-                case "expand":
-                    return self._expand_string(data)
-                case "drop":
-                    return self._drop_string(data)
-
-        if isinstance(data, pd.DataFrame):
-            match action:
-                case "compact":
-                    return data.map(
-                        lambda cell_url: (
-                            self._compact_string(cell_url)
-                            if isinstance(cell_url, str)
-                            else cell_url
-                        )
-                    )
-                case "expand":
-                    return data.map(
-                        lambda cell_url: (
-                            self._expand_string(cell_url)
-                            if isinstance(cell_url, str)
-                            else cell_url
-                        )
-                    )
-                case "drop":
-                    return data.map(
-                        lambda cell_url: (
-                            self._drop_string(cell_url)
-                            if isinstance(cell_url, str)
-                            else cell_url
-                        )
-                    )
-
-        if isinstance(data, list) or isinstance(data, dict):
-            return self._apply_action_to_object(data, action)
-
-    def _apply_action_to_object(self, obj: list | dict, action: str) -> list | dict:
-        """
-        Recursively apply prefixes in objects, i.e. nested lists and dicts.
-        """
-        if isinstance(obj, dict):
-            new_dict = {}
-            for key, value in obj.items():
-                # Replace in key if it's a string
-                match action:
-                    case "compact":
-                        new_key = (
-                            self._compact_string(key) if isinstance(key, str) else key
-                        )
-                    case "expand":
-                        new_key = (
-                            self._expand_string(key) if isinstance(key, str) else key
-                        )
-                    case "drop":
-                        new_key = (
-                            self._drop_string(key) if isinstance(key, str) else key
-                        )
-                # Recursively process value
-                new_dict[new_key] = self._apply_action_to_object(value, action)
-            return new_dict
-
-        elif isinstance(obj, list):
-            return [self._apply_action_to_object(item, action) for item in obj]
-
-        elif isinstance(obj, str):
-            match action:
-                case "compact":
-                    return self._compact_string(obj)
-                case "expand":
-                    return self._expand_string(obj)
-                case "drop":
-                    return self._drop_string(obj)
-        else:
-            return obj
-
-    def _compact_string(self, url: str) -> str:
-        """
-        Compacts prefixes in a string to a compacted url
-        """
-        if isinstance(url, str):
-            for index, row in self.df_ordered_prefixes.iterrows():
-                if url.startswith(row["url"]):
-                    url = row["prefix"] + ":" + url.removeprefix(row["url"])
-                    break
+        for prefix, prefix_url in self._ordered_prefix_items:
+            if url.startswith(prefix_url):
+                return prefix + ":" + url.removeprefix(prefix_url)
         return url
 
-    def _expand_string(self, url: str) -> str:
+    def expand_string(self, url: str) -> str:
         """
-        Expands a compacted url based on the prefixes provided to a full url of type string
+        Expand a compacted IRI string (``prefix:local``) back to its full URL
+        using the registry. Returns the input unchanged if the prefix is
+        not registered or the string has no ``:``.
         """
-        expanded_url = url
         if ":" in url:
             prefix, local = url.split(":", 1)
             if prefix in self.prefixes:
-                expanded_url = self.prefixes[prefix] + local
+                return self.prefixes[prefix] + local
+        return url
 
-        return expanded_url
-
-    def _drop_string(self, url: str) -> str:
+    def drop_string(self, url: str) -> str:
         """
-        If the url contains a known prefix (or corresponding url), it is removed.
+        Strip any known prefix from a single IRI string, returning only the
+        local part. Unknown / unprefixed inputs are returned unchanged.
         """
-        prefix_dict = self.fetch_prefix(url)
-        if prefix_dict:
-            prefix = list(prefix_dict.keys())[0]
-            shortened_url = self._compact_string(url)
-            shortened_url = shortened_url.removeprefix(prefix + ":")
-            return shortened_url
-        else:
-            return url  # Return as-is if no known prefix is found
+        prefix = self.fetch_prefix(url)
+        if prefix is None:
+            return url
+        shortened_url = self.compact_string(url)
+        return shortened_url.removeprefix(prefix + ":")
 
     ###########################
     # OTHER
     ###########################
 
-    def fetch_prefix(self, node_id: str) -> dict:
+    def fetch_prefix(self, node_id: str) -> str | None:
         """
-        Looks up if 'node_id' uses a known prefix.
-        Returns the corresponding entry as dict.
+        Look up which known prefix (if any) ``node_id`` uses.
+
+        Returns the matching prefix name (e.g. ``"rdf"``) or ``None`` when no
+        known prefix applies. Longest-URL match wins, consistent with
+        :meth:`compact_string`.
         """
 
-        compacted_node_id = self._compact_string(node_id)
+        compacted_node_id = self.compact_string(node_id)
 
-        match_dict = {}
-        # Testing for the case of a compacted node_id
-        for prefix in self.prefixes:
-            if compacted_node_id.startswith(prefix + ":"):
-                match_dict[prefix] = self.prefixes.get(prefix)
+        if ":" in compacted_node_id:
+            prefix, _ = compacted_node_id.split(":", 1)
+            if prefix in self.prefixes:
+                return prefix
 
-        return match_dict
+        return None
 
     def bind_to_namespace(self, graph: Graph) -> None:
         """
-        Binds prefixes to namespaces of a RDFlib Graph object so that serialization can utilize these namespaces
-        TODO: Resolve conflicts if different prefixes are bound to same url
+        Forward to :func:`rdfine.rdflib_bridge.bind_to_namespace`.
         """
-        for key in self.prefixes:
-            graph.bind(key, self.prefixes[key], override=True)
+        rdflib_bridge.bind_to_namespace(graph, self)
 
     def include_in_query(self, query: str) -> str:
         """
-        Prepands a SPARQL query with the prefixes, so that queries do not need to make use of full urls.s
+        Forward to :func:`rdfine.prefix_apply.include_in_query`.
         """
-        # Preparing the prefixes
-        prefix_textlines = []
-        for prefix in self.prefixes:
-            prefix_textline = f"PREFIX {prefix}: <{self.prefixes[prefix]}>"
-            prefix_textlines.append(prefix_textline)
-        prefix_textblock = "\n".join(prefix_textlines)
-
-        # Prepending the prefixes to the query
-        query = "\n".join([prefix_textblock, query])
-        return query
+        return prefix_apply.include_in_query(query, self)
 
     def _order_prefixes(self) -> None:
         """
-        I always need to match the longest urls first, because they are more specific and hence take precendence in case of ties.
-        So here I order by url length and add as attribute of the class.
-        It is safer not to store the result of this function as attribute of the class, because the attribute will be outdated once
-        the prefixes dictionary is updated.
+        Refresh derived prefix orderings after ``self.prefixes`` changes.
+
+        - ``self._ordered_prefix_items``: list of ``(prefix, url)`` tuples
+          sorted by URL length descending. Longer (more specific) URLs are
+          matched first during compaction so they take precedence on ties.
+        - ``self.prefixes`` itself is re-bound in alphabetical key order for
+          stable, human-readable printing.
         """
 
-        prefixes = self.prefixes
-
-        # Making sure that the expand is applied starting with the longest urls
-        df_ordered_prefixes = pd.DataFrame.from_records(
-            [{"prefix": prefix, "url": prefixes[prefix]} for prefix in prefixes]
+        # Match the longest urls first (most specific takes precedence).
+        self._ordered_prefix_items = sorted(
+            self.prefixes.items(), key=lambda item: -len(item[1])
         )
-        df_ordered_prefixes["length"] = [len(url) for url in df_ordered_prefixes["url"]]
-        df_ordered_prefixes = df_ordered_prefixes.sort_values("length", ascending=False)
-        df_ordered_prefixes = df_ordered_prefixes.reset_index(drop=True)
 
-        self.df_ordered_prefixes = df_ordered_prefixes
-
-        # Making sure the print order of the dict is alphabetical
-        alphabetically_sorted_dict = {}
-        for prefix in sorted(prefixes.keys()):
-            alphabetically_sorted_dict[prefix] = prefixes[prefix]
-        self.prefixes = OrderedBidict(alphabetically_sorted_dict)
+        # Keep ``self.prefixes`` itself ordered alphabetically for display.
+        self.prefixes = {key: self.prefixes[key] for key in sorted(self.prefixes)}
 
     def replace_prefix_in_store(self, original: str, replacement: str) -> None:
         """
-        Replaces a prefix stored in the prefixStore with another prefix.
-        Will affect compact and expand.
+        Rename a prefix in the store. Affects both ``compact`` and ``expand``.
+
+        Raises:
+            KeyError: if ``original`` is not registered.
+            PrefixConflictError: if ``replacement`` is already registered
+                under a different URL.
         """
-        keys = [key for key in self.prefixes.keys()]  # deep copy
-        for key in keys:
-            if key == original:
-                value = self.prefixes.pop(original)
-                self.prefixes[replacement] = value
+        if original not in self.prefixes:
+            raise KeyError(f"Prefix '{original}' is not registered.")
+        url = self.prefixes[original]
+        if replacement in self.prefixes and self.prefixes[replacement] != url:
+            raise PrefixConflictError(
+                "prefix_collision",
+                existing=(replacement, self.prefixes[replacement]),
+                incoming=(replacement, url),
+            )
+        del self.prefixes[original]
+        self.prefixes[replacement] = url
         self._order_prefixes()
 
     ###########################
     # TYPE CONVERSIONS
     ###########################
-    """
-    Type conversions between RDFlib terms and python native types do not really fit in the responsibilities of the prefix store,
-    however this often involves prefix-knowledge, hence why I put it here.
-    """
+    # The conversions themselves live in :mod:`rdfine.rdflib_bridge` so the
+    # registry stays free of rdflib-specific concerns. These methods remain
+    # here as thin forwarders for callers that prefer ``store.node_to_python``
+    # over importing the bridge module directly.
 
-    def node_to_python(self, cell: Node):
-        """
-        Converts a RDFlib Node to a native Python Type.
-        Literals are converted to their corresponding Python type.
-        URIrefs and Bnodes are converted to strings.
-        Does some cleaning to remove trailing symbols.
-        """
+    def node_to_python(self, cell):
+        """Forward to :func:`rdfine.rdflib_bridge.node_to_python`."""
+        return rdflib_bridge.node_to_python(cell, self)
 
-        # If node is a UriRef, return a cleaned string
-        if isinstance(cell, URIRef) or isinstance(cell, BNode):
-            simplified_cell = cell.n3()
-            if isinstance(simplified_cell, str):
-                if len(simplified_cell) >= 2:  # Prevents bugs
-                    if simplified_cell[0] == '"' and simplified_cell[-1] == '"':
-                        simplified_cell = simplified_cell[1:-1]
-                if len(simplified_cell) >= 2:
-                    if simplified_cell[0] == "<" and simplified_cell[-1] == ">":
-                        simplified_cell = simplified_cell[1:-1]
-                simplified_cell = simplified_cell.strip()
-            if isinstance(cell, URIRef):
-                return self._compact_string(simplified_cell)
-            else:
-                return simplified_cell
-        # Convert to native python primitives if cell is literal
-        elif isinstance(cell, Literal):
-            return cell.toPython()
-        else:
-            return cell
-
-    def python_to_node(self, cell, node_class) -> Node | None:
-
-        # Fetching type error
-        if node_class == URIRef or node_class == BNode:
-            if not isinstance(cell, str):
-                raise TypeError(
-                    f"Cannot convert {cell} ({type(cell)} to {node_class}, str expected.)"
-                )
-
-        # Converting to URIRef
-        if node_class == URIRef:
-            return URIRef(self._expand_string(cell))
-
-        # Converting to BNode, with safety checks
-        elif node_class == BNode:
-            match_dict = self.fetch_prefix(cell)
-            if match_dict:
-                prefix = list(match_dict.keys())[0]
-                raise TypeError(
-                    f"{cell} has known prefix {prefix}. This indicates URIRef, but you tried converting to BNode."
-                )
-            elif cell.startswith("_:"):
-                cell = cell.removeprefix("_:")
-            return BNode(cell)
-
-        # Converting to Literal
-        elif node_class == Literal:
-            return Literal(
-                cell
-            )  # Handles type conversion automatically via constructor
-
-        # Throw error for unknown node_class
-        else:
-            raise TypeError(f"node_class {node_class} is not URIRef, BNode or Literal.")
+    def python_to_node(self, cell, node_class):
+        """Forward to :func:`rdfine.rdflib_bridge.python_to_node`."""
+        return rdflib_bridge.python_to_node(cell, node_class, self)
 
     ###########################
     # DUNDER METHODS
@@ -426,10 +309,3 @@ class PrefixStore:
     # Indexing prefix_store returns indexed self.prefixes
     def __getitem__(self, key):
         return self.prefixes[key]
-
-    def __setitem__(self, key, newvalue):
-        self.load({key: newvalue}, replace=False)
-
-    def __delitem__(self, key):
-        del self.prefixes[key]
-        self._order_prefixes()

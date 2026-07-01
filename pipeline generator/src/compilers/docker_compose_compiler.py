@@ -1,21 +1,29 @@
 from rdflib import Graph
 from rdfine import GraphReader, GraphDict, parse_config
 
+from .base import Compiler, Tier
 
-class DockerComposeCompiler:
+
+class DockerComposeCompiler(Compiler):
     """
     Compiles the docker compose configuration file.
     """
 
-    def __init__(self, build_graph: Graph) -> None:
-        self.graph_reader = GraphReader(build_graph)
+    tier = Tier.FILE
 
-    def compile(self):
+    @classmethod
+    def applies_to(cls, graph_reader: GraphReader) -> bool:
+        """Triggered whenever a ``tcs:DockerComposeConfig`` node is present."""
+        return not graph_reader.filter(
+            pred="rdf:type", obj="tcs:DockerComposeConfig"
+        ).df.empty
+
+    def compile(self) -> Graph:
 
         # Getting a list of all microservice configs
-        config_list = self.graph_reader.query(
-            select="?config",
-            where=f"""
+        config_list = self.graph_reader.select(
+            "?config",
+            """
                  ?config a tcs:DockerComposeConfig ;
         """,
         )["config"].to_list()
@@ -23,7 +31,7 @@ class DockerComposeCompiler:
         # Compiling the output file based on the config_list
         docker_compose_dict = {}
         for config_id in config_list:
-            microservice_graph_dict = GraphDict.from_graph(
+            microservice_graph_dict = GraphDict(
                 self.graph_reader.traverse(config_id).graph
             )
             microservice_graph_dict = microservice_graph_dict.frame({"@id": config_id})
@@ -33,5 +41,13 @@ class DockerComposeCompiler:
             docker_compose_dict.update(microservice_dict)
 
         # Serializing the output in the expected format
-        self.output = GraphDict(docker_compose_dict, self.graph_reader.prefix_store)
-        return self.output.serialize("yml", "drop")
+        yaml_string = GraphDict(
+            docker_compose_dict, prefix_store=self.graph_reader.prefix_store
+        ).serialize("yml", "drop")
+
+        self._attach_file(
+            filename="docker-compose.yml",
+            filepath=".",
+            content=yaml_string,
+        )
+        return self.graph_reader.graph

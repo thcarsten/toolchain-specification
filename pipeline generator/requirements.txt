@@ -1,9 +1,5 @@
-rdflib # Interact with RDF graph
-boltons # Recursive transformation of nested structures
-glom # Easier data retrieval from nested structures
-validators # detecting urls
-pyld # for json-ld framing
-bidict # for ordered dictionaries with one-to-one mapping 
-pyyaml # yaml support
-jsonschema # for automatic validation of dictionary contents
-pandas # for DataFrames (tables)
+# All third-party dependencies are declared by the rdfine package
+# (see src/rdfine/pyproject.toml). Installing rdfine in editable mode
+# therefore covers both rdfine itself and the compilers package.
+-e ./src/rdfine
+
