@@ -119,7 +119,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ### Config
 | | |
 |----------|----------|
-| **Definition** | A Config is a set of input parameters for a Pipeline Component, which defines its behavior in a pipeline. In its simplest case, it is a set of key-value pairs. However, also nested configurations are possible. As a data structure a Config is equivalent to the "object" type in JSON, consisting of an unordered set of name/value pairs. The name is a string and the value is a string, number, boolean, array, or object (same concept as in the [Common Workflow Language](https://www.commonwl.org/v1.2/Workflow.html#Data_concepts)), resulting in an unordered, tree-like (acyclic) structure. Each Config requires either a tc:embedded or tc:literal-predicate. This tells the Pipeline Generator whether the Config is contained in the graph or must be parsed from a string-literal. If tc:embedded is used, the Config points to a blank node representing a data object: Predicates serve as keys and objects as values. If tc:literal is used, the Config points to a string of either json- or yaml-format. In this case the Pipeline Generator parses the string to extract the configuration data. A Config can be stored as a preset in the Component Catalog. In this case a Pipeline Component can point to its associated Configs via tc:storedConfig. This is ideal for attaching default configurations, or attaching configurations often needed for specific use cases. As part of an Assignment and hence Pipeline Definition (see below), tc:config can either point to one of these pre-made Configs or to a newly defined Config. |
+| **Definition** | A Config is a set of input parameters for a Pipeline Component, which defines its behavior in a pipeline. In its simplest case, it is a set of key-value pairs. However, also nested configurations are possible. As a data structure a Config is equivalent to the "object" type in JSON, consisting of an unordered set of name/value pairs. The name is a string and the value is a string, number, boolean, array, or object (same concept as in the [Common Workflow Language](https://www.commonwl.org/v1.2/Workflow.html#Data_concepts)), resulting in an unordered, tree-like (acyclic) structure. Each Config requires either a tcs:embedded or tcs:literal-predicate. This tells the Pipeline Generator whether the Config is contained in the graph or must be parsed from a string-literal. If tcs:embedded is used, the Config points to a blank node representing a data object: Predicates serve as keys and objects as values. If tcs:literal is used, the Config points to a string of either json- or yaml-format. In this case the Pipeline Generator parses the string to extract the configuration data. A Config can be stored as a preset in the Component Catalog. In this case a Pipeline Component can point to its associated Configs via tcs:storedConfig. This is ideal for attaching default configurations, or attaching configurations often needed for specific use cases. As part of an Assignment and hence Pipeline Definition (see below), tcs:config can either point to one of these pre-made Configs or to a newly defined Config. |
 | **subclass of** | --- |
 <br>
 
@@ -147,27 +147,35 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 <br>
 
 
+### Compiler
+| | |
+|----------|----------|
+| **Definition** | A Compiler acts as translation layer between the Pipeline Definition and framework-specific implementation logic. It does so by acting on the Pipeline Build; it defines which files and folders are required for the Pipeline to be instantiated. Making Compilers explicitly part of the catalog has two advantages: For provenance, a Pipeline Build can declare what compilers were used for its creation. For validation, sh:NodeShapes can be attached to compilers. In this way it can be made explicit which properties a Compiler expects for its compilation process. |
+| **subclass of** | --- |
+<br>
+
+
 ## 2.5. Subclasses of Config
 
 ### DockerComposeConfig
 | | |
 |----------|----------|
 | **Definition** | The DockerComposeConfig defines how the DockerContainer should be started up, for example which volumes should be mounted and which ports should be opened. |
-| **subclass of** | tc:Config |
+| **subclass of** | tcs:Config |
 <br>
 
 ### PipelineConfig
 | | |
 |----------|----------|
 | **Definition** | The PipelineConfig are those input parameters that the DockerContainer requires to execute the Pipeline Steps as intended.  |
-| **subclass of** | tc:Config |
+| **subclass of** | tcs:Config |
 <br>
 
 ### DefaultConfig
 | | |
 |----------|----------|
 | **Definition** | The Config that should be used for a PipelineComponent if not other Config is assigned in a PipelineDefinition.  |
-| **subclass of** | tc:Config |
+| **subclass of** | tcs:Config |
 <br>
 
 # 3. Examples
