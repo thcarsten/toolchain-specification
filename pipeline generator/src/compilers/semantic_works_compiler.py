@@ -25,7 +25,7 @@ class SemanticWorksCompiler(Compiler):
         df = graph_reader.filter(pred="rdf:type", obj="tcs:PipelineComponent").df
         return bool(df["sub"].str.startswith("sw:").any())
 
-    def compile(self) -> Graph:
+    def _compile(self) -> Graph:
         self.fetch_components()
         for component_id in self.component_df["component"].to_list():
             self.update_docker_config(component_id)

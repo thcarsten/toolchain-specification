@@ -13,7 +13,7 @@ class PipelineGenerator:
 
     The generator runs in two phases:
 
-    1. **Bootstrap** — :class:`PipelineExtractor` walks the catalog
+    1. **Seed** — :class:`PipelineExtractor` walks the catalog
        using the supplied ``pipeline_id`` to produce the initial build
        graph; :class:`PipelineAssembler` then materializes the
        ``tcs:PipelineBuild`` node and its container/step/config
@@ -44,7 +44,7 @@ class PipelineGenerator:
 
     # Compilers that always run, in the order they must run. Excluded
     # from registry dispatch.
-    BOOTSTRAP: tuple[type[Compiler], ...] = (PipelineExtractor, PipelineAssembler)
+    SEED: tuple[type[Compiler], ...] = (PipelineExtractor, PipelineAssembler)
 
     def __init__(self, pipeline_id: str, catalog_graph: Graph) -> None:
         self.pipeline_id = pipeline_id
@@ -54,7 +54,11 @@ class PipelineGenerator:
         self.build: Graph = Graph()
 
     def compile(self) -> Graph:
-        # Phase 1 \u2014 bootstrap.
+        # Reset the shared creator buffer so provenance from an earlier
+        # run does not bleed into this one.
+        Compiler._pending_creators = []
+
+        # Phase 1 — seed.
         extractor = PipelineExtractor(self.pipeline_id, self.catalog_graph)
         self.build = extractor.compile()
         self.compilers = {PipelineExtractor: extractor}
@@ -63,9 +67,9 @@ class PipelineGenerator:
         self.build = assembler.compile()
         self.compilers[PipelineAssembler] = assembler
 
-        # Phase 2 \u2014 dispatch to every registered compiler that applies.
-        bootstrap = set(self.BOOTSTRAP)
-        candidates = [cls for cls in Compiler._registry if cls not in bootstrap]
+        # Phase 2 — dispatch to every registered compiler that applies.
+        seed = set(self.SEED)
+        candidates = [cls for cls in Compiler._registry if cls not in seed]
         for cls in sorted(candidates, key=lambda c: c.tier):
             if cls.applies_to(GraphReader(self.build)):
                 instance = cls(self.build)

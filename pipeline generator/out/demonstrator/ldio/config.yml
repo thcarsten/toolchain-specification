@@ -1,0 +1,19 @@
+input:
+  adapter:
+    name: Ldio:RdfAdapter
+  name: Ldio:HttpInPoller
+  config:
+    cron: '*/10 * * * * *'
+    url: https://dishacled-api.azurewebsites.net/api/v1/source-a/current
+transformers:
+- name: Ldio:SparqlConstructTransformer
+  config:
+    query: "\r\n            PREFIX dct: <http://purl.org/dc/terms/> .\r\n        \
+      \    PREFIX prov: <http://www.w3.org/ns/prov#> .\r\n            CONSTRUCT {\r\
+      \n              ?versionedS ?p ?o ;\r\n                  prov:generatedAtTime\
+      \ ?generatedAtTime ;\r\n                  dct:isVersionOf ?s .\r\n         \
+      \   } WHERE {\r\n              ?s ?p ?o .\r\n              BIND(URI(CONCAT(STR(?s),\
+      \ '/', STR(?now))) as ?versionedS)\r\n              BIND (NOW() as ?generatedAtTime)\r\
+      \n            }\r\n          "
+outputs:
+- name: Ldio:HttpOut

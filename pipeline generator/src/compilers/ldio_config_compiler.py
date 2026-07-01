@@ -29,7 +29,7 @@ class LdioConfigCompiler(Compiler):
             obj="ldio:LinkedDataInteractionsOrchestrator",
         ).df.empty
 
-    def compile(self) -> Graph:
+    def _compile(self) -> Graph:
         self.output = {
             "name": "",
             "description": "",

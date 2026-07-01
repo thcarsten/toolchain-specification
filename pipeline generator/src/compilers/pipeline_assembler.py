@@ -10,7 +10,7 @@ class PipelineAssembler(Compiler):
     Also assigns configs to the components they belong to.
     """
 
-    tier = Tier.BOOTSTRAP
+    tier = Tier.SEED
 
     def __init__(self, graph: Graph) -> None:
         super().__init__(graph)
@@ -19,7 +19,7 @@ class PipelineAssembler(Compiler):
         # post-compile inspection.
         self.pipeline_id: str = ""
 
-    def compile(self) -> Graph:
+    def _compile(self) -> Graph:
         self.pipeline_id = receive_first(
             self.graph_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
                 "sub"

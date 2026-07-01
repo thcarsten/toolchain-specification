@@ -32,7 +32,7 @@ class RdfcConfigCompiler(Compiler):
             pred="tcs:instantiates", obj="rdfc:Orchestrator"
         ).df.empty
 
-    def compile(self) -> Graph:
+    def _compile(self) -> Graph:
         self.input_reader = self.graph_reader
         self.output_reader = self.input_reader.construct(
             "?pipeline a rdfc:Pipeline .",

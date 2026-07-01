@@ -18,7 +18,7 @@ class DockerComposeCompiler(Compiler):
             pred="rdf:type", obj="tcs:DockerComposeConfig"
         ).df.empty
 
-    def compile(self) -> Graph:
+    def _compile(self) -> Graph:
 
         # Getting a list of all microservice configs
         config_list = self.graph_reader.select(

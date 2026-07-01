@@ -11,13 +11,13 @@ class PipelineExtractor(Compiler):
     its sole responsibility is grabbing the data and returning it in line with the internal model.
     """
 
-    tier = Tier.BOOTSTRAP
+    tier = Tier.SEED
 
     def __init__(self, pipeline_id: str, graph: Graph) -> None:
         super().__init__(graph)
         self.pipeline_id = pipeline_id
 
-    def compile(self) -> Graph:
+    def _compile(self) -> Graph:
         self.extract_pipeline()
         self.name_blind_nodes()
         return self.graph_reader.graph
