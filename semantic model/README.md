@@ -139,6 +139,13 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 | **subclass of** | --- |
 <br>
 
+### File
+| | |
+|----------|----------|
+| **Definition** | A File describes the output artifacts that the PipelineGenerator produces as part of the Pipeline Build. A File has a filename, filepath and content. These are attached to a tcs:File via tcs:filename, tcs:filepath and tcs:literal, respectively. We use tcs:literal here because currently file content is exclusively expressed as literal strings of various formats (yaml, json, ttl ...). |
+| **subclass of** | --- |
+<br>
+
 
 ## 2.5. Subclasses of Config
 
