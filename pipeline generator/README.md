@@ -14,7 +14,7 @@
 [6. How To](#6-how-to) <br>
 
 ## 1. Introduction
-In this repo you find the codebase for the tool “pipeline generator”. As the name suggests, the pipeline generator automatically generates pipelines based on a semantic description of a pipeline. The pipeline generator accepts pipeline definitions which are written in RDF and follow the [semantic model](https://github.com/thcarsten/toolchain-specification/tree/main/semantic%20model) of the toolchain specification. Based on the pipeline definition, it looks up components and their dependencies in a component catalogue, and builds docker containers to resolve these dependencies. It also generates the configuration files necessary to run the pipelines. In the [data-folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/data), you can find the pipeline definitions and the catalogue used for [the demo](https://github.com/thcarsten/toolchain-specification/blob/main/pipeline%20generator/src/demo.ipynb). Currently three frameworks are supported, RDF Connect, LDIO and semantic.works.
+In this repo you find the codebase for the tool "pipeline generator". As the name suggests, the pipeline generator automatically generates pipelines based on a semantic description of a pipeline. The pipeline generator accepts pipeline definitions which are written in RDF and follow the [semantic model](https://github.com/thcarsten/toolchain-specification/tree/main/semantic%20model) of the toolchain specification. Based on the pipeline definition, it looks up components and their dependencies in a component catalog, and generates a Docker Compose file wiring together the containers that resolve these dependencies. It also generates the framework-specific configuration files necessary to run the pipelines. In the [data-folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/data), you can find the pipeline definitions and the catalog used for [the demo](https://github.com/thcarsten/toolchain-specification/blob/main/pipeline%20generator/src/demo.ipynb). Currently three frameworks are supported: RDF-Connect, LDIO and semantic.works.
 
 The codebase is found in the [src-folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/src). It consists of two packages: `rdfine` provides ergonomic graph IO and transformation primitives (see its own [README](src/rdfine/README.md)); `compilers` is the pipeline generator itself, built around a small `Compiler` ABC and a self-registering dispatch system orchestrated by `PipelineGenerator`. Section 4 describes the architecture in detail.
 
@@ -78,7 +78,7 @@ Internally, `PipelineGenerator` runs in two phases:
 
 1. **Bootstrap** — runs unconditionally and in a fixed order:
    - `PipelineExtractor` extracts the data concerning the requested pipeline definition.
-   - `PipelineAssembler` assigns Docker Containers, Steps and Configs to materialize the `tcs:PipelineBuild` skeleton on which every other compiler depends.
+   - `PipelineAssembler` materializes the `tcs:PipelineBuild` skeleton by creating a `tcs:DockerContainer` for each microservice and linking the pre-existing steps and configs to them (via `dct:hasPart`, `tcs:instantiates`, `tcs:runs` and `:isAssigned`). Every other compiler depends on this skeleton.
 2. **Dispatch** — every other concrete `Compiler` in the registry is consulted via its `applies_to` classmethod and run in `Tier` order against the growing build graph. Currently implemented:
    - `SemanticWorksCompiler` (BUILD tier) integrates step configurations into the env vars of semantic.works microservices.
    - `LdioConfigCompiler` (FILE tier) generates the LDIO config file.
@@ -205,7 +205,7 @@ After `PipelineGenerator.compile()` returns, the build graph is fully self-descr
 | Compiler | Tier | Trigger (`applies_to`) | Reads from the build | Writes to the build |
 | --- | --- | --- | --- | --- |
 | `PipelineExtractor` | BOOTSTRAP | always (bootstrap) | the catalog | triples concerning the requested pipeline definition |
-| `PipelineAssembler` | BOOTSTRAP | always (bootstrap) | the extracted pipeline | `tcs:PipelineBuild`, `tcs:DockerContainer`, `tcs:runs`, `:isAssigned` |
+| `PipelineAssembler` | BOOTSTRAP | always (bootstrap) | the extracted pipeline | `tcs:PipelineBuild`, `tcs:DockerContainer`, `dct:hasPart`, `tcs:instantiates`, `tcs:runs`, `:isAssigned` |
 | `SemanticWorksCompiler` | BUILD | any `tcs:PipelineComponent` with a `sw:` URI | step configs + docker configs of `sw:` components | updated `tcs:literal` on each affected `tcs:DockerComposeConfig` |
 | `LdioConfigCompiler` | FILE | a container instantiating `ldio:LinkedDataInteractionsOrchestrator` | LDIO components and their configs | `tcs:File` named `ldio/config.yml` |
 | `RdfcConfigCompiler` | FILE | a container instantiating `rdfc:Orchestrator` | RDF-Connect components, runners and step graph | `tcs:File` named `rdfc/pipeline.ttl` |
@@ -214,25 +214,25 @@ After `PipelineGenerator.compile()` returns, the build graph is fully self-descr
 ## 5. Future directions
 The pipeline generator is not fully implemented yet, it is a work in progress. We have the following goals for the year 2026:
 
-- [x] Add support for Pipeline Definitions spanning components of both the RDF Connect and LDIO framework. This warrants automatic generation of interoperable pipelines.
+- [x] Add support for Pipeline Definitions spanning components of both the RDF-Connect and LDIO framework. This warrants automatic generation of interoperable pipelines.
 - [x] Add another framework, [semantic.works](https://semantic.works/).
-- [x] PipelineAssembler: Looks up whether a Pipeline Definition contains segments to be covered by different microservices. If so, generates a DataTree describing the microservices and the pipeline segments they ought to cover. Also includes a new Pipeline Definition per microservice (to be fed to downstream compilers).
+- [x] PipelineAssembler: Assigns segments of a Pipeline Definition to microservices. It does so by following dependency paths via dct:requires and assigning InstancePipelineComponents to the microservices that instantiate them.
 - [x] DockerComposeCompiler: Compiles a DockerCompose file based on the description of the different microservices.
 - [x] ProjectBuilder: Takes the semantic description of the PipelineBuild and writes the attached `tcs:File` nodes to a folder using their `tcs:filepath` / `tcs:filename`. Lives outside the `Compiler` hierarchy because it is the filesystem boundary, not a graph-to-graph transformation.
 - [x] CompilerAssigner: It may be necessary at some point to provide a lookup which compilers need to be called depending on information contained in the graph. So that compilers can be called dynamically based on need. Implemented as a registry on `Compiler._registry` (auto-populated via `__init_subclass__`) combined with a per-compiler `applies_to(graph_reader) -> bool` classmethod that declares the triggering pattern.
 - [ ] SemanticModelVersionMapper: Can map from one version of the semantic model to the internal model that is used by the pipeline generator. Allows decoupling versioning of the official semantic model and the internal model used for implementation.
-- [ ] RdfcDockerFileCompiler: Creates an adhoc Dockerfile for RDF-Connect. This allows to include only those dependencies in a docker container which are actually used in the pipeline (currently I use a generic RDF-Connect Docker container that includes most RDF Connect components).
+- [ ] RdfcDockerFileCompiler: Creates an adhoc Dockerfile for RDF-Connect. This allows to include only those dependencies in a docker container which are actually used in the pipeline (currently I use a generic RDF-Connect Docker container that includes most RDF-Connect components).
 - [x] PipelineGenerator: Uses all previously described compilers to route the compilation flow for generating a pipeline project folder based on a Pipeline Definition. Routing is done via the registry + `applies_to` mechanism described above; producing the project folder on disk is handled by `ProjectBuilder`.
 
 
 ## 6. How To
 
 ### 6.1. How to write your own Pipeline Definition
-You can find a couple of examples in the pipeline.ttl- file in the data folder. A Pipeline Definition is as simple as a bunch of InstancePipelineComponents, linked to each other. Each InstancePipelineComponent receives a Config and is carried out by a component of the Catalog. So you do not need a lot to write a Pipeline Definition. This part will be made easier in the future by providing a frontend.
+You can find a couple of examples in the catalog.ttl file in the data folder. A Pipeline Definition is as simple as a bunch of InstancePipelineComponents, linked to each other. Each InstancePipelineComponent receives a Config and is carried out by a component of the catalog. So you do not need a lot to write a Pipeline Definition. This part will be made easier in the future by providing a frontend.
 
 
-### 6.2. How to onboard your own components to the catalogue
-Check the Catalog in the data folder for examples. At a minimum, a Pipeline Component needs either a DockerComposeConfig or a dependency to a component with a DockerComposeConfig. The assumption is that each DockerComposeConfig resolves all dependencies of components attached to it, including itself. Depending on the framework, you may also need to include framework-specific properties. For example, the LdioConfigCompiler needs to be able to look up ldio:type and rdf:label, whereas the RdfcConfigCompiler needs to be able to look up owl:imports. Everything else is optional, but it is a good idea to include as many NodeShapes as possible: It serves as a lookup reference for the constraints that need to be fullfilled once a component is included in a pipeline.
+### 6.2. How to onboard your own components to the catalog
+Check the catalog in the data folder for examples. At a minimum, a Pipeline Component needs either a DockerComposeConfig or a dependency to a component with a DockerComposeConfig. The assumption is that each DockerComposeConfig resolves all dependencies of components attached to it, including itself. Depending on the framework, you may also need to include framework-specific properties. For example, the LdioConfigCompiler needs to be able to look up ldio:type and rdf:label, whereas the RdfcConfigCompiler needs to be able to look up owl:imports. Everything else is optional, but it is a good idea to include as many NodeShapes as possible: It serves as a lookup reference for the constraints that need to be fulfilled once a component is included in a pipeline.
 
 
 ### 6.3. How to onboard new frameworks
