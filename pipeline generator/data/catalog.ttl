@@ -285,11 +285,13 @@ ldio-pipeline-starter:
 #################################################################
 
 rdfc:SparqlIngest a tcs:PipelineComponent;
-    rdfs:label "Sparql Ingst";
+    rdfs:label "Sparql Ingest";
     rdfs:description "This processor takes a stream of RDF records, transforms them into corresponding SPARQL Update queries, and executes them against a SPARQL Graph Store via the SPARQL Protocol." ; 
     dcat:landingPage "https://github.com/rdf-connect/sparql-ingest-processor-ts";
     dct:requires rdfc:NodeRunner;
     owl:imports <./node_modules/@rdfc/sparql-ingest-processor-ts/processors.ttl> ;
+    :reader_predicate rdfc:memberStream ;
+    :writer_predicate rdfc:sparqlWriter ;
     dcat:qualifiedRelation [
       dct:relation :SparqlIngestConfigShape, :SparqlIngestPerformanceShape;
       dcat:hadRole "configShape" ;
@@ -349,23 +351,24 @@ rdfc:SparqlIngest a tcs:PipelineComponent;
 rdfc:HttpIn a tcs:PipelineComponent;
     rdfs:label "RDF Connect Http In";
     dct:requires rdfc:PyRunner;
+    :reader_predicate rdfc:reader ; # placeholders
+    :writer_predicate rdfc:writer ; # placeholders
     owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_in/processor.ttl> . # I still need to build this component
 
 
 rdfc:HttpOut a tcs:PipelineComponent;
     rdfs:label "RDF Connect Http Out";
     dct:requires rdfc:PyRunner;
+    :reader_predicate rdfc:reader ;
+    :writer_predicate rdfc:writer ;
     owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl> . 
 
 
 rdfc:thresholdMonitoringProcessor a :PipelineComponent ; # I still need to build this component
   dct:requires rdfc:NodeRunner ;
-   owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_threshold_monitoring/processor.ttl> . 
-
-
-rdfc:thresholdMonitoringProcessor a :PipelineComponent ; # I still need to build this component
-  dct:requires rdfc:NodeRunner ;
-   owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_threshold_monitoring/processor.ttl> . 
+  :reader_predicate rdfc:reader ; # placeholders
+  :writer_predicate rdfc:writer ; # placeholders
+  owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_threshold_monitoring/processor.ttl> . 
 
 
 rdfc:NodeRunner a tcs:PipelineComponent, rdfc:Runner;

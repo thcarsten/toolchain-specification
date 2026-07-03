@@ -12,17 +12,17 @@
         :env_2 .
 
 :HttpIn a rdfc:HttpIn ;
-    :out :channel_1 .
+    rdfc:writer :channel_1 .
 
 :SparqlIngest a rdfc:SparqlIngest ;
-    :in :channel_2 ;
-    rdfc:ingestConfig [ rdfc:operationMode "Replication" ] .
+    rdfc:ingestConfig [ rdfc:operationMode "Replication" ] ;
+    rdfc:memberStream :channel_2 .
 
 :ThresholdMonitoring a rdfc:thresholdMonitoringProcessor ;
-    :in :channel_1 ;
-    :out :channel_2 ;
+    rdfc:reader :channel_1 ;
     rdfc:unit <http://qudt.org/vocab/unit/CentiM> ;
-    rdfc:value 30 .
+    rdfc:value 30 ;
+    rdfc:writer :channel_2 .
 
 :env_1 rdfc:instantiates rdfc:NodeRunner ;
     rdfc:processor :SparqlIngest,

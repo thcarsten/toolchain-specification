@@ -8,6 +8,7 @@
     "@rdfc/sds-processors-ts": "^2.1.1",
     "@rdfc/shacl-processor-ts": "^1.0.1",
     "@rdfc/sparql-ingest-processor-ts": "^2.1.5",
+    "@rdfc/buffer-processor-ts": "^2.0.0",
     "ldes-client": "^0.3.0"
   }
 }

@@ -1,0 +1,38 @@
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+
+rdfc:HttpOut rdfc:pyImplementationOf rdfc:Processor;
+    rdfs:label "Http Out Processor";
+    rdfs:comment "Processor to forward data to a http endpoint via POST.";
+    rdfc:modulePath "rdfc_http_out.processor";
+    rdfc:class "HttpOut".
+
+[ ] a sh:NodeShape;
+    sh:targetClass rdfc:HttpOut;
+    sh:property [
+        sh:class rdfc:Reader;
+        sh:path rdfc:reader;
+        sh:name "reader";
+        sh:minCount 1;
+        sh:maxCount 1;
+    ] , [
+        sh:datatype xsd:string;
+        sh:path rdfc:endpoint;
+        sh:name "endpoint";
+        sh:minCount 1;
+        sh:maxCount 1;
+    ] , [
+        sh:class rdfc:Writer;
+        sh:path rdfc:writer;
+        sh:name "writer";
+        sh:minCount 0;
+        sh:maxCount 1;
+    ] , [
+        sh:datatype xsd:string;
+        sh:path rdfc:content_type;
+        sh:name "content_type";
+        sh:minCount 0;
+        sh:maxCount 1;
+    ] .

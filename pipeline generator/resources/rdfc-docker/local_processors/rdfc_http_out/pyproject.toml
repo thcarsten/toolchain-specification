@@ -1,0 +1,38 @@
+[project]
+name = "rdfc_http_out"
+version = "0.0.1"
+description = "Processor to forward data to a http endpoint."
+authors = [
+    { name = "Thomas Carsten", email = "thomascarsten90@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">= 3.12"
+license = "MIT"
+dependencies = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "rdfc-proto>=1.0.0",
+    "rdfc-runner>=1.0.0",
+    "httpx>=0.27.0"
+]
+
+[project.urls]
+Homepage = "https://rdf-connect.github.io"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rdfc_http_out"]
+
+[tool.hatch.envs.default]
+type = "virtual"
+path = ".venv"
+system-packages = false
+installer = "uv"
+env-vars = { PYTHONPATH = "src" }
+

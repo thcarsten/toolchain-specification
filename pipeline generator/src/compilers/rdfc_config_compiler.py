@@ -142,40 +142,123 @@ class RdfcConfigCompiler(Compiler):
             self.rdfc_reader = self.rdfc_reader.add(config_graph)
 
     def create_channel_overview(self) -> pd.DataFrame:
-        """
-        Adds:
-            - <channel_i> a rdfc:Writer, rdfc:Reader .
-            - ?step rdfc:incoming <channel_1> .
-            - ?step rdfc:outgoing <channel_2> .
+        """Build the per-channel DataFrame consumed by ``describe_channels``.
 
-        Strategy:
-            Each step in rdfc_pipeline.steps that HAS a prev_step is assigned a channel
-            channel name can be simply channel + row_index for now
-            prev_step is always the out and step is always the in
-            The exact predicates have to be looked up in the node shape of the respective processor
-        """
+        Thin wrapper that delegates to three focused helpers:
 
-        df_channel = self.input_reader.select(
+        1. :meth:`_create_channels` — fetch the ``(step, prev_step,
+           component, prev_component)`` skeleton via SPARQL. A row
+           with ``prev_step`` NaN represents a step with no
+           predecessor and never becomes a channel.
+        2. :meth:`_sort_channels_by_flow` — topologically order the
+           rows so ``channel_id`` numbering follows pipeline flow.
+        3. :meth:`_lookup_channel_predicates` — resolve each side's
+           ``:reader_predicate`` / ``:writer_predicate`` from the
+           catalog, falling back to ``:in`` / ``:out`` when the
+           lookup is missing or ambiguous.
+
+        The output columns are ``step``, ``prev_step``, ``component``,
+        ``prev_component``, ``input_predicate``, ``output_predicate``
+        and ``channel_id``.
+        """
+        df = self._create_channels()
+        df = self._sort_channels_by_flow(df)
+        df = self._lookup_channel_predicates(df)
+        df["channel_id"] = ":channel_" + df.index.astype(str)
+        return df
+
+    def _create_channels(self) -> pd.DataFrame:
+        """Return one row per ``(step, prev_step, component, prev_component)``.
+
+        Phantom rows (``prev_step`` NaN) are kept so the topological
+        sort has the full step set to reason about.
+        """
+        return self.input_reader.select(
+            "?step ?prev_step ?component ?prev_component",
             """
-                ?step ?prev_step ?component 
-                """,
-            """            
                 ?step prov:specializationOf ?component .
                 ?container tcs:instantiates rdfc:Orchestrator .
                 ?container tcs:instantiates ?component .
                 ?container tcs:runs ?step .
-                OPTIONAL {?step p-plan:isPrecededBy ?prev_step .
-                ?container tcs:runs ?prev_step .}
+                OPTIONAL {
+                    ?step p-plan:isPrecededBy ?prev_step .
+                    ?container tcs:runs ?prev_step .
+                    ?prev_step prov:specializationOf ?prev_component .
+                }
             """,
         )
 
-        # Adding unique channel names
-        df_channel["channel_id"] = ":channel_" + df_channel.index.astype(str)
-        # Adding some placeholder channel predicates
-        df_channel["input_predicate"] = ":in"
-        df_channel["output_predicate"] = ":out"
+    def _sort_channels_by_flow(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Reorder ``df`` so ``channel_id`` numbering mimics pipeline flow.
 
-        return df_channel
+        Computes a topological rank per step from the
+        ``p-plan:isPrecededBy`` relations already carried in
+        ``prev_step`` — Kahn-style, with alphabetical tie-breaking
+        for determinism and a bail-out for cyclic remainders.
+        Sorting by the sender's rank (then receiver's) puts earlier
+        edges before later ones; phantom rows sort to the top and
+        never get emitted.
+        """
+        all_steps = set(df["step"].dropna()) | set(df["prev_step"].dropna())
+        predecessors = (
+            df.dropna(subset=["prev_step"])
+            .groupby("step")["prev_step"]
+            .apply(set)
+            .to_dict()
+        )
+        step_position: dict[str, int] = {}
+        remaining = set(all_steps)
+        rank = 0
+        while remaining:
+            ready = {s for s in remaining if not predecessors.get(s, set()) & remaining}
+            if not ready:  # cycle — bail out deterministically
+                ready = remaining
+            for step in sorted(ready):
+                step_position[step] = rank
+                rank += 1
+            remaining -= ready
+
+        return (
+            df.assign(
+                _prev_pos=df["prev_step"].map(step_position),
+                _step_pos=df["step"].map(step_position),
+            )
+            .sort_values(["_prev_pos", "_step_pos"], na_position="first")
+            .drop(columns=["_prev_pos", "_step_pos"])
+            .reset_index(drop=True)
+        )
+
+    def _lookup_channel_predicates(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add ``input_predicate`` / ``output_predicate`` columns to ``df``.
+
+        Each side's predicate is looked up from the catalog on the
+        respective component (``:reader_predicate`` for the receiving
+        step, ``:writer_predicate`` for the sending step). If the
+        lookup returns zero matches (missing annotation) or two-plus
+        distinct matches (ambiguity — e.g. branching), the compiler
+        falls back to the generic ``:in`` / ``:out`` placeholders so
+        a partially-annotated catalog still produces a working file.
+        """
+
+        def _resolve(component, predicate: str, fallback: str) -> str:
+            if pd.isna(component):
+                return fallback
+            matches = {
+                v
+                for v in self.input_reader.filter(sub=component, pred=predicate).df[
+                    "obj"
+                ]
+                if pd.notna(v)
+            }
+            return next(iter(matches)) if len(matches) == 1 else fallback
+
+        df["input_predicate"] = df["component"].map(
+            lambda c: _resolve(c, ":reader_predicate", ":in")
+        )
+        df["output_predicate"] = df["prev_component"].map(
+            lambda c: _resolve(c, ":writer_predicate", ":out")
+        )
+        return df
 
     def describe_channels(self) -> None:
 
