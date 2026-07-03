@@ -4,15 +4,13 @@ import pandas as pd
 import yaml
 
 from .utils import receive_first
-from .base import Compiler, Tier
+from .base import Compiler
 
 
 class LdioConfigCompiler(Compiler):
     """
     Class to generate config file for LDIO.
     """
-
-    tier = Tier.FILE
 
     def __init__(self, graph: Graph) -> None:
         super().__init__(graph)
@@ -29,7 +27,7 @@ class LdioConfigCompiler(Compiler):
             obj="ldio:LinkedDataInteractionsOrchestrator",
         ).df.empty
 
-    def _compile(self) -> Graph:
+    def compile(self) -> Graph:
         self.output = {
             "name": "",
             "description": "",

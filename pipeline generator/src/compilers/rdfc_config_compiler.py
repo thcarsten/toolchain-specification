@@ -3,15 +3,13 @@ from rdfine import GraphReader, GraphDict, parse_config
 import pandas as pd
 
 from .utils import receive_first
-from .base import Compiler, Tier
+from .base import Compiler
 
 
 class RdfcConfigCompiler(Compiler):
     """
     Compiles the pipeline definition file for a Rdf Connect pipeline.
     """
-
-    tier = Tier.FILE
 
     def __init__(self, graph: Graph) -> None:
         super().__init__(graph)
@@ -32,7 +30,7 @@ class RdfcConfigCompiler(Compiler):
             pred="tcs:instantiates", obj="rdfc:Orchestrator"
         ).df.empty
 
-    def _compile(self) -> Graph:
+    def compile(self) -> Graph:
         self.input_reader = self.graph_reader
         self.output_reader = self.input_reader.construct(
             "?pipeline a rdfc:Pipeline .",

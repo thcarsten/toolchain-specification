@@ -1,0 +1,14 @@
+README.md
+pyproject.toml
+./__init__.py
+./graph_dict.py
+./graph_reader.py
+./prefix_apply.py
+./prefix_store.py
+./rdflib_bridge.py
+./utils.py
+rdfine.egg-info/PKG-INFO
+rdfine.egg-info/SOURCES.txt
+rdfine.egg-info/dependency_links.txt
+rdfine.egg-info/requires.txt
+rdfine.egg-info/top_level.txt

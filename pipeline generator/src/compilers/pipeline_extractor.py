@@ -1,7 +1,9 @@
 from rdflib import Graph
 
+from rdfine import GraphReader
+
 from .utils import receive_first
-from .base import Compiler, Tier
+from .base import Compiler
 
 
 class PipelineExtractor(Compiler):
@@ -9,18 +11,43 @@ class PipelineExtractor(Compiler):
     Compiler Class to extract all relevant data for one single pipeline.
     It does NOT yet perform any form of reasoning,
     its sole responsibility is grabbing the data and returning it in line with the internal model.
+    It also seeds the ``tcs:PipelineBuild`` node so that every subsequent
+    compiler can attach provenance and file nodes to a build that already exists.
     """
-
-    tier = Tier.SEED
 
     def __init__(self, pipeline_id: str, graph: Graph) -> None:
         super().__init__(graph)
         self.pipeline_id = pipeline_id
 
-    def _compile(self) -> Graph:
+    @classmethod
+    def applies_to(cls, graph_reader: GraphReader) -> bool:
+        """Always applicable — the extractor is the entry point of every run."""
+        return True
+
+    def compile(self) -> Graph:
         self.extract_pipeline()
         self.name_blind_nodes()
+        self.seed_pipeline_build()
         return self.graph_reader.graph
+
+    def seed_pipeline_build(self) -> None:
+        """
+        Adds:
+            - ``<pipeline_id>_build a tcs:PipelineBuild``
+            - ``<pipeline_id>_build prov:hadPlan <pipeline_id>``
+
+        The empty ``tcs:PipelineBuild`` skeleton exists from this point on, so
+        every downstream compiler (and ``PipelineGenerator`` itself, for the
+        ``dct:creator`` provenance triples) can locate it in the graph.
+        """
+        new_triples = self.graph_reader.construct(
+            f"""
+            {self.pipeline_id}_build a tcs:PipelineBuild ;
+                                      prov:hadPlan {self.pipeline_id} .
+            """,
+            f"{self.pipeline_id} a tcs:PipelineDefinition",
+        ).graph
+        self.graph_reader = self.graph_reader.add(new_triples)
 
     def extract_pipeline(self) -> None:
         # Extracting the pipeline

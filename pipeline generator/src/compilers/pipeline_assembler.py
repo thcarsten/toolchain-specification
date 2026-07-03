@@ -1,7 +1,9 @@
 from rdflib import Graph
 
+from rdfine import GraphReader
+
 from .utils import receive_first
-from .base import Compiler, Tier
+from .base import Compiler
 
 
 class PipelineAssembler(Compiler):
@@ -10,8 +12,6 @@ class PipelineAssembler(Compiler):
     Also assigns configs to the components they belong to.
     """
 
-    tier = Tier.SEED
-
     def __init__(self, graph: Graph) -> None:
         super().__init__(graph)
         # Intermediate state — populated in ``compile``; declared here
@@ -19,27 +19,31 @@ class PipelineAssembler(Compiler):
         # post-compile inspection.
         self.pipeline_id: str = ""
 
-    def _compile(self) -> Graph:
+    @classmethod
+    def applies_to(cls, graph_reader: GraphReader) -> bool:
+        """Runs once there is exactly one ``tcs:PipelineDefinition`` with at
+        least one ``:hasStep`` — i.e. once ``PipelineExtractor`` has narrowed
+        the graph down to a single pipeline and populated its steps.
+        """
+        pipelines = (
+            graph_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition")
+            .df["sub"]
+            .unique()
+        )
+        if len(pipelines) != 1:
+            return False
+        return not graph_reader.filter(sub=pipelines[0], pred=":hasStep").df.empty
+
+    def compile(self) -> Graph:
         self.pipeline_id = receive_first(
             self.graph_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
                 "sub"
             ],
         )
-        self.describe_pipeline_build()
         self.describe_docker_container()
         self.describe_step()
         self.describe_config_assignment()
         return self.graph_reader.graph
-
-    def describe_pipeline_build(self) -> None:
-        """
-        Adds:
-            - XY_build a tcs:PipelineBuild
-        """
-        new_triples = self.graph_reader.construct(
-            f"{self.pipeline_id}_build a tcs:PipelineBuild", "?s ?p ?o"
-        ).graph
-        self.graph_reader = self.graph_reader.add(new_triples)
 
     def describe_docker_container(self) -> None:
         """

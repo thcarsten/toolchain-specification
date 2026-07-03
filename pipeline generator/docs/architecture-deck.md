@@ -85,9 +85,20 @@ The Dishacled Pipeline Generator -
 what it does and how it works.
 
 <!--
-This deck is about intent and mechanism, not line-by-line code.
-Walk-through: the problem, the core idea, three design decisions,
-then a concrete view of the compilers, then the roadmap.
+Companion notes for the presenter. Assumes comfort with RDF, Turtle, SPARQL, rdflib.
+
+REPOSITORY CONTEXT
+- Location: toolchain-specification/pipeline generator/. Compilers under src/compilers/. End-to-end walkthrough in src/demo.ipynb. Sample catalog in data/catalog.ttl.
+- What it does: reads a pipeline definition and a component catalog (both RDF), assembles an in-memory build graph, emits a project folder with framework-specific configs and docker-compose.yml.
+- Target frameworks: RDF-Connect, LDIO, semantic.works.
+- rdfine (src/rdfine/): in-repo wrapper over rdflib exposing GraphReader (filter, traverse, select, construct, add). Used by every compiler.
+- tcs: namespace: tcs:PipelineBuild, tcs:DockerContainer, tcs:DockerComposeConfig, tcs:File, tcs:compiledFile, tcs:filename, tcs:filepath, tcs:literal, tcs:instantiates, tcs:runs.
+
+DECK STRUCTURE
+Problem, core idea, three design decisions, compiler set, roadmap.
+
+FALLBACK FRAMING
+For any deep implementation question: source-code compiler with an RDF graph in place of an AST. Inputs are RDF (definition + catalog); the intermediate representation is an RDF build graph; code generation is a set of small compilers that attach tcs:File nodes carrying the emitted text.
 -->
 
 ---
@@ -107,6 +118,11 @@ Building an interoperable pipeline by hand means:
 
 **This doesn't scale.** It's the kind of work a computer should do.
 
+<!--
+SLIDE 1 - THE PROBLEM
+Mixing components from multiple frameworks (RDF-Connect, LDIO, semantic.works) currently requires hand-writing configs in several formats, working around implicit implementation constraints, and rewiring everything whenever the framework mix changes.
+-->
+
 ---
 
 ## 2. The core idea
@@ -122,6 +138,14 @@ then generate everything else from that description. Implementation logic is no 
 The RDF description is the **single source of truth**.
 Everything downstream — configs, Docker Compose, container wiring —
 is derived.
+
+<!--
+SLIDE 2 - THE CORE IDEA
+One RDF description of the pipeline plus a component catalog (also RDF) are the single source of truth. Every framework-specific artifact is derived from them.
+
+Q: Why RDF for the internal build state and not a Python object model?
+A: The inputs are already RDF (public toolchain specification and the catalog); using RDF throughout avoids a translation layer, keeps the vocabulary extensible without schema migrations, and makes every intermediate inspectable with SPARQL.
+-->
 
 ---
 
@@ -151,6 +175,11 @@ is derived.
 The user writes **semantics**.
 The tool writes **YAML, Turtle, and Docker Compose**.
 
+<!--
+SLIDE 3 - END-TO-END FLOW
+Two RDF inputs (pipeline definition + catalog) -> the generator, which builds an in-memory RDF build graph -> a project folder on disk. This is where the term "build graph" enters; it is used throughout the rest of the deck.
+-->
+
 ---
 
 ## 4. Three design decisions
@@ -165,6 +194,11 @@ Everything else follows from three choices:
    The output describes itself, including the files it will become. Writing to disk is the last step — projecting the build from RDF space into the file system.
 
 The next three slides go through each in turn.
+
+<!--
+SLIDE 4 - THREE DESIGN DECISIONS
+Signpost slide. Three decisions: (1) generation as graph transformation, (2) small self-registering compilers, (3) a self-describing build graph. Each is unpacked on the following slide.
+-->
 
 ---
 
@@ -188,17 +222,26 @@ only at the very end, in a single dedicated component.
 Every arrow is a **compiler**. Every stop is just an RDF graph.
 Debugging = look at the graph. Dry-runs = free.
 
+<!--
+SLIDE 5 - DECISION 1: EVERYTHING IS A GRAPH TRANSFORMATION
+- Every compiler takes an rdflib.Graph and returns an enriched rdflib.Graph. The only I/O happens in ProjectBuilder, which is not a Compiler subclass.
+- The five-stop diagram sequences the graph's states: catalog -> seeded (extractor) -> built (assembler and shaping compilers such as SemanticWorksCompiler, LdioConfigCompiler, RdfcConfigCompiler) -> enriched with the docker-compose file node (DockerComposeCompiler, during the finishing pass) -> written to disk.
+- Because every intermediate is a graph, inspection at any stage is a matter of calling .compile() and looking at the result.
+-->
+
 ---
 
 ## 6. Decision 2 — Small compilers, self-registering
 
 **Choice.** One responsibility per compiler. The driver never names them —
-it iterates a registry, sorted into three tiers:
+each compiler declares **when** it should run via an `applies_to()` check
+against the current graph, and the driver runs the eligible ones in a
+fixpoint loop until nothing new fires.
 
 <div class="tiers">
   <div class="tier">
-    <div class="label">SEED</div>
-    <div class="role">seed the graph</div>
+    <div class="label">SEED THE GRAPH</div>
+    <div class="role">extract & assemble</div>
     <ul>
       <li>PipelineExtractor</li>
       <li>PipelineAssembler</li>
@@ -206,26 +249,44 @@ it iterates a registry, sorted into three tiers:
   </div>
   <div class="tier-arrow">→</div>
   <div class="tier">
-    <div class="label">BUILD</div>
-    <div class="role">shape the graph</div>
+    <div class="label">SHAPE THE GRAPH</div>
+    <div class="role">framework specifics</div>
     <ul>
       <li>SemanticWorksCompiler</li>
+      <li>LdioConfigCompiler</li>
+      <li>RdfcConfigCompiler</li>
     </ul>
   </div>
   <div class="tier-arrow">→</div>
   <div class="tier">
-    <div class="label">FILE</div>
-    <div class="role">attach files as nodes</div>
+    <div class="label">WRAP UP</div>
+    <div class="role">once the graph has settled</div>
     <ul>
-      <li>LdioConfigCompiler</li>
-      <li>RdfcConfigCompiler</li>
       <li>DockerComposeCompiler</li>
     </ul>
   </div>
 </div>
 
-Each compiler carries an `applies_to()` check that inspects the graph and decides
-whether it should run. **Adding a framework = dropping in a new file.**
+The groups above are illustrative — there are no class-level phases in the
+code. Execution order **emerges** from each compiler's trigger condition
+becoming true as the graph grows. **Adding a framework = dropping in a new file.**
+
+<!--
+SLIDE 6 - DECISION 2: SMALL COMPILERS, SELF-REGISTERING
+- Concrete compilers subclass Compiler in src/compilers/base.py. Compiler.__init_subclass__ appends every non-abstract subclass to Compiler._registry; PipelineGenerator iterates that registry every loop iteration.
+- No tier attribute. Ordering emerges from each compiler's applies_to condition. The illustrative "seed / shape / wrap up" grouping above is a reading aid, not a code construct.
+- Each compiler defines an applies_to(graph_reader) classmethod that inspects the build graph and returns a boolean. Default is False, so every concrete compiler must declare its trigger explicitly.
+- Adding a framework: drop a new Compiler subclass into src/compilers/, import it from compilers/__init__.py. The driver is not touched.
+
+Q: How is compiler ordering guaranteed?
+A: It emerges. A compiler runs as soon as its applies_to trigger evaluates true, and does not run again once it has. Compilers eligible in the same loop iteration must be commutative; in practice each operates on a disjoint slice of the build graph selected by its applies_to check.
+
+Q: How does DockerComposeCompiler know to run last?
+A: PipelineGenerator maintains a temporary triple `<build> tcs:isFinishing true` on the build whenever a shaping pass finds nothing eligible. DockerComposeCompiler's applies_to gates on that flag. If it (or any other compiler) runs during the finishing pass, the flag flips back to false and shaping resumes; the loop terminates only when a finishing pass itself is empty. The flag is stripped from the graph before compile() returns.
+
+Q: How does the driver know what to run?
+A: Compiler.__init_subclass__ populates the class-level registry on import. PipelineGenerator instantiates PipelineExtractor up front (because it needs the pipeline_id), then loops over the registry until no eligible compiler is found in either a normal or a finishing pass.
+-->
 
 ---
 
@@ -250,21 +311,55 @@ They're attached to the build graph as first-class RDF nodes.
 `ProjectBuilder` just walks these nodes and writes each one to disk.
 Nothing else touches the filesystem.
 
+<!--
+SLIDE 7 - DECISION 3: THE BUILD GRAPH IS SELF-DESCRIBING
+- File-producing compilers do not return paths or strings. They call self._attach_file(filename, filepath, content) from inside compile(), which adds a tcs:File node to the build graph and links it to the tcs:PipelineBuild via tcs:compiledFile. The file body is stored on tcs:literal.
+- The file-node IRI is derived by slugifying filepath_filename, so the same (filepath, filename) pair yields a stable IRI across runs.
+- ProjectBuilder reads the tcs:File nodes off the compiled build graph and writes them to disk. Planned writes are collected into a pandas.DataFrame on builder.files first, so they can be inspected without touching the filesystem. A path-traversal guard rejects any tcs:filepath that would escape the target directory.
+- Consequence: a compiled build is a single serializable RDF artifact. Provenance, caching, diffing, and replay reduce to graph operations.
+
+Q: Why bake file bodies into the graph as tcs:literal rather than side-tables?
+A: So the compiled build is a single serializable artifact. Provenance, caching, diffing, and replay become graph operations; ProjectBuilder stays trivial.
+-->
+
 ---
 
 ## 8. The design in practice — six compilers
 
-| Compiler | Tier | Triggers on | Produces |
-| --- | --- | --- | --- |
-| PipelineExtractor | SEED | always | triples for the requested pipeline |
-| PipelineAssembler | SEED | always | containers, steps, config assignments |
-| SemanticWorksCompiler | BUILD | any `sw:` component | env vars folded into the microservice's docker config |
-| LdioConfigCompiler | FILE | container instantiating the LDIO orchestrator | `ldio/config.yml` |
-| RdfcConfigCompiler | FILE | container instantiating the RDF-Connect orchestrator | `rdfc/pipeline.ttl` |
-| DockerComposeCompiler | FILE | any `tcs:DockerComposeConfig` node | `docker-compose.yml` |
+| Compiler | Triggers on (`applies_to`) | Produces |
+| --- | --- | --- |
+| PipelineExtractor | always | triples for the requested pipeline; seeds `tcs:PipelineBuild` linked to the definition via `prov:hadPlan` |
+| PipelineAssembler | exactly one `tcs:PipelineDefinition` with at least one `:hasStep` | containers, steps, config assignments |
+| SemanticWorksCompiler | any `sw:` component present, and `tcs:DockerContainer`s exist | env vars folded into the microservice's docker config |
+| LdioConfigCompiler | a container instantiates the LDIO orchestrator | `ldio/config.yml` |
+| RdfcConfigCompiler | a container instantiates the RDF-Connect orchestrator | `rdfc/pipeline.ttl` |
+| DockerComposeCompiler | `<build> tcs:isFinishing true` set (i.e. loop has settled) and any `tcs:DockerComposeConfig` present | `docker-compose.yml` |
 
 Six small classes. One driver. Every column above is a direct expression
 of the three decisions in the previous slides.
+
+<!--
+SLIDE 8 - THE DESIGN IN PRACTICE
+The six-row table lists every concrete compiler with its trigger and output. PipelineExtractor is instantiated up front by PipelineGenerator because it is the only compiler needing the pipeline_id in its constructor; every other compiler is discovered via the registry and run when its applies_to trigger becomes true.
+
+VOCABULARY (for reference)
+- Pipeline Definition: RDF description of a data pipeline, expressed against the public semantic model.
+- Component / Catalog: a component is a reusable pipeline building block; the catalog is the RDF library of all available components (data/catalog.ttl).
+- Build graph: the in-memory rdflib.Graph the generator assembles. All build state lives here.
+- tcs:PipelineBuild: root node of a build graph. Generated files hang off it via tcs:compiledFile.
+- tcs:File: RDF node representing a generated file. Carries tcs:filename, tcs:filepath, tcs:literal (the body).
+- Compiler: subclass in src/compilers/. Takes the build graph, transforms it, returns it. Registers automatically on import.
+- applies_to: classmethod on every compiler. Decides whether the compiler should run against a given build graph. Default is False; every concrete compiler declares its own trigger. Execution order emerges from these triggers becoming true as the graph grows.
+- tcs:isFinishing: temporary triple on the build (`<build> tcs:isFinishing <bool>`) that PipelineGenerator toggles to true whenever a shaping pass finds nothing eligible. Compilers that need to run only after the graph has settled (DockerComposeCompiler) gate on this flag. Stripped from the graph before compile() returns.
+- rdfine / GraphReader: in-repo wrapper over rdflib used by every compiler.
+- ProjectBuilder: the filesystem boundary. Walks the tcs:File nodes and writes them out.
+
+Q: What happens when two frameworks share a container arrangement?
+A: Each framework compiler emits its own config file. They meet in docker-compose.yml, produced by a single framework-agnostic DockerComposeCompiler that reads every tcs:DockerComposeConfig node.
+
+Q: How is this tested?
+A: Every compiler is a graph-in / graph-out function, so unit tests are graph fixtures with assertions on the output graph. src/demo.ipynb is the end-to-end reference.
+-->
 
 ---
 
@@ -278,7 +373,7 @@ of the three decisions in the previous slides.
 **Coming**
 - Ad-hoc Dockerfile generation for RDF-Connect
   (only ship the components a pipeline actually uses).
-- A version mapper decoupling the public semantic model from the internal one.
+- NifiCompiler for Urban Sense.
 - Validation: a deliverable of its own (more on that next).
 
 **Synergies**
@@ -286,4 +381,9 @@ of the three decisions in the previous slides.
 - WP3: a frontend to author pipeline definitions.
 - WP4: the Pipeline Generator uses the demonstrator pipeline as its [demo notebook](https://github.com/thcarsten/toolchain-specification/blob/main/pipeline%20generator/src/demo.ipynb).
 
-**Thank you — questions welcome.**
+<!--
+SLIDE 9 - WHERE WE GO NEXT
+- Already delivered: multi-framework interoperability (RDF-Connect + LDIO + semantic.works), automatic Docker Compose wiring across frameworks, self-describing build graphs, filesystem projection.
+- Coming: ad-hoc Dockerfile generation for RDF-Connect (ship only the components a pipeline actually uses); NifiCompiler for Urban Sense; validation as a separate deliverable.
+- Synergies: WP1 discovery-compatible semantic model, WP3 authoring frontend, WP4 uses demo.ipynb as its demonstrator pipeline.
+-->

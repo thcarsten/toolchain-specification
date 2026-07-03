@@ -1,4 +1,4 @@
-from .base import Compiler, Tier
+from .base import Compiler
 from .pipeline_extractor import PipelineExtractor
 from .pipeline_assembler import PipelineAssembler
 from .ldio_config_compiler import LdioConfigCompiler
@@ -10,7 +10,6 @@ from .project_builder import ProjectBuilder
 
 __all__ = [
     "Compiler",
-    "Tier",
     "PipelineExtractor",
     "PipelineAssembler",
     "LdioConfigCompiler",

@@ -1,24 +1,31 @@
 from rdflib import Graph
 from rdfine import GraphReader, GraphDict, parse_config
 
-from .base import Compiler, Tier
+from .base import Compiler
 
 
 class DockerComposeCompiler(Compiler):
     """
     Compiles the docker compose configuration file.
-    """
 
-    tier = Tier.FILE
+    Runs only once the shaping loop has settled, because other compilers
+    (e.g. :class:`SemanticWorksCompiler`) may still be editing
+    ``tcs:DockerComposeConfig`` bodies. ``PipelineGenerator`` signals
+    that settling has occurred by adding ``<build> tcs:isFinishing true``
+    to the graph.
+    """
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Triggered whenever a ``tcs:DockerComposeConfig`` node is present."""
+        """Triggered once ``tcs:isFinishing true`` is set on the build and
+        at least one ``tcs:DockerComposeConfig`` node is present."""
+        if graph_reader.filter(pred="tcs:isFinishing", obj=True).df.empty:
+            return False
         return not graph_reader.filter(
             pred="rdf:type", obj="tcs:DockerComposeConfig"
         ).df.empty
 
-    def _compile(self) -> Graph:
+    def compile(self) -> Graph:
 
         # Getting a list of all microservice configs
         config_list = self.graph_reader.select(

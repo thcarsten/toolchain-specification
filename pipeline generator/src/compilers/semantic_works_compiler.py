@@ -4,15 +4,13 @@ import pandas as pd
 import json
 
 from .utils import receive_first
-from .base import Compiler, Tier
+from .base import Compiler
 
 
 class SemanticWorksCompiler(Compiler):
     """
     Updates DockerComposeConfigs of mu:Microservices by the environment variables which were assigned to InstancePipelineComponents as part of the PipelineDefinition.
     """
-
-    tier = Tier.BUILD
 
     def __init__(self, graph: Graph) -> None:
         super().__init__(graph)
@@ -21,11 +19,15 @@ class SemanticWorksCompiler(Compiler):
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Triggered by any ``tcs:PipelineComponent`` in the ``sw:`` namespace."""
+        """Triggered by any ``tcs:PipelineComponent`` in the ``sw:`` namespace,
+        but only once ``PipelineAssembler`` has produced ``tcs:DockerContainer``
+        nodes — otherwise there is nothing to fold env vars into yet."""
+        if graph_reader.filter(pred="rdf:type", obj="tcs:DockerContainer").df.empty:
+            return False
         df = graph_reader.filter(pred="rdf:type", obj="tcs:PipelineComponent").df
         return bool(df["sub"].str.startswith("sw:").any())
 
-    def _compile(self) -> Graph:
+    def compile(self) -> Graph:
         self.fetch_components()
         for component_id in self.component_df["component"].to_list():
             self.update_docker_config(component_id)
