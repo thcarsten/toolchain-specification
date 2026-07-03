@@ -1,10 +1,10 @@
 from rdflib import Graph, URIRef, Literal
-from rdfine import GraphReader, GraphDict, parse_config
+from rdfine import GraphReader, receive_first
 import pandas as pd
 import json
 
-from .utils import receive_first
 from .base import Compiler
+from .utils import extract_config, parse_docker_compose_config
 
 
 class SemanticWorksCompiler(Compiler):
@@ -31,7 +31,7 @@ class SemanticWorksCompiler(Compiler):
         self.fetch_components()
         for component_id in self.component_df["component"].to_list():
             self.update_docker_config(component_id)
-        return self.graph_reader.graph
+        return self.output_reader.graph
 
     def fetch_components(self) -> None:
         """
@@ -39,7 +39,7 @@ class SemanticWorksCompiler(Compiler):
         """
 
         # Checking that a bunch of conditions are met
-        component_df = self.graph_reader.select(
+        component_df = self.output_reader.select(
             "?component ?step ?step_config ?docker_config",
             """
             ?component a tcs:PipelineComponent .
@@ -54,23 +54,16 @@ class SemanticWorksCompiler(Compiler):
         component_df = component_df.loc[component_df["component"].str.startswith("sw:")]
         self.component_df = component_df
 
-    # Extracting the docker_config_dict
-    def extract_config(self, config_id) -> GraphDict:
-        config_dict = GraphDict(self.graph_reader.traverse(config_id).graph)
-        config_dict = config_dict.frame({"@id": config_id})
-        config_dict.dict = parse_config(config_dict.dict)
-        config_dict = config_dict.get(":config")
-        return config_dict
-
     def update_docker_config(self, component_id) -> None:
         """
         The strategy here is surprisingly simple:
-        - fetch the DockerComposeConfig
-        - turn it into a regular dict
-        - fetch the StepConfig
-        - turn it into a regular dict
-        - append the DockerComposeConfig with the Step Config
-        - turn it into a string and update the DockerComposeConfig by updating with a new tcs:literal
+        - fetch the DockerComposeConfig via the shared parser, which
+          returns a normalized ``{"services": {<name>: {body}}, ...}``
+          dict regardless of the source config's shape
+        - fetch the StepConfig as a plain dict
+        - fold the StepConfig into the (single) service body's
+          ``environment:``
+        - write the edited config back to the graph via ``tcs:literal``
         """
 
         # Grabbing the right references
@@ -85,37 +78,47 @@ class SemanticWorksCompiler(Compiler):
             ],
         )
 
-        # Extracting the two configs
-        step_config_dict = self.extract_config(step_config_id)
-        docker_config_dict = self.extract_config(docker_config_id)
+        # StepConfig is a generic ``tcs:Config`` (not a
+        # DockerComposeConfig) so the plain ``extract_config`` helper
+        # is enough. The DockerComposeConfig goes through the shared
+        # parser, which normalizes to the compose-file layout — so
+        # the service body always lives at
+        # ``normalized["services"][<name>]`` regardless of how the
+        # source config was written.
+        step_config_dict = extract_config(self.output_reader, step_config_id)
+        normalized = parse_docker_compose_config(self.output_reader, docker_config_id)
 
-        # Finding the right level in docker_config_dict to append step_config_dict to
-        path_to_image = receive_first(
-            docker_config_dict.find(path_pattern="image$")["path"],
-        )
-        target_path = path_to_image.rsplit(".", 1)[0]
-        target_dict = docker_config_dict.get(target_path).dict
+        if not normalized["services"]:
+            return  # nothing to fold env vars into
+
+        # SemanticWorks configs are single-service by construction, so
+        # take the (only) service the parser found.
+        service_name = next(iter(normalized["services"]))
+        service_body = normalized["services"][service_name]
 
         # Checking whether target_dict already contains a "environment"-key
-        key_list = list(target_dict.keys())
+        key_list = list(service_body.keys())
         key_list = [k for k in key_list if "environment" in k]
         if len(key_list) > 0:
             environment_key = key_list[0]
         else:
             environment_key = "environment"
-            target_dict[environment_key] = {}
+            service_body[environment_key] = {}
 
-        # Updating the target_dict by the step_config_dict
-        target_dict[environment_key].update(step_config_dict.dict)
-        target_dict = docker_config_dict.prefix_store.drop(target_dict)
-        docker_config_dict = docker_config_dict.set(target_path, target_dict)
-        docker_config_str = json.dumps(docker_config_dict.dict)
+        # Updating the target_dict by the step_config_dict, then
+        # dropping any residual prefixes on the whole body so
+        # ``json.dumps`` produces a clean, portable string.
+        service_body[environment_key].update(step_config_dict)
+        normalized["services"][service_name] = self.output_reader.prefix_store.drop(
+            service_body
+        )
+        docker_config_str = json.dumps(normalized)
 
         # Updating the docker compose config in the graph
-        remove_triples = self.graph_reader.filter(
+        remove_triples = self.output_reader.filter(
             sub=docker_config_id, pred=["tcs:literal", "tcs:embedded"]
         ).graph
-        self.graph_reader = self.graph_reader.remove(remove_triples)
+        self.output_reader = self.output_reader.remove(remove_triples)
         config_record = {
             "sub": docker_config_id,
             "pred": "tcs:literal",
@@ -124,6 +127,6 @@ class SemanticWorksCompiler(Compiler):
             "obj_type": Literal,
         }
         add_triples = GraphReader(
-            pd.DataFrame.from_records([config_record]), self.graph_reader.prefix_store
+            pd.DataFrame.from_records([config_record]), self.output_reader.prefix_store
         ).graph
-        self.graph_reader = self.graph_reader.add(add_triples)
+        self.output_reader = self.output_reader.add(add_triples)

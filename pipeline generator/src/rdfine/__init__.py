@@ -1,7 +1,7 @@
 from .graph_reader import GraphReader
 from .graph_dict import GraphDict
 from .prefix_store import PrefixStore, PrefixConflictError
-from .utils import drop_empty, load_yaml, parse_config
+from .utils import drop_empty, load_yaml, receive_first
 
 __all__ = [
     "GraphDict",
@@ -10,5 +10,5 @@ __all__ = [
     "PrefixStore",
     "drop_empty",
     "load_yaml",
-    "parse_config",
+    "receive_first",
 ]

@@ -1,8 +1,7 @@
 from rdflib import Graph
 
-from rdfine import GraphReader
+from rdfine import GraphReader, receive_first
 
-from .utils import receive_first
 from .base import Compiler
 
 
@@ -28,7 +27,7 @@ class PipelineExtractor(Compiler):
         self.extract_pipeline()
         self.name_blind_nodes()
         self.seed_pipeline_build()
-        return self.graph_reader.graph
+        return self.output_reader.graph
 
     def seed_pipeline_build(self) -> None:
         """
@@ -40,24 +39,24 @@ class PipelineExtractor(Compiler):
         every downstream compiler (and ``PipelineGenerator`` itself, for the
         ``dct:creator`` provenance triples) can locate it in the graph.
         """
-        new_triples = self.graph_reader.construct(
+        new_triples = self.output_reader.construct(
             f"""
             {self.pipeline_id}_build a tcs:PipelineBuild ;
                                       prov:hadPlan {self.pipeline_id} .
             """,
             f"{self.pipeline_id} a tcs:PipelineDefinition",
         ).graph
-        self.graph_reader = self.graph_reader.add(new_triples)
+        self.output_reader = self.output_reader.add(new_triples)
 
     def extract_pipeline(self) -> None:
         # Extracting the pipeline
         graph_inverse_steps = (
-            self.graph_reader.filter(pred="p-plan:isStepOfPlan", obj=self.pipeline_id)
+            self.output_reader.filter(pred="p-plan:isStepOfPlan", obj=self.pipeline_id)
             .construct("?o :hasStep ?s", "?s ?p ?o.")
             .graph
         )
         # Filtering down to triples concerning the pipeline
-        self.graph_reader = self.graph_reader.add(graph_inverse_steps).traverse(
+        self.output_reader = self.output_reader.add(graph_inverse_steps).traverse(
             self.pipeline_id
         )
 
@@ -68,7 +67,7 @@ class PipelineExtractor(Compiler):
 
         # renaming
         rename_ids = (
-            self.graph_reader.filter(
+            self.output_reader.filter(
                 sub="^_:", pred="^rdf:type$", obj="^tcs:", regex=True
             )
             .df["sub"]
@@ -78,7 +77,7 @@ class PipelineExtractor(Compiler):
 
         for i, rename_id in enumerate(rename_ids):
             type_list = (
-                self.graph_reader.filter(sub=rename_id, pred="rdf:type")
+                self.output_reader.filter(sub=rename_id, pred="rdf:type")
                 .df["obj"]
                 .to_list()
             )
@@ -86,7 +85,7 @@ class PipelineExtractor(Compiler):
             first_type = receive_first(type_list)
             new_name = (
                 ":"
-                + self.graph_reader.prefix_store.drop_string(first_type).lower()
+                + self.output_reader.prefix_store.drop_string(first_type).lower()
                 + f"_{i}"
             )
-            self.graph_reader = self.graph_reader.rename(rename_id, new_name)
+            self.output_reader = self.output_reader.rename(rename_id, new_name)

@@ -1,5 +1,4 @@
-import textwrap
-from copy import deepcopy
+from collections.abc import Iterable
 
 import yaml
 from boltons.iterutils import remap
@@ -32,35 +31,17 @@ def drop_empty(obj, empty_values=None):
     return remap(obj, visit=visit)
 
 
-def parse_config(input_dict: dict) -> dict:
+def receive_first(values: Iterable):
     """
-    Parses a dict containing a "tcs:literal" or "tcs:embedded"
+    Return the first element of ``values``, raising :class:`LookupError`
+    if it is empty.
+
+    Use when an upstream filter / SPARQL is expected to produce at least
+    one row and the caller takes the first. Converts the bare
+    ``IndexError`` that used to leak through ``.to_list()[0]`` into a
+    meaningful, actionable error.
     """
-
-    dict_data = deepcopy(input_dict)
-
-    if "tcs:literal" in dict_data:
-        literal_value = dict_data["tcs:literal"]
-        del dict_data["tcs:literal"]
-
-        # Clean up trailing double_quotes
-        literal_value = literal_value.removeprefix('""')
-        literal_value = literal_value.removesuffix('""')
-
-        # Removing '\\r' at the end of a line
-        lines = literal_value.splitlines()
-        lines = [line.removesuffix("\\r") for line in lines]
-        literal_value = "\n".join(lines)
-        literal_value = textwrap.dedent(literal_value).strip()
-
-        dict_data[":config"] = yaml.safe_load(literal_value)
-    elif "tcs:embedded" in dict_data:
-        embedded_value = dict_data["tcs:embedded"]
-        del dict_data["tcs:embedded"]
-        dict_data[":config"] = embedded_value
-    else:
-        raise LookupError(
-            "Neither predicates 'tcs:embedded' nor 'tcs:literal' found in data."
-        )
-
-    return dict_data
+    seq = list(values)
+    if not seq:
+        raise LookupError("expected at least one result, got none")
+    return seq[0]

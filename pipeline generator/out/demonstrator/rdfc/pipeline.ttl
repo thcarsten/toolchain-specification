@@ -1,6 +1,5 @@
 @base <file:///workspace/pipeline/> .
 @prefix : <http://example.org/example/> .
-@prefix ns1: <https://no_prefix_available.com/:> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfc: <https://w3id.org/rdf-connect#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
@@ -13,26 +12,26 @@
         :env_2 .
 
 :HttpIn a rdfc:HttpIn ;
-    :out :channel_0 .
+    :out :channel_1 .
 
 :SparqlIngest a rdfc:SparqlIngest ;
     :in :channel_2 ;
-    ns1:ingestConfig [ ns1:operationMode "Replication" ] .
+    rdfc:ingestConfig [ rdfc:operationMode "Replication" ] .
 
 :ThresholdMonitoring a rdfc:thresholdMonitoringProcessor ;
-    :in :channel_0 ;
+    :in :channel_1 ;
     :out :channel_2 ;
     rdfc:unit <http://qudt.org/vocab/unit/CentiM> ;
     rdfc:value 30 .
 
-:env_1 rdfc:instantiates rdfc:PyRunner ;
-    rdfc:processor :HttpIn .
-
-:env_2 rdfc:instantiates rdfc:NodeRunner ;
+:env_1 rdfc:instantiates rdfc:NodeRunner ;
     rdfc:processor :SparqlIngest,
         :ThresholdMonitoring .
 
-:channel_0 a rdfc:Reader,
+:env_2 rdfc:instantiates rdfc:PyRunner ;
+    rdfc:processor :HttpIn .
+
+:channel_1 a rdfc:Reader,
         rdfc:Writer .
 
 :channel_2 a rdfc:Reader,

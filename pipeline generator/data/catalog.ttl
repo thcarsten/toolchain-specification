@@ -167,8 +167,8 @@
     a tcs:Config;
     tcs:embedded
     [
-      :ingestConfig [
-        :operationMode "Replication"
+      rdfc:ingestConfig [
+        rdfc:operationMode "Replication"
       ]
     ]
   ] .

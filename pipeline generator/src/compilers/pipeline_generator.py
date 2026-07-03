@@ -4,9 +4,10 @@ import pandas as pd
 from rdflib import Graph, Literal, URIRef
 from rdfine import GraphReader
 
+from rdfine import receive_first
+
 from .base import Compiler
 from .pipeline_extractor import PipelineExtractor
-from .utils import receive_first
 
 
 class PipelineGenerator:
@@ -61,8 +62,9 @@ class PipelineGenerator:
         gen = PipelineGenerator(":DemonstratorPipeline", catalog_graph)
         build = gen.compile()
 
-        gen.compilers[LdioConfigCompiler].df_steps      # intermediate DataFrame
-        gen.compilers[RdfcConfigCompiler].output_reader # accumulated reader
+        gen.compilers[LdioConfigCompiler].df_steps          # intermediate DataFrame
+        gen.compilers[RdfcConfigCompiler].rdfc_reader       # rdfc pipeline accumulator
+        gen.compilers[PipelineAssembler].added_triples.df   # what this compiler added
     """
 
     def __init__(self, pipeline_id: str, catalog_graph: Graph) -> None:

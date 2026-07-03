@@ -1,10 +1,10 @@
 from rdflib import Graph
-from rdfine import GraphReader, GraphDict, parse_config, drop_empty
+from rdfine import GraphReader, drop_empty, receive_first
 import pandas as pd
 import yaml
 
-from .utils import receive_first
 from .base import Compiler
+from .utils import extract_config
 
 
 class LdioConfigCompiler(Compiler):
@@ -46,7 +46,7 @@ class LdioConfigCompiler(Compiler):
             filepath="ldio",
             content=yaml_string,
         )
-        return self.graph_reader.graph
+        return self.output_reader.graph
 
     def fetch_steps(self) -> pd.DataFrame:
 
@@ -59,17 +59,19 @@ class LdioConfigCompiler(Compiler):
         ?pipeline_step prov:specializationOf ?pipeline_component .
         """
 
-        list_components = self.graph_reader.select(
+        list_components = self.output_reader.select(
             "?pipeline_component", where_statement
         )["pipeline_component"].to_list()
 
         list_records = []
         for component_id in list_components:
             ldio_label = receive_first(
-                self.graph_reader.filter(sub=component_id, pred="rdfs:label").df["obj"],
+                self.output_reader.filter(sub=component_id, pred="rdfs:label").df[
+                    "obj"
+                ],
             )
             ldio_type = receive_first(
-                self.graph_reader.filter(sub=component_id, pred="ldio:type").df["obj"],
+                self.output_reader.filter(sub=component_id, pred="ldio:type").df["obj"],
             )
 
             dict_component = {
@@ -79,9 +81,9 @@ class LdioConfigCompiler(Compiler):
             }
 
             # If the component has a config assigned, fetch that too
-            if self.graph_reader.ask(f"{component_id} :isAssigned ?config ."):
+            if self.output_reader.ask(f"{component_id} :isAssigned ?config ."):
                 config_id = receive_first(
-                    self.graph_reader.filter(sub=component_id, pred=":isAssigned").df[
+                    self.output_reader.filter(sub=component_id, pred=":isAssigned").df[
                         "obj"
                     ],
                 )
@@ -96,13 +98,10 @@ class LdioConfigCompiler(Compiler):
         config_list = self.df_steps["config"].to_list()
         config_list = [config for config in config_list if isinstance(config, str)]
 
-        graph_dict = GraphDict(self.graph_reader.graph)
-
         output_dict = {}
         for config_id in config_list:
-            config_dict = graph_dict.frame({"@id": config_id}).dict
-            config_dict = parse_config(config_dict)[":config"]
-            config_dict = self.graph_reader.prefix_store.drop(config_dict)
+            config_dict = extract_config(self.output_reader, config_id)
+            config_dict = self.output_reader.prefix_store.drop(config_dict)
             output_dict.update({config_id: config_dict})
         return output_dict
 

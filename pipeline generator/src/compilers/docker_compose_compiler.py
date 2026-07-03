@@ -1,7 +1,8 @@
 from rdflib import Graph
-from rdfine import GraphReader, GraphDict, parse_config
+from rdfine import GraphReader, GraphDict
 
 from .base import Compiler
+from .utils import parse_docker_compose_config
 
 
 class DockerComposeCompiler(Compiler):
@@ -28,28 +29,31 @@ class DockerComposeCompiler(Compiler):
     def compile(self) -> Graph:
 
         # Getting a list of all microservice configs
-        config_list = self.graph_reader.select(
+        config_list = self.output_reader.select(
             "?config",
             """
                  ?config a tcs:DockerComposeConfig ;
         """,
         )["config"].to_list()
 
-        # Compiling the output file based on the config_list
-        docker_compose_dict = {}
+        # Every ``tcs:DockerComposeConfig`` is normalized to the same
+        # compose-file shape (``{"services": {...}, ...}``) by
+        # ``parse_docker_compose_config``, so aggregating multiple
+        # configs is just a shallow merge per top-level key. Later
+        # configs override earlier ones on name collision within
+        # ``services`` / ``volumes`` / ``networks`` / etc.
+        compose_file: dict = {"services": {}}
         for config_id in config_list:
-            microservice_graph_dict = GraphDict(
-                self.graph_reader.traverse(config_id).graph
-            )
-            microservice_graph_dict = microservice_graph_dict.frame({"@id": config_id})
-            microservice_dict = microservice_graph_dict.dict
-            microservice_dict = parse_config(microservice_dict)
-            microservice_dict = microservice_dict[":config"]
-            docker_compose_dict.update(microservice_dict)
+            normalized = parse_docker_compose_config(self.output_reader, config_id)
+            for key, val in normalized.items():
+                if isinstance(compose_file.get(key), dict) and isinstance(val, dict):
+                    compose_file[key].update(val)
+                else:
+                    compose_file[key] = val
 
         # Serializing the output in the expected format
         yaml_string = GraphDict(
-            docker_compose_dict, prefix_store=self.graph_reader.prefix_store
+            compose_file, prefix_store=self.output_reader.prefix_store
         ).serialize("yml", "drop")
 
         self._attach_file(
@@ -57,4 +61,4 @@ class DockerComposeCompiler(Compiler):
             filepath=".",
             content=yaml_string,
         )
-        return self.graph_reader.graph
+        return self.output_reader.graph

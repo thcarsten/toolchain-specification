@@ -1,9 +1,9 @@
 from rdflib import Graph
-from rdfine import GraphReader, GraphDict, parse_config
+from rdfine import GraphReader, GraphDict, receive_first
 import pandas as pd
 
-from .utils import receive_first
 from .base import Compiler
+from .utils import extract_config
 
 
 class RdfcConfigCompiler(Compiler):
@@ -13,13 +13,14 @@ class RdfcConfigCompiler(Compiler):
 
     def __init__(self, graph: Graph) -> None:
         super().__init__(graph)
-        # Intermediate state — populated in ``compile``. ``input_reader``
-        # is an alias for ``graph_reader`` kept for readability in the
-        # helper methods; ``output_reader`` accumulates the RDF-Connect
-        # pipeline triples that are eventually serialized into
-        # ``pipeline.ttl``.
-        self.input_reader: GraphReader = self.graph_reader
-        self.output_reader: GraphReader = GraphReader(Graph())
+        # Intermediate state — populated in ``compile``. ``rdfc_reader``
+        # is a *separate* accumulator that holds only the RDF-Connect
+        # pipeline triples eventually serialized into ``pipeline.ttl``;
+        # it is not the compiler's output graph. The build graph the
+        # compiler contributes to (a ``tcs:File`` node with the
+        # serialized ttl) is managed via the base-class
+        # :attr:`output_reader` through :meth:`_attach_file`.
+        self.rdfc_reader: GraphReader = GraphReader(Graph())
         self.pipeline_id: str = ""
         self.df_channel: pd.DataFrame = pd.DataFrame()
 
@@ -31,8 +32,7 @@ class RdfcConfigCompiler(Compiler):
         ).df.empty
 
     def compile(self) -> Graph:
-        self.input_reader = self.graph_reader
-        self.output_reader = self.input_reader.construct(
+        self.rdfc_reader = self.input_reader.construct(
             "?pipeline a rdfc:Pipeline .",
             "?pipeline a tcs:PipelineDefinition",
         )
@@ -48,7 +48,7 @@ class RdfcConfigCompiler(Compiler):
         self.df_channel = self.create_channel_overview()
         self.describe_channels()
 
-        ttl_string = self.output_reader.serialize("ttl")
+        ttl_string = self.rdfc_reader.serialize("ttl")
         # RDF Connect requires the pipeline to be named ``<>``.
         ttl_string = ttl_string.replace(self.pipeline_id, "<>")
 
@@ -57,7 +57,7 @@ class RdfcConfigCompiler(Compiler):
             filepath="rdfc",
             content=ttl_string,
         )
-        return self.graph_reader.graph
+        return self.output_reader.graph
 
     def describe_pipeline(self) -> None:
         """
@@ -93,7 +93,7 @@ class RdfcConfigCompiler(Compiler):
                     """,
             )
 
-            self.output_reader = self.output_reader.add(runner_reader.graph)
+            self.rdfc_reader = self.rdfc_reader.add(runner_reader.graph)
 
     def describe_processors(self) -> None:
         """
@@ -114,7 +114,7 @@ class RdfcConfigCompiler(Compiler):
             """,
         )
 
-        self.output_reader = self.output_reader.add(processor_reader.graph)
+        self.rdfc_reader = self.rdfc_reader.add(processor_reader.graph)
 
     def describe_configs(self) -> None:
         """
@@ -122,7 +122,7 @@ class RdfcConfigCompiler(Compiler):
             - ?processor ?config ... .
         """
 
-        step_list = self.output_reader.filter(pred="rdfc:processor").df["obj"].to_list()
+        step_list = self.rdfc_reader.filter(pred="rdfc:processor").df["obj"].to_list()
         config_df = self.input_reader.filter(
             sub=step_list, pred="p-plan:hasInputVar"
         ).df
@@ -134,15 +134,12 @@ class RdfcConfigCompiler(Compiler):
                     sub=step_list, pred="p-plan:hasInputVar", obj=config_id
                 ).df["sub"],
             )
-            config_reader = self.input_reader.traverse(config_id)
-            config_graph_dict = GraphDict(config_reader.graph)
-            config_dict = config_graph_dict.frame({"@id": config_id}).dict
-            config_dict = parse_config(config_dict)[":config"]
+            config_dict = extract_config(self.input_reader, config_id)
             config_dict["@id"] = step_id
             config_graph = GraphDict(
                 config_dict, prefix_store=self.input_reader.prefix_store
             ).graph
-            self.output_reader = self.output_reader.add(config_graph)
+            self.rdfc_reader = self.rdfc_reader.add(config_graph)
 
     def create_channel_overview(self) -> pd.DataFrame:
         """
@@ -194,7 +191,7 @@ class RdfcConfigCompiler(Compiler):
             output_predicate = row["output_predicate"]
 
             # Adding the relevant triples to the output graph
-            channel_reader = self.output_reader.construct(
+            channel_reader = self.rdfc_reader.construct(
                 f"""
                     {channel_id} a rdfc:Reader, rdfc:Writer .
                     {prev_step} {output_predicate} {channel_id} .
@@ -203,4 +200,4 @@ class RdfcConfigCompiler(Compiler):
             )
 
             # Appending the output graph
-            self.output_reader = self.output_reader.add(channel_reader.graph)
+            self.rdfc_reader = self.rdfc_reader.add(channel_reader.graph)

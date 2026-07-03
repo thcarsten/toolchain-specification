@@ -27,9 +27,7 @@ from typing import ClassVar
 
 import pandas as pd
 from rdflib import Graph, Literal, URIRef
-from rdfine import GraphReader
-
-from .utils import receive_first
+from rdfine import GraphReader, receive_first
 
 
 class Compiler(ABC):
@@ -40,11 +38,27 @@ class Compiler(ABC):
     - Takes a single ``rdflib.Graph`` in ``__init__`` (the pipeline
       build graph). May extend with additional positional arguments via
       ``super().__init__(graph)``.
-    - Implements :meth:`compile` returning the enriched graph.
+    - Implements :meth:`compile`, which mutates :attr:`output_reader`
+      and returns ``self.output_reader.graph``.
     - Overrides :meth:`applies_to` to declare the graph-state
       condition under which the compiler should run. The default
       returns ``False``, so every concrete compiler must declare its
       trigger explicitly.
+
+    Every compiler has two readers over the build graph:
+
+    - :attr:`input_reader` — a snapshot of the graph as it was at
+      construction time. Never mutated by the compiler, so it acts as
+      the "before" reference for the compilation delta.
+    - :attr:`output_reader` — starts as the same state and is
+      re-assigned by :meth:`compile` as the compiler adds or removes
+      triples. Its final value is what :meth:`compile` returns.
+
+    Because both readers are available after :meth:`compile` has run,
+    the base class exposes :attr:`added_triples` and
+    :attr:`removed_triples` so callers (and tests) can inspect exactly
+    what each compiler contributed to the build graph, without any
+    per-compiler bookkeeping.
 
     FILE-producing compilers additionally call :meth:`_attach_file`
     from within :meth:`compile` to register their output as a
@@ -64,7 +78,31 @@ class Compiler(ABC):
             Compiler._registry.append(cls)
 
     def __init__(self, graph: Graph) -> None:
-        self.graph_reader = GraphReader(graph)
+        # ``input_reader`` is the immutable "before" snapshot, stored
+        # privately and exposed via a read-only property so
+        # ``self.input_reader = ...`` in a subclass raises
+        # ``AttributeError`` at the moment of the mistake.
+        # ``output_reader`` starts as the same state and is replaced
+        # in place by ``compile`` as triples are added or removed.
+        # ``GraphReader`` transformations (``add`` / ``remove`` /
+        # ``rename`` / ``construct``) all return a new instance backed
+        # by a new rdflib graph, so mutating ``output_reader`` never
+        # leaks back into ``input_reader``.
+        self._input_reader = GraphReader(graph)
+        self.output_reader = GraphReader(graph)
+
+    @property
+    def input_reader(self) -> GraphReader:
+        """Immutable ``GraphReader`` snapshot of the graph passed to ``__init__``.
+
+        Exposed read-only: assigning to ``self.input_reader`` in a
+        subclass raises :class:`AttributeError`. The underlying
+        rdflib graph is technically still mutable — compilers must
+        confine themselves to :class:`GraphReader`'s transformation
+        API (which returns new instances) and never mutate
+        ``input_reader.graph`` directly.
+        """
+        return self._input_reader
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
@@ -96,10 +134,41 @@ class Compiler(ABC):
     def compile(self) -> Graph:
         """Run the compiler's graph transformation and return the enriched graph.
 
+        Implementations must update :attr:`output_reader` (typically
+        by re-assigning it to the result of ``add`` / ``remove`` /
+        ``construct`` calls) and end with
+        ``return self.output_reader.graph`` so :attr:`log` can be
+        computed against :attr:`input_reader` afterwards.
+
         Heavy lifting belongs here (not in ``__init__``) so the work
         happens predictably at one moment in time and stays composable
         under the registry dispatch.
         """
+
+    # ------------------------------------------------------------------
+    # Compilation delta — added/removed triples relative to the input
+    # ------------------------------------------------------------------
+
+    @property
+    def added_triples(self) -> "GraphReader":
+        """``GraphReader`` over triples present in the output but not the input.
+
+        i.e. the triples this compiler added. Computed lazily by
+        subtracting :attr:`input_reader`'s graph from
+        :attr:`output_reader`; safe to call before or after
+        :meth:`compile` (empty result before).
+        """
+        return self.output_reader.remove(self.input_reader.graph)
+
+    @property
+    def removed_triples(self) -> "GraphReader":
+        """``GraphReader`` over triples present in the input but not the output.
+
+        i.e. the triples this compiler removed. Computed lazily by
+        subtracting :attr:`output_reader`'s graph from
+        :attr:`input_reader`.
+        """
+        return self.input_reader.remove(self.output_reader.graph)
 
     # ------------------------------------------------------------------
     # FILE helper
@@ -128,7 +197,7 @@ class Compiler(ABC):
         it is safe to pass arbitrary string bodies (yaml / ttl / json).
         """
         build_id = receive_first(
-            self.graph_reader.filter(pred="rdf:type", obj="tcs:PipelineBuild").df[
+            self.output_reader.filter(pred="rdf:type", obj="tcs:PipelineBuild").df[
                 "sub"
             ],
         )
@@ -177,6 +246,6 @@ class Compiler(ABC):
 
         new_graph = GraphReader(
             pd.DataFrame.from_records(rows),
-            prefix_store=self.graph_reader.prefix_store,
+            prefix_store=self.output_reader.prefix_store,
         ).graph
-        self.graph_reader = self.graph_reader.add(new_graph)
+        self.output_reader = self.output_reader.add(new_graph)

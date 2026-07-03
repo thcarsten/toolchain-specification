@@ -1,8 +1,7 @@
 from rdflib import Graph
 
-from rdfine import GraphReader
+from rdfine import GraphReader, receive_first
 
-from .utils import receive_first
 from .base import Compiler
 
 
@@ -36,14 +35,14 @@ class PipelineAssembler(Compiler):
 
     def compile(self) -> Graph:
         self.pipeline_id = receive_first(
-            self.graph_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
+            self.output_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
                 "sub"
             ],
         )
         self.describe_docker_container()
         self.describe_step()
         self.describe_config_assignment()
-        return self.graph_reader.graph
+        return self.output_reader.graph
 
     def describe_docker_container(self) -> None:
         """
@@ -53,7 +52,7 @@ class PipelineAssembler(Compiler):
         """
 
         # Create an overview df listing all components and their reliance on other components
-        df_requirements = self.graph_reader.select(
+        df_requirements = self.output_reader.select(
             "?component ?requirement",
             "?component a tcs:PipelineComponent. OPTIONAL {{?component dct:requires ?requirement .}}",
         )
@@ -63,7 +62,7 @@ class PipelineAssembler(Compiler):
         for component in df_requirements["component"].to_list():
             df_requirements.loc[
                 df_requirements["component"] == component, "microservice"
-            ] = self.graph_reader.ask(
+            ] = self.output_reader.ask(
                 f"{component} tcs:config ?config. ?config a tcs:DockerComposeConfig .",
             )
 
@@ -105,19 +104,19 @@ class PipelineAssembler(Compiler):
             ?build_id dct:hasPart {container_id}. 
             {container_id} tcs:instantiates {microservice_id} .
             """
-            new_triples = self.graph_reader.construct(
+            new_triples = self.output_reader.construct(
                 construct_statement, "?build_id a tcs:PipelineBuild"
             ).graph
-            self.graph_reader = self.graph_reader.add(new_triples)
+            self.output_reader = self.output_reader.add(new_triples)
 
             # tcs:DockerContainer tcs:instantiates tcs:PipelineComponent
             dependants_list = _lookup_dependants(microservice_id)
             for dependant in dependants_list:
-                new_dependant_triples = self.graph_reader.construct(
+                new_dependant_triples = self.output_reader.construct(
                     f"{container_id} tcs:instantiates {dependant}.",
                     "?s ?p ?o .",
                 ).graph
-                self.graph_reader = self.graph_reader.add(new_dependant_triples)
+                self.output_reader = self.output_reader.add(new_dependant_triples)
 
     def describe_step(self) -> None:
         """
@@ -132,10 +131,10 @@ class PipelineAssembler(Compiler):
         ?step prov:specializationOf ?component .
         """
 
-        new_triples = self.graph_reader.construct(
+        new_triples = self.output_reader.construct(
             "?microservice tcs:runs ?step .", step_description
         ).graph
-        self.graph_reader = self.graph_reader.add(new_triples)
+        self.output_reader = self.output_reader.add(new_triples)
 
     def describe_config_assignment(self) -> None:
         """
@@ -149,7 +148,7 @@ class PipelineAssembler(Compiler):
         ?step p-plan:hasInputVar ?config .
         """
 
-        new_triples = self.graph_reader.construct(
+        new_triples = self.output_reader.construct(
             "?component :isAssigned ?config .", assignment_description
         ).graph
-        self.graph_reader = self.graph_reader.add(new_triples)
+        self.output_reader = self.output_reader.add(new_triples)
