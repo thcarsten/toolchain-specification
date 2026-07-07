@@ -2,7 +2,7 @@ from rdflib import Graph
 from rdfine import GraphReader, GraphDict
 
 from .base import Compiler
-from .utils import parse_docker_compose_config
+from .utils import attach_file, parse_docker_compose_config
 
 
 class DockerComposeCompiler(Compiler):
@@ -56,7 +56,8 @@ class DockerComposeCompiler(Compiler):
             compose_file, prefix_store=self.output_reader.prefix_store
         ).serialize("yml", "drop")
 
-        self._attach_file(
+        self.output_reader = attach_file(
+            self.output_reader,
             filename="docker-compose.yml",
             filepath=".",
             content=yaml_string,

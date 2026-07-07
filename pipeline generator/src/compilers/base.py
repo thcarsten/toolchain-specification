@@ -21,13 +21,11 @@ the shaping loop is settling; such compilers can gate their
 """
 
 import inspect
-import re
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
-import pandas as pd
-from rdflib import Graph, Literal, URIRef
-from rdfine import GraphReader, receive_first
+from rdflib import Graph
+from rdfine import GraphReader
 
 
 class Compiler(ABC):
@@ -60,9 +58,10 @@ class Compiler(ABC):
     what each compiler contributed to the build graph, without any
     per-compiler bookkeeping.
 
-    FILE-producing compilers additionally call :meth:`_attach_file`
-    from within :meth:`compile` to register their output as a
-    ``tcs:File`` on the ``tcs:PipelineBuild`` node.
+    FILE-producing compilers additionally call the free helper
+    :func:`compilers.utils.attach_file` from within :meth:`compile`
+    to register their output as an ``spdx:File`` on the
+    ``tcs:PipelineBuild`` node.
 
     All concrete subclasses auto-register on :attr:`_registry` via
     :meth:`__init_subclass__`, so :class:`PipelineGenerator` can
@@ -169,83 +168,3 @@ class Compiler(ABC):
         :attr:`input_reader`.
         """
         return self.input_reader.remove(self.output_reader.graph)
-
-    # ------------------------------------------------------------------
-    # FILE helper
-    # ------------------------------------------------------------------
-
-    def _attach_file(
-        self,
-        *,
-        filename: str,
-        filepath: str,
-        content: str,
-    ) -> None:
-        """Attach a ``tcs:File`` to the ``tcs:PipelineBuild``.
-
-        Adds the triples::
-
-            :build tcs:compiledFile :file_<slug>
-            :file_<slug> a tcs:File ;
-                tcs:filename "<filename>" ;
-                tcs:filepath "<filepath>" ;
-                tcs:literal "<content>" .
-
-        The file IRI is derived from ``filepath`` + ``filename`` to be
-        stable within the build. ``content`` is stored verbatim as an
-        rdflib ``Literal`` — no prefix expansion is applied to it, so
-        it is safe to pass arbitrary string bodies (yaml / ttl / json).
-        """
-        build_id = receive_first(
-            self.output_reader.filter(pred="rdf:type", obj="tcs:PipelineBuild").df[
-                "sub"
-            ],
-        )
-
-        # Stable, IRI-safe local name derived from path + filename.
-        slug = re.sub(r"[^a-zA-Z0-9]+", "_", f"{filepath}_{filename}").strip("_")
-        file_id = f":file_{slug}"
-
-        rows = [
-            {
-                "sub": build_id,
-                "pred": "tcs:compiledFile",
-                "obj": file_id,
-                "sub_type": URIRef,
-                "obj_type": URIRef,
-            },
-            {
-                "sub": file_id,
-                "pred": "rdf:type",
-                "obj": "tcs:File",
-                "sub_type": URIRef,
-                "obj_type": URIRef,
-            },
-            {
-                "sub": file_id,
-                "pred": "tcs:filename",
-                "obj": filename,
-                "sub_type": URIRef,
-                "obj_type": Literal,
-            },
-            {
-                "sub": file_id,
-                "pred": "tcs:filepath",
-                "obj": filepath,
-                "sub_type": URIRef,
-                "obj_type": Literal,
-            },
-            {
-                "sub": file_id,
-                "pred": "tcs:literal",
-                "obj": content,
-                "sub_type": URIRef,
-                "obj_type": Literal,
-            },
-        ]
-
-        new_graph = GraphReader(
-            pd.DataFrame.from_records(rows),
-            prefix_store=self.output_reader.prefix_store,
-        ).graph
-        self.output_reader = self.output_reader.add(new_graph)

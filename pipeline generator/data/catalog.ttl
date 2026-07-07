@@ -1,20 +1,33 @@
 @prefix : <http://example.org/example/> .
-@prefix tcs: <https://w3id.org/toolchain#> .
-@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
 @prefix dct: <http://purl.org/dc/terms/>.
+@prefix ldio: <http://example.org/example/ldio/> .
 @prefix mu: <http://mu.semte.ch/vocabularies/core/>.
 @prefix nfo: <http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#>.
-@prefix sh: <http://www.w3.org/ns/shacl#>.
-@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
-@prefix sw: <https://semantic.works/services/> .
-@prefix dcat: <http://www.w3.org/ns/dcat#> .
-@prefix ldio: <http://example.org/example/ldio/> .
-@prefix rdfc: <https://w3id.org/rdf-connect#> .
-@prefix p-plan: <http://purl.org/net/p-plan#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
-@prefix schema: <https://schema.org/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix spdx: <http://spdx.org/rdf/terms#> .
+@prefix sw: <https://semantic.works/services/> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+
+#################################################################
+# Package managers
+#################################################################
+
+:pip a spdx:suppliedBy ;
+    rdfs:label "pip" ;
+    rdfs:comment "Python package manager. Packages annotated with this end up in pyproject.toml." .
+
+:npm a spdx:suppliedBy ;
+    rdfs:label "npm" ;
+    rdfs:comment "Node.js package manager. Packages annotated with this end up in package.json." .
 
 
 #################################################################
@@ -240,13 +253,14 @@ ldio:LinkedDataInteractionsOrchestrator
     a tcs:PipelineComponent ;
     rdfs:label "Linked Data Interactions Orchestrator" ;
     dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
-    schema:version "2.8.0-SNAPSHOT";
+    spdx:versionInfo "2.8.0-SNAPSHOT";
     tcs:config :LdioDefaultDockerComposeConfig ;
     dct:requires ldio:LdioPipelineStarterService .
 
 
 :LdioDefaultDockerComposeConfig
     a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
     tcs:literal """
 ldio-workbench:
     container_name: ldio-workbench
@@ -264,6 +278,7 @@ ldio:LdioPipelineStarterService
 
 :LdioPipelineStarterDockerComposeConfig
         a tcs:Config, tcs:DockerComposeConfig ;
+        dct:format "text/yaml" ;
         tcs:literal '''
 ldio-pipeline-starter:
     image: curlimages/curl
@@ -289,6 +304,12 @@ rdfc:SparqlIngest a tcs:PipelineComponent;
     rdfs:description "This processor takes a stream of RDF records, transforms them into corresponding SPARQL Update queries, and executes them against a SPARQL Graph Store via the SPARQL Protocol." ; 
     dcat:landingPage "https://github.com/rdf-connect/sparql-ingest-processor-ts";
     dct:requires rdfc:NodeRunner;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "@rdfc/sparql-ingest-processor-ts" ;
+        spdx:versionInfo "^2.1.7" ;
+        spdx:suppliedBy :npm
+    ];
     owl:imports <./node_modules/@rdfc/sparql-ingest-processor-ts/processors.ttl> ;
     :reader_predicate rdfc:memberStream ;
     :writer_predicate rdfc:sparqlWriter ;
@@ -359,6 +380,12 @@ rdfc:HttpIn a tcs:PipelineComponent;
 rdfc:HttpOut a tcs:PipelineComponent;
     rdfs:label "RDF Connect Http Out";
     dct:requires rdfc:PyRunner;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "rdfc_http_out" ;
+        spdx:downloadLocation "file:///workspace/pipeline/local_processors/rdfc_http_out" ;
+        spdx:suppliedBy :pip
+    ] ;
     :reader_predicate rdfc:reader ;
     :writer_predicate rdfc:writer ;
     owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl> . 
@@ -374,19 +401,44 @@ rdfc:thresholdMonitoringProcessor a :PipelineComponent ; # I still need to build
 rdfc:NodeRunner a tcs:PipelineComponent, rdfc:Runner;
     rdfs:label "RDF Connect Javascript Node Runner" ; 
     dct:requires rdfc:Orchestrator ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "@rdfc/js-runner" ;
+        spdx:versionInfo "^3.0.2" ;
+        spdx:suppliedBy :npm
+    ];
     owl:imports <./node_modules/@rdfc/js-runner/index.ttl> . # This is specific to RDF Connect
 
 
 rdfc:PyRunner a tcs:PipelineComponent, rdfc:Runner;
     rdfs:label "RDF Connect Python Runner" ; 
     dct:requires rdfc:Orchestrator ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "rdfc-runner" ;
+        spdx:versionInfo ">=1.0.0" ;
+        spdx:suppliedBy :pip
+    ]; 
     owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl> . 
 
 
 rdfc:Orchestrator a tcs:PipelineComponent ;
     rdfs:label "RDF Connect Orchestrator" ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "rdfc-proto" ;
+        spdx:versionInfo ">=1.0.0" ;
+        spdx:suppliedBy :pip
+    ]; 
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "@rdfc/orchestrator-js" ;
+        spdx:versionInfo "^2.0.1" ;
+        spdx:suppliedBy :npm
+    ]; 
     tcs:config [
         a tcs:Config, tcs:DockerComposeConfig ;
+        dct:format "text/yaml" ;
         tcs:literal """
   rdf-connect:
     container_name: rdf-connect
@@ -397,6 +449,54 @@ rdfc:Orchestrator a tcs:PipelineComponent ;
     environment:
       LOG_LEVEL: debug
     command: npx rdfc /workspace/pipeline/pipeline.ttl
+"""
+];
+tcs:config [
+        a tcs:Config, tcs:DockerImageConfig ;
+        dct:format "text/x-dockerfile" ;
+        tcs:literal """
+# Base: Alpine with Python 3.13
+FROM python:3.13-slim-trixie AS rdfc-base
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    bash \\
+    curl \\
+    wget \\
+    unzip \\
+    git \\
+    openjdk-21-jdk-headless \\
+    nodejs \\
+    npm \\
+    make \\
+    g++ \\
+    libc-dev \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Gradle 8.10.2
+ARG GRADLE_VERSION=8.10.2
+RUN wget https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -P /tmp \\
+    && unzip /tmp/gradle-${GRADLE_VERSION}-bin.zip -d /opt \\
+    && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/bin/gradle \\
+    && rm -rf /tmp/*.zip
+
+# Install Python tools Hatch and uv
+RUN pip install --no-cache-dir hatch uv
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy package.json and package-lock.json for npm caching
+COPY package.json ./pipeline/
+
+# Install all processors listed in package.json
+RUN cd pipeline && npm install
+
+# Set default working dir
+WORKDIR /workspace/pipeline
+
+# Keep container interactive
+CMD ["/bin/bash"]
 """
 ] .
 
@@ -411,6 +511,7 @@ sw:loket-error-alert-service a tcs:PipelineComponent, mu:Microservice ;
   dct:requires sw:triple-store ;
   tcs:config [
         a tcs:DefaultConfig, tcs:DockerComposeConfig ;
+        dct:format "text/yaml" ;
         tcs:literal """
 error-alert:
     image: lblod/loket-error-alert-service
@@ -426,6 +527,7 @@ sw:deliver-email-service a tcs:PipelineComponent, mu:Microservice ;
   dct:requires sw:triple-store ;
   tcs:config [
         a tcs:DefaultConfig, tcs:DockerComposeConfig ;
+        dct:format "text/yaml" ;
         tcs:literal """
   berichtencentrum-deliver-email-service:
     image: lblod/berichtencentrum-deliver-email-service
@@ -437,6 +539,7 @@ sw:triple-store a tcs:PipelineComponent;
   dcat:landingPage <https://virtuoso.dev/react-virtuoso/> ;
     tcs:config [
         a tcs:DefaultConfig, tcs:DockerComposeConfig ;
+        dct:format "text/yaml" ;
         tcs:literal """
 virtuoso:
   image: redpencil/virtuoso:1.4.0

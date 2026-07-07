@@ -1,8 +1,8 @@
 """Materialize a compiled build graph to disk.
 
 ``PipelineGenerator`` produces a self-describing build graph in which
-every generated artifact is attached to the ``tcs:PipelineBuild`` as a
-``tcs:File`` node carrying ``tcs:filename``, ``tcs:filepath`` and
+every generated artifact is attached to the ``tcs:PipelineBuild`` as an
+``spdx:File`` node carrying ``tcs:filename``, ``tcs:filepath`` and
 ``tcs:literal``. :class:`ProjectBuilder` is the IO-side counterpart: it
 walks those nodes and writes each file out under a target directory.
 
@@ -20,7 +20,7 @@ from rdfine import GraphReader
 
 
 class ProjectBuilder:
-    """Write the ``tcs:File`` nodes of a build graph to a target directory.
+    """Write the ``spdx:File`` nodes of a build graph to a target directory.
 
     Typical use::
 
@@ -44,7 +44,7 @@ class ProjectBuilder:
         return self.graph_reader.select(
             "?filepath ?filename ?content",
             (
-                "?file a tcs:File ;"
+                "?file a spdx:File ;"
                 "      tcs:filename ?filename ;"
                 "      tcs:filepath ?filepath ;"
                 "      tcs:literal  ?content ."

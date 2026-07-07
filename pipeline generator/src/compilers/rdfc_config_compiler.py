@@ -3,12 +3,26 @@ from rdfine import GraphReader, GraphDict, receive_first
 import pandas as pd
 
 from .base import Compiler
-from .utils import extract_config
+from .utils import attach_file, extract_config, rewrite_compose_volume_host_path
+
+# The RDF-Connect Python / Node runners mount their pipeline
+# definition at this fixed container path. Kept next to the
+# host-side output location so the pairing is visible in one place.
+_RDFC_PIPELINE_CONTAINER_PATH = "/workspace/pipeline/pipeline.ttl"
+_RDFC_PIPELINE_HOST_PATH = "./rdfc/pipeline.ttl"
 
 
 class RdfcConfigCompiler(Compiler):
     """
     Compiles the pipeline definition file for a Rdf Connect pipeline.
+
+    Also patches the paired ``tcs:DockerComposeConfig`` on
+    ``rdfc:Orchestrator`` so its volume mount for ``pipeline.ttl``
+    points at ``./rdfc/pipeline.ttl`` — the host location this
+    compiler actually emits to. Doing that here rather than in
+    :class:`DockerComposeCompiler` keeps the aggregator generic:
+    each framework compiler shapes its own compose fragment, then
+    the aggregator merges them.
     """
 
     def __init__(self, graph: Graph) -> None:
@@ -17,9 +31,9 @@ class RdfcConfigCompiler(Compiler):
         # is a *separate* accumulator that holds only the RDF-Connect
         # pipeline triples eventually serialized into ``pipeline.ttl``;
         # it is not the compiler's output graph. The build graph the
-        # compiler contributes to (a ``tcs:File`` node with the
+        # compiler contributes to (an ``spdx:File`` node with the
         # serialized ttl) is managed via the base-class
-        # :attr:`output_reader` through :meth:`_attach_file`.
+        # :attr:`output_reader` through :func:`compilers.utils.attach_file`.
         self.rdfc_reader: GraphReader = GraphReader(Graph())
         self.pipeline_id: str = ""
         self.df_channel: pd.DataFrame = pd.DataFrame()
@@ -52,10 +66,18 @@ class RdfcConfigCompiler(Compiler):
         # RDF Connect requires the pipeline to be named ``<>``.
         ttl_string = ttl_string.replace(self.pipeline_id, "<>")
 
-        self._attach_file(
+        self.output_reader = attach_file(
+            self.output_reader,
             filename="pipeline.ttl",
             filepath="rdfc",
             content=ttl_string,
+        )
+
+        self.output_reader = rewrite_compose_volume_host_path(
+            self.output_reader,
+            component_iri="rdfc:Orchestrator",
+            container_path=_RDFC_PIPELINE_CONTAINER_PATH,
+            host_path=_RDFC_PIPELINE_HOST_PATH,
         )
         return self.output_reader.graph
 

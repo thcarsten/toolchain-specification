@@ -92,13 +92,13 @@ REPOSITORY CONTEXT
 - What it does: reads a pipeline definition and a component catalog (both RDF), assembles an in-memory build graph, emits a project folder with framework-specific configs and docker-compose.yml.
 - Target frameworks: RDF-Connect, LDIO, semantic.works.
 - rdfine (src/rdfine/): in-repo wrapper over rdflib exposing GraphReader (filter, traverse, select, construct, add). Used by every compiler.
-- tcs: namespace: tcs:PipelineBuild, tcs:DockerContainer, tcs:DockerComposeConfig, tcs:File, tcs:compiledFile, tcs:filename, tcs:filepath, tcs:literal, tcs:instantiates, tcs:runs.
+- tcs: namespace: tcs:PipelineBuild, tcs:DockerContainer, tcs:DockerComposeConfig, tcs:compiledFile, tcs:filename, tcs:filepath, tcs:literal, tcs:instantiates, tcs:runs. spdx: namespace: spdx:File.
 
 DECK STRUCTURE
 Problem, core idea, three design decisions, compiler set, roadmap.
 
 FALLBACK FRAMING
-For any deep implementation question: source-code compiler with an RDF graph in place of an AST. Inputs are RDF (definition + catalog); the intermediate representation is an RDF build graph; code generation is a set of small compilers that attach tcs:File nodes carrying the emitted text.
+For any deep implementation question: source-code compiler with an RDF graph in place of an AST. Inputs are RDF (definition + catalog); the intermediate representation is an RDF build graph; code generation is a set of small compilers that attach spdx:File nodes carrying the emitted text.
 -->
 
 ---
@@ -299,9 +299,9 @@ They're attached to the build graph as first-class RDF nodes.
   <div class="stage">
     <div class="node">tcs:PipelineBuild</div>
     <div class="files">
-      <div class="file"><b>tcs:File</b> — ldio/config.yml<br/><span style="color:#666">tcs:literal &nbsp;"name: …\ninput: …"</span></div>
-      <div class="file"><b>tcs:File</b> — rdfc/pipeline.ttl<br/><span style="color:#666">tcs:literal &nbsp;"@prefix … ."</span></div>
-      <div class="file"><b>tcs:File</b> — docker-compose.yml<br/><span style="color:#666">tcs:literal &nbsp;"services: …"</span></div>
+      <div class="file"><b>spdx:File</b> — ldio/config.yml<br/><span style="color:#666">tcs:literal &nbsp;"name: …\ninput: …"</span></div>
+      <div class="file"><b>spdx:File</b> — rdfc/pipeline.ttl<br/><span style="color:#666">tcs:literal &nbsp;"@prefix … ."</span></div>
+      <div class="file"><b>spdx:File</b> — docker-compose.yml<br/><span style="color:#666">tcs:literal &nbsp;"services: …"</span></div>
     </div>
     <div class="caption">Files hang off the build via <code>tcs:compiledFile</code>.
     Their body lives in <code>tcs:literal</code>.</div>
@@ -313,9 +313,9 @@ Nothing else touches the filesystem.
 
 <!--
 SLIDE 7 - DECISION 3: THE BUILD GRAPH IS SELF-DESCRIBING
-- File-producing compilers do not return paths or strings. They call self._attach_file(filename, filepath, content) from inside compile(), which adds a tcs:File node to the build graph and links it to the tcs:PipelineBuild via tcs:compiledFile. The file body is stored on tcs:literal.
+- File-producing compilers do not return paths or strings. They call the free helper attach_file(self.output_reader, filename, filepath, content) from compilers.utils inside compile() and re-assign self.output_reader with its return value; this adds an spdx:File node to the build graph and links it to the tcs:PipelineBuild via tcs:compiledFile. The file body is stored on tcs:literal.
 - The file-node IRI is derived by slugifying filepath_filename, so the same (filepath, filename) pair yields a stable IRI across runs.
-- ProjectBuilder reads the tcs:File nodes off the compiled build graph and writes them to disk. Planned writes are collected into a pandas.DataFrame on builder.files first, so they can be inspected without touching the filesystem. A path-traversal guard rejects any tcs:filepath that would escape the target directory.
+- ProjectBuilder reads the spdx:File nodes off the compiled build graph and writes them to disk. Planned writes are collected into a pandas.DataFrame on builder.files first, so they can be inspected without touching the filesystem. A path-traversal guard rejects any tcs:filepath that would escape the target directory.
 - Consequence: a compiled build is a single serializable RDF artifact. Provenance, caching, diffing, and replay reduce to graph operations.
 
 Q: Why bake file bodies into the graph as tcs:literal rather than side-tables?
@@ -347,12 +347,12 @@ VOCABULARY (for reference)
 - Component / Catalog: a component is a reusable pipeline building block; the catalog is the RDF library of all available components (data/catalog.ttl).
 - Build graph: the in-memory rdflib.Graph the generator assembles. All build state lives here.
 - tcs:PipelineBuild: root node of a build graph. Generated files hang off it via tcs:compiledFile.
-- tcs:File: RDF node representing a generated file. Carries tcs:filename, tcs:filepath, tcs:literal (the body).
+- spdx:File: RDF node representing a generated file. Carries tcs:filename, tcs:filepath, tcs:literal (the body).
 - Compiler: subclass in src/compilers/. Takes the build graph, transforms it, returns it. Registers automatically on import.
 - applies_to: classmethod on every compiler. Decides whether the compiler should run against a given build graph. Default is False; every concrete compiler declares its own trigger. Execution order emerges from these triggers becoming true as the graph grows.
 - tcs:isFinishing: temporary triple on the build (`<build> tcs:isFinishing <bool>`) that PipelineGenerator toggles to true whenever a shaping pass finds nothing eligible. Compilers that need to run only after the graph has settled (DockerComposeCompiler) gate on this flag. Stripped from the graph before compile() returns.
 - rdfine / GraphReader: in-repo wrapper over rdflib used by every compiler.
-- ProjectBuilder: the filesystem boundary. Walks the tcs:File nodes and writes them out.
+- ProjectBuilder: the filesystem boundary. Walks the spdx:File nodes and writes them out.
 
 Q: What happens when two frameworks share a container arrangement?
 A: Each framework compiler emits its own config file. They meet in docker-compose.yml, produced by a single framework-agnostic DockerComposeCompiler that reads every tcs:DockerComposeConfig node.

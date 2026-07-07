@@ -8,12 +8,12 @@ input:
 transformers:
 - name: Ldio:SparqlConstructTransformer
   config:
-    query: "\r\n            PREFIX dct: <http://purl.org/dc/terms/> .\r\n        \
-      \    PREFIX prov: <http://www.w3.org/ns/prov#> .\r\n            CONSTRUCT {\r\
-      \n              ?versionedS ?p ?o ;\r\n                  prov:generatedAtTime\
-      \ ?generatedAtTime ;\r\n                  dct:isVersionOf ?s .\r\n         \
-      \   } WHERE {\r\n              ?s ?p ?o .\r\n              BIND(URI(CONCAT(STR(?s),\
-      \ '/', STR(?now))) as ?versionedS)\r\n              BIND (NOW() as ?generatedAtTime)\r\
-      \n            }\r\n          "
+    query: "\n            PREFIX dct: <http://purl.org/dc/terms/> .\n            PREFIX\
+      \ prov: <http://www.w3.org/ns/prov#> .\n            CONSTRUCT {\n          \
+      \    ?versionedS ?p ?o ;\n                  prov:generatedAtTime ?generatedAtTime\
+      \ ;\n                  dct:isVersionOf ?s .\n            } WHERE {\n       \
+      \       ?s ?p ?o .\n              BIND(URI(CONCAT(STR(?s), '/', STR(?now)))\
+      \ as ?versionedS)\n              BIND (NOW() as ?generatedAtTime)\n        \
+      \    }\n          "
 outputs:
 - name: Ldio:HttpOut

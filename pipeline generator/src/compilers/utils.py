@@ -7,39 +7,77 @@ that any refinement to the compilation semantics happens in one
 place.
 """
 
+import json
+import re
 import textwrap
 from copy import deepcopy
+from typing import Union
 
+import pandas as pd
 import yaml
-from rdfine import GraphDict, GraphReader
+from rdflib import Literal, URIRef
+from rdfine import GraphDict, GraphReader, receive_first
+
+# Recognised values for ``dct:format`` on a ``tcs:literal`` config.
+# The compiler dispatches strictly on these strings — no fallback —
+# so adding a new format requires editing this table and the
+# dispatch in :func:`parse_config`. That is deliberate: keeping the
+# set of supported formats visible in one place makes the semantic
+# contract with the catalog explicit.
+_YAML_FORMATS = frozenset({"text/yaml", "application/yaml", "application/json"})
+_RAW_TEXT_FORMATS = frozenset({"text/plain", "text/x-dockerfile"})
 
 
 def parse_config(input_dict: dict) -> dict:
-    """
-    Parses a dict containing a "tcs:literal" or "tcs:embedded"
+    """Parse a framed ``tcs:Config`` dict.
+
+    The input is the dict produced by ``GraphReader.traverse`` +
+    ``GraphDict.frame`` for a config node. Two payload shapes exist
+    in the semantic model:
+
+    - ``tcs:literal`` — an opaque string body. Its ``dct:format``
+      picks the parser (yaml/json families are ``yaml.safe_load``-ed;
+      ``text/plain`` and ``text/x-dockerfile`` are returned as the
+      cleaned string). ``dct:format`` is *required* here: without it
+      the compiler cannot know how to interpret the string.
+    - ``tcs:embedded`` — an already-structured RDF fragment. The
+      semantic model guarantees this to be RDF, so no ``dct:format``
+      is needed (and any that is present is ignored).
+
+    A missing or unsupported format on a ``tcs:literal`` raises so
+    the modelling error surfaces at compile time rather than as a
+    downstream parse failure.
+
+    The parsed body lands under the ``:config`` key of the returned
+    dict, side by side with the other framed predicates.
     """
 
     dict_data = deepcopy(input_dict)
+    # ``dct:format`` is meaningful only for tcs:literal payloads;
+    # drop it up front so downstream branches don't have to bother.
+    fmt = dict_data.pop("dct:format", None)
 
     if "tcs:literal" in dict_data:
-        literal_value = dict_data["tcs:literal"]
-        del dict_data["tcs:literal"]
-
-        # Clean up trailing double_quotes
-        literal_value = literal_value.removeprefix('""')
-        literal_value = literal_value.removesuffix('""')
-
-        # Removing '\\r' at the end of a line
-        lines = literal_value.splitlines()
-        lines = [line.removesuffix("\\r") for line in lines]
-        literal_value = "\n".join(lines)
-        literal_value = textwrap.dedent(literal_value).strip()
-
-        dict_data[":config"] = yaml.safe_load(literal_value)
+        if fmt is None:
+            raise LookupError(
+                "tcs:literal config is missing required predicate 'dct:format'. "
+                "Declare the payload format explicitly "
+                "(e.g. 'text/yaml', 'text/x-dockerfile')."
+            )
+        literal_value = _clean_literal(dict_data.pop("tcs:literal"))
+        if fmt in _YAML_FORMATS:
+            dict_data[":config"] = yaml.safe_load(literal_value)
+        elif fmt in _RAW_TEXT_FORMATS:
+            dict_data[":config"] = literal_value
+        else:
+            supported = sorted(_YAML_FORMATS | _RAW_TEXT_FORMATS)
+            raise ValueError(
+                f"Unsupported dct:format {fmt!r} for tcs:literal payload; "
+                f"expected one of {supported}."
+            )
     elif "tcs:embedded" in dict_data:
-        embedded_value = dict_data["tcs:embedded"]
-        del dict_data["tcs:embedded"]
-        dict_data[":config"] = embedded_value
+        embedded_value = dict_data.pop("tcs:embedded")
+        dict_data[":config"] = _normalize_newlines(embedded_value)
     else:
         raise LookupError(
             "Neither predicates 'tcs:embedded' nor 'tcs:literal' found in data."
@@ -48,21 +86,68 @@ def parse_config(input_dict: dict) -> dict:
     return dict_data
 
 
-def extract_config(reader: GraphReader, config_id: str) -> dict:
-    """Return the parsed body of a ``tcs:Config`` node as a plain dict.
+def _clean_literal(text: str) -> str:
+    """Normalise a ``tcs:literal`` string body.
+
+    Strips leading/trailing double-quote artefacts, converts
+    CRLF / lone CR line endings (Windows / classic-Mac) to LF so
+    downstream serializers do not emit ``\\r`` escape sequences,
+    drops the ``\\r`` line-terminator escape that Turtle sometimes
+    leaves on a line, dedents, and trims outer whitespace so
+    downstream parsers (yaml, raw-text consumers) get a clean
+    payload regardless of how the literal was written in the
+    Turtle source.
+    """
+    text = text.removeprefix('""').removesuffix('""')
+    # CRLF-saved Turtle sources leave real \r bytes in the literal;
+    # yaml / json serializers escape those as ``\r`` which is ugly
+    # and Docker-Compose-parsing-hostile. Normalise to LF first.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = [line.removesuffix("\\r") for line in text.splitlines()]
+    text = "\n".join(lines)
+    return textwrap.dedent(text).strip()
+
+
+def _normalize_newlines(value):
+    """Recursively normalise CR/CRLF line endings inside a parsed value.
+
+    ``tcs:embedded`` payloads reach :func:`parse_config` as already
+    structured RDF (dicts / lists of primitives). Their string
+    leaves can still carry ``\\r`` from CRLF-saved Turtle sources.
+    yaml.dump / json.dumps escape those as ``\\r`` in the output;
+    normalising them here keeps the generated files clean.
+    """
+    if isinstance(value, str):
+        return value.replace("\r\n", "\n").replace("\r", "\n")
+    if isinstance(value, dict):
+        return {k: _normalize_newlines(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_normalize_newlines(v) for v in value]
+    return value
+
+
+def extract_config(reader: GraphReader, config_id: str) -> Union[dict, str]:
+    """Return the parsed body of a ``tcs:Config`` node.
 
     Combines the ``traverse`` + ``frame`` + :func:`parse_config` +
-    ``[":config"]`` dance that every compiler runs when it reads a
-    ``tcs:Config``-typed node. The returned dict is the user-facing
-    config body (``:config`` sub-key of the parsed structure); wrap
-    it in a :class:`GraphDict` if path queries or further path-based
-    edits are needed.
+    ``[':config']`` dance that every compiler runs when it reads a
+    ``tcs:Config``. The returned value is whatever ``parse_config``
+    produces for the config's ``dct:format``:
+
+    - yaml/json formats — a ``dict``.
+    - raw-text formats  — a ``str``.
+    - ``application/rdf`` embedded — the framed RDF fragment as a
+      ``dict``.
+
+    Callers know what shape to expect based on the config type they
+    asked for; a Dockerfile config yields a string, a compose config
+    yields a dict.
 
     Args:
         reader: A :class:`GraphReader` over a graph that contains the
             config node and everything it traverses to.
         config_id: The IRI of the ``tcs:Config`` to extract (compact
-            form, e.g. ``":ldio_config_0"``).
+            form, e.g. ``':ldio_config_0'``).
     """
     config_gd = GraphDict(reader.traverse(config_id).graph)
     config_gd = config_gd.frame({"@id": config_id})
@@ -185,3 +270,195 @@ def parse_docker_compose_config(
             normalized[key] = val
 
     return normalized
+
+
+def attach_file(
+    reader: GraphReader,
+    *,
+    filename: str,
+    filepath: str,
+    content: str,
+) -> GraphReader:
+    """Return ``reader`` extended with an ``spdx:File`` attached to the build.
+
+    Adds the triples::
+
+        :build tcs:compiledFile :file_<slug>
+        :file_<slug> a spdx:File ;
+            tcs:filename "<filename>" ;
+            tcs:filepath "<filepath>" ;
+            tcs:literal  "<content>" .
+
+    The file IRI is derived from ``filepath`` + ``filename`` to be
+    stable within the build. ``content`` is stored verbatim as an
+    rdflib ``Literal`` — no prefix expansion is applied to it, so
+    arbitrary string bodies (yaml / ttl / json) are safe.
+
+    The input ``reader`` is not mutated; callers typically write::
+
+        self.output_reader = attach_file(self.output_reader, ...)
+    """
+    build_id = receive_first(
+        reader.filter(pred="rdf:type", obj="tcs:PipelineBuild").df["sub"],
+    )
+
+    # Stable, IRI-safe local name derived from path + filename.
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", f"{filepath}_{filename}").strip("_")
+    file_id = f":file_{slug}"
+
+    rows = [
+        {
+            "sub": build_id,
+            "pred": "tcs:compiledFile",
+            "obj": file_id,
+            "sub_type": URIRef,
+            "obj_type": URIRef,
+        },
+        {
+            "sub": file_id,
+            "pred": "rdf:type",
+            "obj": "spdx:File",
+            "sub_type": URIRef,
+            "obj_type": URIRef,
+        },
+        {
+            "sub": file_id,
+            "pred": "tcs:filename",
+            "obj": filename,
+            "sub_type": URIRef,
+            "obj_type": Literal,
+        },
+        {
+            "sub": file_id,
+            "pred": "tcs:filepath",
+            "obj": filepath,
+            "sub_type": URIRef,
+            "obj_type": Literal,
+        },
+        {
+            "sub": file_id,
+            "pred": "tcs:literal",
+            "obj": content,
+            "sub_type": URIRef,
+            "obj_type": Literal,
+        },
+    ]
+
+    new_graph = GraphReader(
+        pd.DataFrame.from_records(rows),
+        prefix_store=reader.prefix_store,
+    ).graph
+    return reader.add(new_graph)
+
+
+def rewrite_compose_volume_host_path(
+    reader: GraphReader,
+    *,
+    component_iri: str,
+    container_path: str,
+    host_path: str,
+) -> GraphReader:
+    """Rewrite the host-side of a volume mount on a component's compose config.
+
+    Locates the ``tcs:DockerComposeConfig`` attached to ``component_iri``
+    via ``tcs:config``, walks every service body's ``volumes:`` list,
+    and rewrites any short-form volume string whose container-side
+    path equals ``container_path`` so its host-side path becomes
+    ``host_path``. The rest of the volume string (mode flag, if
+    present) is preserved.
+
+    This is the "each framework compiler owns its own compose
+    fragment" pattern: a file-producing compiler that knows *where*
+    it emits its output uses this to keep the paired compose config
+    pointing at the right host location, so
+    :class:`DockerComposeCompiler` can stay a generic aggregator.
+
+    Only Compose's short (string) volume form is handled; the long
+    (dict) form is left untouched \u2014 none of the current catalog uses
+    it and silently rewriting an unfamiliar shape would be worse
+    than a no-op.
+
+    The rewrite follows the same idiom as
+    :class:`SemanticWorksCompiler`: strip the existing
+    ``tcs:literal`` / ``tcs:embedded`` triples off the config node
+    and re-attach a fresh ``tcs:literal`` carrying the normalised
+    JSON body. :func:`parse_docker_compose_config` re-parses that
+    shape without special-casing.
+
+    The input ``reader`` is not mutated. Returns the reader unchanged
+    if:
+
+    - ``component_iri`` has no ``tcs:DockerComposeConfig`` attached,
+    - the config has no ``services`` section, or
+    - no volume in the config references ``container_path``.
+
+    Args:
+        reader: A :class:`GraphReader` over a graph that contains
+            the component and its compose config.
+        component_iri: Compact IRI of the component whose compose
+            config carries the volume mount (e.g.
+            ``\"rdfc:Orchestrator\"``).
+        container_path: The container-side mount point to match on
+            (stable framework convention, e.g.
+            ``\"/workspace/pipeline/pipeline.ttl\"``).
+        host_path: The host-side path to rewrite matching volumes
+            to (e.g. ``\"./rdfc/pipeline.ttl\"``).
+    """
+    compose_ids = reader.select(
+        "?compose_config",
+        f"""
+            {component_iri} tcs:config ?compose_config .
+            ?compose_config a tcs:DockerComposeConfig .
+        """,
+    )["compose_config"].to_list()
+    if not compose_ids:
+        return reader
+    compose_config_id = compose_ids[0]
+
+    normalized = parse_docker_compose_config(reader, compose_config_id)
+    if not normalized.get("services"):
+        return reader
+
+    changed = False
+    for service_body in normalized["services"].values():
+        volumes = service_body.get("volumes")
+        if not isinstance(volumes, list):
+            continue
+        new_volumes: list = []
+        for volume in volumes:
+            if isinstance(volume, str):
+                parts = volume.split(":", 2)
+                # ``HOST:CONTAINER[:MODE]`` \u2014 only rewrite when the
+                # container path matches the requested mount point.
+                if len(parts) >= 2 and parts[1] == container_path:
+                    new_volumes.append(":".join([host_path, *parts[1:]]))
+                    changed = True
+                    continue
+            new_volumes.append(volume)
+        service_body["volumes"] = new_volumes
+
+    if not changed:
+        return reader
+
+    new_body = json.dumps(reader.prefix_store.drop(normalized))
+
+    remove_triples = reader.filter(
+        sub=compose_config_id, pred=["tcs:literal", "tcs:embedded"]
+    ).graph
+    updated = reader.remove(remove_triples)
+
+    add_triples = GraphReader(
+        pd.DataFrame.from_records(
+            [
+                {
+                    "sub": compose_config_id,
+                    "pred": "tcs:literal",
+                    "obj": new_body,
+                    "sub_type": URIRef,
+                    "obj_type": Literal,
+                }
+            ]
+        ),
+        updated.prefix_store,
+    ).graph
+    return updated.add(add_triples)

@@ -8,7 +8,7 @@
 &nbsp;&nbsp;&nbsp;&nbsp;[4.2. The Compiler ABC](#42-the-compiler-abc) <br>
 &nbsp;&nbsp;&nbsp;&nbsp;[4.3. Auto-registration](#43-auto-registration) <br>
 &nbsp;&nbsp;&nbsp;&nbsp;[4.4. PipelineGenerator: the fixpoint loop](#44-pipelinegenerator-the-fixpoint-loop) <br>
-&nbsp;&nbsp;&nbsp;&nbsp;[4.5. File attachment: the tcs:File vocabulary](#45-file-attachment-the-tcsfile-vocabulary) <br>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.5. File attachment: the spdx:File vocabulary](#45-file-attachment-the-spdxfile-vocabulary) <br>
 &nbsp;&nbsp;&nbsp;&nbsp;[4.6. Provenance: dct:creator attachment](#46-provenance-dctcreator-attachment) <br>
 &nbsp;&nbsp;&nbsp;&nbsp;[4.7. Compiler responsibilities at a glance](#47-compiler-responsibilities-at-a-glance) <br>
 [5. Future directions](#5-future-directions) <br>
@@ -67,7 +67,7 @@ gen = PipelineGenerator(":DemonstratorPipeline", catalog_graph)
 build_graph = gen.compile()
 ```
 
-The returned `build_graph` contains both the semantic description of the pipeline build and the compiled files as `tcs:File` nodes attached to the `tcs:PipelineBuild` via `tcs:compiledFile` (with `tcs:filename`, `tcs:filepath`, and `tcs:literal` carrying the file body). The build graph is therefore self-describing. To materialize it to disk, hand it to `ProjectBuilder`:
+The returned `build_graph` contains both the semantic description of the pipeline build and the compiled files as `spdx:File` nodes attached to the `tcs:PipelineBuild` via `tcs:compiledFile` (with `tcs:filename`, `tcs:filepath`, and `tcs:literal` carrying the file body). The build graph is therefore self-describing. To materialize it to disk, hand it to `ProjectBuilder`:
 
 ```python
 from compilers import ProjectBuilder
@@ -92,16 +92,17 @@ This section is a closer look at the `compilers` package. (`rdfine` has its own 
 
 | Module | Exported symbols | Purpose |
 | --- | --- | --- |
-| [base.py](src/compilers/base.py) | `Compiler` | Abstract base class, auto-registry, `applies_to` contract (default `False`), `compile` contract, and `_attach_file` helper. |
+| [base.py](src/compilers/base.py) | `Compiler` | Abstract base class, auto-registry, `applies_to` contract (default `False`), and `compile` contract. |
 | [pipeline_extractor.py](src/compilers/pipeline_extractor.py) | `PipelineExtractor` | Extract the triples concerning one specific pipeline definition out of the catalog and seed the `tcs:PipelineBuild` skeleton (`prov:hadPlan`-linked to the definition). |
 | [pipeline_assembler.py](src/compilers/pipeline_assembler.py) | `PipelineAssembler` | Materialize the `tcs:DockerContainer` / step / config skeleton onto the seeded `tcs:PipelineBuild`. |
 | [semantic_works_compiler.py](src/compilers/semantic_works_compiler.py) | `SemanticWorksCompiler` | For semantic.works components: fold step configurations into the Docker Compose env vars of the responsible microservice. |
 | [ldio_config_compiler.py](src/compilers/ldio_config_compiler.py) | `LdioConfigCompiler` | Produce the LDIO `config.yml` and attach it to the build. |
 | [rdfc_config_compiler.py](src/compilers/rdfc_config_compiler.py) | `RdfcConfigCompiler` | Produce the RDF-Connect `pipeline.ttl` and attach it to the build. |
+| [rdfc_dockerfile_compiler.py](src/compilers/rdfc_dockerfile_compiler.py) | `RdfcDockerFileCompiler` | Produce the RDF-Connect `Dockerfile`, `pyproject.toml` and `package.json` under `rdfc/`. The Dockerfile is verbatim from a `tcs:DockerImageConfig`; the two dependency files are synthesised from `spdx:Package` annotations on the components the pipeline actually uses. |
 | [docker_compose_compiler.py](src/compilers/docker_compose_compiler.py) | `DockerComposeCompiler` | Produce the top-level `docker-compose.yml` and attach it to the build. Runs during the finishing pass so any shaping compilers can finish editing their configs first. |
 | [pipeline_generator.py](src/compilers/pipeline_generator.py) | `PipelineGenerator` | End-to-end driver: bootstrap + fixpoint loop. Also manages the `tcs:isFinishing` runtime flag and writes `dct:creator` provenance triples. |
-| [project_builder.py](src/compilers/project_builder.py) | `ProjectBuilder` | Write the `tcs:File` nodes of a compiled build graph to disk. Not a `Compiler` subclass — this is the filesystem boundary. |
-| [utils.py](src/compilers/utils.py) | (internal) `receive_first` | Defensive list-head extraction with informative `LookupError`s. |
+| [project_builder.py](src/compilers/project_builder.py) | `ProjectBuilder` | Write the `spdx:File` nodes of a compiled build graph to disk. Not a `Compiler` subclass — this is the filesystem boundary. |
+| [utils.py](src/compilers/utils.py) | (internal) `attach_file`, `extract_config`, `parse_docker_compose_config` | Compiler-side helpers that encode knowledge of the semantic model — including the `spdx:File` attachment helper called by FILE-producing compilers. |
 
 All public symbols are re-exported from the package root:
 
@@ -110,7 +111,8 @@ from compilers import (
     Compiler, PipelineGenerator, ProjectBuilder,
     PipelineExtractor, PipelineAssembler,
     SemanticWorksCompiler,
-    LdioConfigCompiler, RdfcConfigCompiler, DockerComposeCompiler,
+    LdioConfigCompiler, RdfcConfigCompiler, RdfcDockerFileCompiler,
+    DockerComposeCompiler,
 )
 ```
 
@@ -208,14 +210,14 @@ def applies_to(cls, graph_reader: GraphReader) -> bool:
 
 **Inspection after the run.** The instances that ran are kept on `gen.compilers`, keyed by class, in insertion order. So `list(gen.compilers)` doubles as the compile order. The same information is also in the build graph as `dct:creator` triples on the `tcs:PipelineBuild`.
 
-### 4.5. File attachment: the tcs:File vocabulary
+### 4.5. File attachment: the spdx:File vocabulary
 
-Compilers that produce a file attach their output to the build by calling `self._attach_file(filename=..., filepath=..., content=...)` from inside `compile()`. The helper adds five triples to the build graph:
+Compilers that produce a file attach their output to the build by calling the free helper `attach_file(self.output_reader, filename=..., filepath=..., content=...)` (from `compilers.utils`) from inside `compile()` and re-assigning `self.output_reader` with its return value. The helper adds five triples to the build graph:
 
 ```turtle
 :build tcs:compiledFile :file_<slug> .
 
-:file_<slug> a tcs:File ;
+:file_<slug> a spdx:File ;
     tcs:filename "..." ;
     tcs:filepath "..." ;
     tcs:literal  "..." .
@@ -225,7 +227,7 @@ The slug is derived from `filepath_filename` via `re.sub(r"[^a-zA-Z0-9]+", "_", 
 
 The body of the file is stored verbatim as an rdflib `Literal` — no prefix expansion is applied to it. This is what makes it safe to put arbitrary text bodies (YAML, Turtle, JSON) into `tcs:literal` even when they contain colons or other CURIE-like substrings.
 
-After `PipelineGenerator.compile()` returns, the build graph is fully self-describing: `ProjectBuilder` iterates over the `tcs:File` nodes and writes each to disk at `tcs:filepath / tcs:filename` with body `tcs:literal`. It collects the file records into a `pandas.DataFrame` on `builder.files` first, so the planned writes can be inspected before touching the filesystem. A path-traversal guard rejects any `tcs:filepath` that would escape the target directory.
+After `PipelineGenerator.compile()` returns, the build graph is fully self-describing: `ProjectBuilder` iterates over the `spdx:File` nodes and writes each to disk at `tcs:filepath / tcs:filename` with body `tcs:literal`. It collects the file records into a `pandas.DataFrame` on `builder.files` first, so the planned writes can be inspected before touching the filesystem. A path-traversal guard rejects any `tcs:filepath` that would escape the target directory.
 
 ### 4.6. Provenance: dct:creator attachment
 
@@ -247,9 +249,10 @@ A useful side effect: because provenance is attached *while the loop is running*
 | `PipelineExtractor` | always | the catalog | triples for the requested pipeline definition; seeds `<pipeline>_build a tcs:PipelineBuild ; prov:hadPlan <pipeline>` |
 | `PipelineAssembler` | exactly one `tcs:PipelineDefinition` in the graph and it has at least one `:hasStep` | the extracted pipeline | `tcs:DockerContainer`, `dct:hasPart`, `tcs:instantiates`, `tcs:runs`, `:isAssigned` |
 | `SemanticWorksCompiler` | any `tcs:PipelineComponent` in the `sw:` namespace, and at least one `tcs:DockerContainer` exists | step configs + docker configs of `sw:` components | updated `tcs:literal` on each affected `tcs:DockerComposeConfig` |
-| `LdioConfigCompiler` | a container instantiates `ldio:LinkedDataInteractionsOrchestrator` | LDIO components and their configs | `tcs:File` named `ldio/config.yml` |
-| `RdfcConfigCompiler` | a container instantiates `rdfc:Orchestrator` | RDF-Connect components, runners and step graph | `tcs:File` named `rdfc/pipeline.ttl` |
-| `DockerComposeCompiler` | `<build> tcs:isFinishing true` is set (i.e. the loop has settled) and any `tcs:DockerComposeConfig` node exists | every `tcs:DockerComposeConfig` | `tcs:File` named `./docker-compose.yml` |
+| `LdioConfigCompiler` | a container instantiates `ldio:LinkedDataInteractionsOrchestrator` | LDIO components and their configs | `spdx:File` named `ldio/config.yml` |
+| `RdfcConfigCompiler` | a container instantiates `rdfc:Orchestrator` | RDF-Connect components, runners and step graph | `spdx:File` named `rdfc/pipeline.ttl` |
+| `RdfcDockerFileCompiler` | a container instantiates `rdfc:Orchestrator` and a `tcs:DockerImageConfig` is present | the Dockerfile literal + every `spdx:Package` reachable via `dct:requires` from components in the container | `spdx:File`s named `rdfc/Dockerfile`, `rdfc/pyproject.toml`, `rdfc/package.json` |
+| `DockerComposeCompiler` | `<build> tcs:isFinishing true` is set (i.e. the loop has settled) and any `tcs:DockerComposeConfig` node exists | every `tcs:DockerComposeConfig` | `spdx:File` named `./docker-compose.yml` |
 
 ## 5. Future directions
 The pipeline generator is not fully implemented yet, it is a work in progress. We have the following goals for the year 2026:
@@ -258,10 +261,10 @@ The pipeline generator is not fully implemented yet, it is a work in progress. W
 - [x] Add another framework, [semantic.works](https://semantic.works/).
 - [x] PipelineAssembler: Assigns segments of a Pipeline Definition to microservices. It does so by following dependency paths via dct:requires and assigning InstancePipelineComponents to the microservices that instantiate them.
 - [x] DockerComposeCompiler: Compiles a DockerCompose file based on the description of the different microservices.
-- [x] ProjectBuilder: Takes the semantic description of the PipelineBuild and writes the attached `tcs:File` nodes to a folder using their `tcs:filepath` / `tcs:filename`. Lives outside the `Compiler` hierarchy because it is the filesystem boundary, not a graph-to-graph transformation.
+- [x] ProjectBuilder: Takes the semantic description of the PipelineBuild and writes the attached `spdx:File` nodes to a folder using their `tcs:filepath` / `tcs:filename`. Lives outside the `Compiler` hierarchy because it is the filesystem boundary, not a graph-to-graph transformation.
 - [x] CompilerAssigner: It may be necessary at some point to provide a lookup which compilers need to be called depending on information contained in the graph. So that compilers can be called dynamically based on need. Implemented as a registry on `Compiler._registry` (auto-populated via `__init_subclass__`) combined with a per-compiler `applies_to(graph_reader) -> bool` classmethod that declares the triggering pattern.
 - [ ] SemanticModelVersionMapper: Can map from one version of the semantic model to the internal model that is used by the pipeline generator. Allows decoupling versioning of the official semantic model and the internal model used for implementation.
-- [ ] RdfcDockerFileCompiler: Creates an adhoc Dockerfile for RDF-Connect. This allows to include only those dependencies in a docker container which are actually used in the pipeline (currently I use a generic RDF-Connect Docker container that includes most RDF-Connect components).
+- [x] RdfcDockerFileCompiler: Creates an adhoc Dockerfile for RDF-Connect. This allows to include only those dependencies in a docker container which are actually used in the pipeline.
 - [ ] NifiCompiler: Compiler for [Nifi 2](https://nifi.apache.org/). 
 - [x] PipelineGenerator: Uses all previously described compilers to route the compilation flow for generating a pipeline project folder based on a Pipeline Definition. Routing is done via the registry + `applies_to` mechanism described above; producing the project folder on disk is handled by `ProjectBuilder`.
 
@@ -279,7 +282,7 @@ Check the catalog in the data folder for examples. At a minimum, a Pipeline Comp
 ### 6.3. How to onboard new frameworks
 - Describe pipeline components with the semantic model and add them to the catalog.
 - Write compilers for your new framework that can produce the expected output files. Each compiler must subclass `Compiler` (from `compilers.base`), implement `compile(self) -> Graph` returning the enriched build graph, and override `applies_to(cls, graph_reader) -> bool` to declare the graph-state conditions under which the compiler should run — typically the presence of a framework-specific node type or predicate in the build graph. The default `applies_to` returns `False`, so this override is required. If your compiler must run only after other shaping compilers have finished (for example because it consumes their output), gate its `applies_to` on `<build> tcs:isFinishing true`, which `PipelineGenerator` sets whenever a shaping pass has settled (see §4.4).
-- Compilers that produce a file should end their `compile()` method with a call to `self._attach_file(filename=..., filepath=..., content=...)`, which adds a `tcs:File` node to the `tcs:PipelineBuild` carrying the produced file body as a literal.
+- Compilers that produce a file should end their `compile()` method with a call to `attach_file(self.output_reader, filename=..., filepath=..., content=...)` (from `compilers.utils`), re-assigning `self.output_reader` with the returned reader. The helper adds an `spdx:File` node to the `tcs:PipelineBuild` carrying the produced file body as a literal.
 - Import the new compiler from `compilers/__init__.py`. The auto-registration mechanism (`Compiler.__init_subclass__`) then makes it visible to `PipelineGenerator`, which will run it automatically against any pipeline whose build graph matches its `applies_to` condition. No edits to `PipelineGenerator` are required.
 - Test the new compilers based on a Pipeline Definition that includes components of the new framework.
 

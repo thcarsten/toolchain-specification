@@ -4,12 +4,26 @@ import pandas as pd
 import yaml
 
 from .base import Compiler
-from .utils import extract_config
+from .utils import attach_file, extract_config, rewrite_compose_volume_host_path
+
+# The LDIO pipeline-starter service curls the config file at this
+# fixed container path. Kept next to the host-side output location
+# so the pairing is visible in one place.
+_LDIO_STARTER_CONTAINER_PATH = "/pipeline.yml"
+_LDIO_STARTER_HOST_PATH = "./ldio/config.yml"
 
 
 class LdioConfigCompiler(Compiler):
     """
     Class to generate config file for LDIO.
+
+    Also patches the ``tcs:DockerComposeConfig`` on
+    ``ldio:LdioPipelineStarterService`` so its volume mount for the
+    pipeline file points at ``./ldio/config.yml`` — the host
+    location this compiler actually emits to. Doing that here
+    rather than in :class:`DockerComposeCompiler` keeps the
+    aggregator generic: each framework compiler shapes its own
+    compose fragment, then the aggregator merges them.
     """
 
     def __init__(self, graph: Graph) -> None:
@@ -41,10 +55,18 @@ class LdioConfigCompiler(Compiler):
         self.output = drop_empty(self.output)
         yaml_string = yaml.dump(self.output, sort_keys=False)
 
-        self._attach_file(
+        self.output_reader = attach_file(
+            self.output_reader,
             filename="config.yml",
             filepath="ldio",
             content=yaml_string,
+        )
+
+        self.output_reader = rewrite_compose_volume_host_path(
+            self.output_reader,
+            component_iri="ldio:LdioPipelineStarterService",
+            container_path=_LDIO_STARTER_CONTAINER_PATH,
+            host_path=_LDIO_STARTER_HOST_PATH,
         )
         return self.output_reader.graph
 

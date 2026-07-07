@@ -63,12 +63,18 @@ class PipelineExtractor(Compiler):
     def name_blind_nodes(self) -> None:
         """
         Some blind nodes need to receive a proper id, this is happening here.
+
+        Renames blank nodes typed with any of the prefixes we know how
+        to reason on further downstream: ``tcs:`` (configs, files,
+        containers, ...) and ``spdx:`` (package dependencies attached
+        to components via ``dct:requires``). Anything else stays a
+        blank node.
         """
 
         # renaming
         rename_ids = (
             self.output_reader.filter(
-                sub="^_:", pred="^rdf:type$", obj="^tcs:", regex=True
+                sub="^_:", pred="^rdf:type$", obj=["^tcs:", "^spdx:"], regex=True
             )
             .df["sub"]
             .to_list()
