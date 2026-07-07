@@ -194,9 +194,15 @@ class RdfcConfigCompiler(Compiler):
 
         Phantom rows (``prev_step`` NaN) are kept so the topological
         sort has the full step set to reason about.
+
+        ``SELECT DISTINCT`` guards against the query multiplying
+        rows when more than one witness container satisfies the
+        ``?container tcs:instantiates ?component ; tcs:runs ?step``
+        join: channels are defined by their step / component tuple,
+        not by the container that happens to run them.
         """
         return self.input_reader.select(
-            "?step ?prev_step ?component ?prev_component",
+            "DISTINCT ?step ?prev_step ?component ?prev_component",
             """
                 ?step prov:specializationOf ?component .
                 ?container tcs:instantiates rdfc:Orchestrator .

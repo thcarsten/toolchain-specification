@@ -12,38 +12,28 @@
         :env_2 .
 
 :HttpIn a rdfc:HttpIn ;
-    rdfc:writer :channel_2,
-        :channel_3 .
+    rdfc:writer :channel_1 .
 
 :SparqlIngest a rdfc:SparqlIngest ;
     rdfc:ingestConfig [ rdfc:operationMode "Replication" ] ;
-    rdfc:memberStream :channel_4,
-        :channel_5 .
+    rdfc:memberStream :channel_2 .
 
 :ThresholdMonitoring a rdfc:thresholdMonitoringProcessor ;
-    rdfc:reader :channel_2,
-        :channel_3 ;
+    rdfc:reader :channel_1 ;
     rdfc:unit <http://qudt.org/vocab/unit/CentiM> ;
     rdfc:value 30 ;
-    rdfc:writer :channel_4,
-        :channel_5 .
+    rdfc:writer :channel_2 .
 
-:env_1 rdfc:instantiates rdfc:NodeRunner ;
+:env_1 rdfc:instantiates rdfc:PyRunner ;
+    rdfc:processor :HttpIn .
+
+:env_2 rdfc:instantiates rdfc:NodeRunner ;
     rdfc:processor :SparqlIngest,
         :ThresholdMonitoring .
 
-:env_2 rdfc:instantiates rdfc:PyRunner ;
-    rdfc:processor :HttpIn .
+:channel_1 a rdfc:Reader,
+        rdfc:Writer .
 
 :channel_2 a rdfc:Reader,
-        rdfc:Writer .
-
-:channel_3 a rdfc:Reader,
-        rdfc:Writer .
-
-:channel_4 a rdfc:Reader,
-        rdfc:Writer .
-
-:channel_5 a rdfc:Reader,
         rdfc:Writer .
 

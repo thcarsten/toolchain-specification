@@ -66,9 +66,11 @@ class PipelineAssembler(Compiler):
                 f"{component} tcs:config ?config. ?config a tcs:DockerComposeConfig .",
             )
 
-        microservice_list = df_requirements.loc[
-            df_requirements["microservice"], "component"
-        ].to_list()
+        microservice_list = (
+            df_requirements.loc[df_requirements["microservice"], "component"]
+            .drop_duplicates()
+            .to_list()
+        )
 
         def _lookup_dependants(microservice_id: str) -> list[str]:
             """

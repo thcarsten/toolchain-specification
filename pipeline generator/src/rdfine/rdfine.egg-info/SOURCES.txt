@@ -1,5 +1,12 @@
 README.md
+__init__.py
+graph_dict.py
+graph_reader.py
+prefix_apply.py
+prefix_store.py
 pyproject.toml
+rdflib_bridge.py
+utils.py
 ./__init__.py
 ./graph_dict.py
 ./graph_reader.py

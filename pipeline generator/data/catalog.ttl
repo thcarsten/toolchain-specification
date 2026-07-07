@@ -21,13 +21,12 @@
 # Package managers
 #################################################################
 
-:pip a spdx:suppliedBy ;
-    rdfs:label "pip" ;
-    rdfs:comment "Python package manager. Packages annotated with this end up in pyproject.toml." .
+# This is a stub
+:pip rdfs:label "pip" ;
+rdfs:comment "Python package manager. Packages annotated with this end up in pyproject.toml." .
 
-:npm a spdx:suppliedBy ;
-    rdfs:label "npm" ;
-    rdfs:comment "Node.js package manager. Packages annotated with this end up in package.json." .
+:npm rdfs:label "npm" ;
+rdfs:comment "Node.js package manager. Packages annotated with this end up in package.json." .
 
 
 #################################################################

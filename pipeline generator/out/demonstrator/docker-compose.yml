@@ -1,4 +1,23 @@
 services:
+  error-alert:
+    image: lblod/loket-error-alert-service
+    volumes:
+    - ./config/error-alert/:/config/
+    environment:
+      DEBUG: false
+      EMAIL_FROM: info@dishacled.com
+      EMAIL_TO: everyone@world.com
+  ldio-workbench:
+    container_name: ldio-workbench
+    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
+    ports:
+    - 8080:8080
+  berichtencentrum-deliver-email-service:
+    image: lblod/berichtencentrum-deliver-email-service
+    environment:
+      EMAIL_CRON_PATTERN: '*/1 * * * * *'
+      HOURS_DELIVERING_TIMEOUT: '1'
+      MAILFOLDER_URI: http://data.lblod.info/id/mail-folders/2
   rdf-connect:
     container_name: rdf-connect
     image: rdf-connect:latest
@@ -8,20 +27,10 @@ services:
     environment:
       LOG_LEVEL: debug
     command: npx rdfc /workspace/pipeline/pipeline.ttl
-  error-alert:
-    image: lblod/loket-error-alert-service
-    volumes:
-    - ./config/error-alert/:/config/
+  virtuoso:
+    image: redpencil/virtuoso:1.4.0
     environment:
-      DEBUG: false
-      EMAIL_FROM: info@dishacled.com
-      EMAIL_TO: everyone@world.com
-  berichtencentrum-deliver-email-service:
-    image: lblod/berichtencentrum-deliver-email-service
-    environment:
-      EMAIL_CRON_PATTERN: '*/1 * * * * *'
-      HOURS_DELIVERING_TIMEOUT: '1'
-      MAILFOLDER_URI: http://data.lblod.info/id/mail-folders/2
+      SPARQL_UPDATE: 'true'
   ldio-pipeline-starter:
     image: curlimages/curl
     volumes:
@@ -29,12 +38,3 @@ services:
     command: 'sh -c " sleep 30 && curl -X POST -H ''content-type: application/yaml''
       http://ldio-workbench:8080/admin/api/v1/pipeline --data-binary @/pipeline.yml
       "'
-  ldio-workbench:
-    container_name: ldio-workbench
-    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
-    ports:
-    - 8080:8080
-  virtuoso:
-    image: redpencil/virtuoso:1.4.0
-    environment:
-      SPARQL_UPDATE: 'true'
