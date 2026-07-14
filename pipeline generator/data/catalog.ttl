@@ -219,14 +219,14 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
 # LDIO Components
 #################################################################
 
-ldio:HttpInPoller a tcs:PipelineComponent;
+ldio:HttpInPoller a tcs:PipelineComponent, dcat:Resource;
     rdfs:label "Ldio:HttpInPoller" ; 
     ldio:type "Input" ;
     dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-http-in-poller" ;
     dct:requires ldio:LinkedDataInteractionsOrchestrator .
 
 
-ldio:RdfAdapter a tcs:PipelineComponent;
+ldio:RdfAdapter a tcs:PipelineComponent, dcat:Resource;
     rdfs:label "Ldio:RdfAdapter" ; 
     ldio:type "Adapter" ;
     dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-adapters/ldio-rdf-adapter" ;
@@ -234,13 +234,13 @@ ldio:RdfAdapter a tcs:PipelineComponent;
 
 
 ldio:SparqlConstructTransformer 
-    a tcs:PipelineComponent ;
+    a tcs:PipelineComponent, dcat:Resource ;
     rdfs:label "Ldio:SparqlConstructTransformer" ; 
     ldio:type "Transformer" ;
     dct:requires ldio:LinkedDataInteractionsOrchestrator .
 
 
-ldio:HttpOut a tcs:PipelineComponent;
+ldio:HttpOut a tcs:PipelineComponent, dcat:Resource;
     rdfs:label "Ldio:HttpOut" ; 
     rdfs:description "The LDIO HTTP Out is a basic Http Client that will send the given Linked Data model to a target url.";
     ldio:type "Output" ;
@@ -249,7 +249,7 @@ ldio:HttpOut a tcs:PipelineComponent;
 
 
 ldio:LinkedDataInteractionsOrchestrator
-    a tcs:PipelineComponent ;
+    a tcs:PipelineComponent, dcat:Resource ;
     rdfs:label "Linked Data Interactions Orchestrator" ;
     dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
     spdx:versionInfo "2.8.0-SNAPSHOT";
@@ -270,7 +270,7 @@ ldio-workbench:
 
 
 ldio:LdioPipelineStarterService 
-    a tcs:PipelineComponent ;
+    a tcs:PipelineComponent, dcat:Resource ;
     rdfs:label "Ldio Pipeline Starter Service" ;
     tcs:config :LdioPipelineStarterDockerComposeConfig. 
 
@@ -298,7 +298,7 @@ ldio-pipeline-starter:
 # RDF Connect Components
 #################################################################
 
-rdfc:SparqlIngest a tcs:PipelineComponent;
+rdfc:SparqlIngest a tcs:PipelineComponent, dcat:Resource;
     rdfs:label "Sparql Ingest";
     rdfs:description "This processor takes a stream of RDF records, transforms them into corresponding SPARQL Update queries, and executes them against a SPARQL Graph Store via the SPARQL Protocol." ; 
     dcat:landingPage "https://github.com/rdf-connect/sparql-ingest-processor-ts";
@@ -368,7 +368,7 @@ rdfc:SparqlIngest a tcs:PipelineComponent;
   ].
 
 
-rdfc:HttpIn a tcs:PipelineComponent;
+rdfc:HttpIn a tcs:PipelineComponent, dcat:Resource;
     rdfs:label "RDF Connect Http In";
     dct:requires rdfc:PyRunner;
     :reader_predicate rdfc:reader ; # placeholders
@@ -376,7 +376,7 @@ rdfc:HttpIn a tcs:PipelineComponent;
     owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_in/processor.ttl> . # I still need to build this component
 
 
-rdfc:HttpOut a tcs:PipelineComponent;
+rdfc:HttpOut a tcs:PipelineComponent, dcat:Resource;
     rdfs:label "RDF Connect Http Out";
     dct:requires rdfc:PyRunner;
     dct:requires [
@@ -390,14 +390,14 @@ rdfc:HttpOut a tcs:PipelineComponent;
     owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl> . 
 
 
-rdfc:thresholdMonitoringProcessor a :PipelineComponent ; # I still need to build this component
+rdfc:thresholdMonitoringProcessor a :PipelineComponent, dcat:Resource ; # I still need to build this component
   dct:requires rdfc:NodeRunner ;
   :reader_predicate rdfc:reader ; # placeholders
   :writer_predicate rdfc:writer ; # placeholders
   owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_threshold_monitoring/processor.ttl> . 
 
 
-rdfc:NodeRunner a tcs:PipelineComponent, rdfc:Runner;
+rdfc:NodeRunner a tcs:PipelineComponent, rdfc:Runner, dcat:Resource;
     rdfs:label "RDF Connect Javascript Node Runner" ; 
     dct:requires rdfc:Orchestrator ;
     dct:requires [
@@ -409,7 +409,7 @@ rdfc:NodeRunner a tcs:PipelineComponent, rdfc:Runner;
     owl:imports <./node_modules/@rdfc/js-runner/index.ttl> . # This is specific to RDF Connect
 
 
-rdfc:PyRunner a tcs:PipelineComponent, rdfc:Runner;
+rdfc:PyRunner a tcs:PipelineComponent, rdfc:Runner, dcat:Resource;
     rdfs:label "RDF Connect Python Runner" ; 
     dct:requires rdfc:Orchestrator ;
     dct:requires [
@@ -421,7 +421,7 @@ rdfc:PyRunner a tcs:PipelineComponent, rdfc:Runner;
     owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl> . 
 
 
-rdfc:Orchestrator a tcs:PipelineComponent ;
+rdfc:Orchestrator a tcs:PipelineComponent, dcat:Resource ;
     rdfs:label "RDF Connect Orchestrator" ;
     dct:requires [
         a spdx:Package ;
@@ -504,7 +504,7 @@ CMD ["/bin/bash"]
 # Semantic.works Components
 #################################################################
 
-sw:loket-error-alert-service a tcs:PipelineComponent, mu:Microservice ;
+sw:loket-error-alert-service a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
   rdfs:description "Service that is responsible for sending out alerts when errors are inserted in the store. Build using the MU Javascript template.";
   dcat:landingPage <https://github.com/lblod/loket-error-alert-service> ;
   dct:requires sw:triple-store ;
@@ -520,7 +520,7 @@ error-alert:
 ] .
 
 
-sw:deliver-email-service a tcs:PipelineComponent, mu:Microservice ;
+sw:deliver-email-service a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
   rdfs:description "Microservice that delivers emails from a mail folder" ;
   dcat:landingPage <https://github.com/lblod/berichtencentrum-deliver-email-service> ;
   dct:requires sw:triple-store ;
@@ -534,7 +534,7 @@ sw:deliver-email-service a tcs:PipelineComponent, mu:Microservice ;
 ] .
 
 
-sw:triple-store a tcs:PipelineComponent;
+sw:triple-store a tcs:PipelineComponent, dcat:Resource;
   dcat:landingPage <https://virtuoso.dev/react-virtuoso/> ;
     tcs:config [
         a tcs:DefaultConfig, tcs:DockerComposeConfig ;
