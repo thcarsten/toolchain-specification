@@ -2,6 +2,7 @@
 @prefix : <http://example.org/example/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix tcs: <https://w3id.org/toolchain#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 <> a rdfc:Pipeline ;
@@ -12,17 +13,17 @@
         :env_2 .
 
 :HttpIn a rdfc:HttpIn ;
-    rdfc:writer :channel_1 .
+    rdfc:writer :channel_5 .
 
 :SparqlIngest a rdfc:SparqlIngest ;
     rdfc:ingestConfig [ rdfc:operationMode "Replication" ] ;
-    rdfc:memberStream :channel_2 .
+    rdfc:memberStream :channel_6 .
 
 :ThresholdMonitoring a rdfc:thresholdMonitoringProcessor ;
-    rdfc:reader :channel_1 ;
+    rdfc:reader :channel_5 ;
     rdfc:unit <http://qudt.org/vocab/unit/CentiM> ;
     rdfc:value 30 ;
-    rdfc:writer :channel_2 .
+    rdfc:writer :channel_6 .
 
 :env_1 rdfc:instantiates rdfc:PyRunner ;
     rdfc:processor :HttpIn .
@@ -31,9 +32,11 @@
     rdfc:processor :SparqlIngest,
         :ThresholdMonitoring .
 
-:channel_1 a rdfc:Reader,
-        rdfc:Writer .
+:channel_5 a rdfc:Reader,
+        rdfc:Writer,
+        tcs:Channel .
 
-:channel_2 a rdfc:Reader,
-        rdfc:Writer .
+:channel_6 a rdfc:Reader,
+        rdfc:Writer,
+        tcs:Channel .
 

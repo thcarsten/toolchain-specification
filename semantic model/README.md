@@ -117,6 +117,15 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 | **subclass of** | p-plan:Step |
 <br>
 
+
+### Channel
+| | |
+|----------|----------|
+| **Definition** | A channel is a transport route by which data is transferred from one InstancePipelineComponent to another. This entity can be used to either configure the means of transport (e.g. http, kafka, etc.) or to describe on which conditions a channel is to be used (e.g. "on success", "on fail", etc.).
+| **subclass of** | --- |
+<br>
+
+
 ### Config
 | | |
 |----------|----------|
@@ -188,4 +197,4 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 
 # 3. Examples
 
-For a concrete example [check the catalog used by the pipeline generator](../pipeline%20generator/data/catalog.ttl). 
+For a concrete example check [the catalog](../pipeline%20generator/data/catalog.ttl) and [pipeline definition](../pipeline%20generator/data/pipeline_definition.ttl) used by the pipeline generator. 

@@ -1,6 +1,5 @@
 from rdflib import Graph
 from rdfine import GraphReader, GraphDict, receive_first
-import pandas as pd
 
 from .base import Compiler
 from .utils import attach_file, extract_config, rewrite_compose_volume_host_path
@@ -36,7 +35,6 @@ class RdfcConfigCompiler(Compiler):
         # :attr:`output_reader` through :func:`compilers.utils.attach_file`.
         self.rdfc_reader: GraphReader = GraphReader(Graph())
         self.pipeline_id: str = ""
-        self.df_channel: pd.DataFrame = pd.DataFrame()
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
@@ -59,7 +57,6 @@ class RdfcConfigCompiler(Compiler):
         self.describe_pipeline()
         self.describe_processors()
         self.describe_configs()
-        self.df_channel = self.create_channel_overview()
         self.describe_channels()
 
         ttl_string = self.rdfc_reader.serialize("ttl")
@@ -163,152 +160,35 @@ class RdfcConfigCompiler(Compiler):
             ).graph
             self.rdfc_reader = self.rdfc_reader.add(config_graph)
 
-    def create_channel_overview(self) -> pd.DataFrame:
-        """Build the per-channel DataFrame consumed by ``describe_channels``.
-
-        Thin wrapper that delegates to three focused helpers:
-
-        1. :meth:`_create_channels` — fetch the ``(step, prev_step,
-           component, prev_component)`` skeleton via SPARQL. A row
-           with ``prev_step`` NaN represents a step with no
-           predecessor and never becomes a channel.
-        2. :meth:`_sort_channels_by_flow` — topologically order the
-           rows so ``channel_id`` numbering follows pipeline flow.
-        3. :meth:`_lookup_channel_predicates` — resolve each side's
-           ``:reader_predicate`` / ``:writer_predicate`` from the
-           catalog, falling back to ``:in`` / ``:out`` when the
-           lookup is missing or ambiguous.
-
-        The output columns are ``step``, ``prev_step``, ``component``,
-        ``prev_component``, ``input_predicate``, ``output_predicate``
-        and ``channel_id``.
-        """
-        df = self._create_channels()
-        df = self._sort_channels_by_flow(df)
-        df = self._lookup_channel_predicates(df)
-        df["channel_id"] = ":channel_" + df.index.astype(str)
-        return df
-
-    def _create_channels(self) -> pd.DataFrame:
-        """Return one row per ``(step, prev_step, component, prev_component)``.
-
-        Phantom rows (``prev_step`` NaN) are kept so the topological
-        sort has the full step set to reason about.
-
-        ``SELECT DISTINCT`` guards against the query multiplying
-        rows when more than one witness container satisfies the
-        ``?container tcs:instantiates ?component ; tcs:runs ?step``
-        join: channels are defined by their step / component tuple,
-        not by the container that happens to run them.
-        """
-        return self.input_reader.select(
-            "DISTINCT ?step ?prev_step ?component ?prev_component",
-            """
-                ?step prov:specializationOf ?component .
-                ?container tcs:instantiates rdfc:Orchestrator .
-                ?container tcs:instantiates ?component .
-                ?container tcs:runs ?step .
-                OPTIONAL {
-                    ?step p-plan:isPrecededBy ?prev_step .
-                    ?container tcs:runs ?prev_step .
-                    ?prev_step prov:specializationOf ?prev_component .
-                }
-            """,
-        )
-
-    def _sort_channels_by_flow(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Reorder ``df`` so ``channel_id`` numbering mimics pipeline flow.
-
-        Computes a topological rank per step from the
-        ``p-plan:isPrecededBy`` relations already carried in
-        ``prev_step`` — Kahn-style, with alphabetical tie-breaking
-        for determinism and a bail-out for cyclic remainders.
-        Sorting by the sender's rank (then receiver's) puts earlier
-        edges before later ones; phantom rows sort to the top and
-        never get emitted.
-        """
-        all_steps = set(df["step"].dropna()) | set(df["prev_step"].dropna())
-        predecessors = (
-            df.dropna(subset=["prev_step"])
-            .groupby("step")["prev_step"]
-            .apply(set)
-            .to_dict()
-        )
-        step_position: dict[str, int] = {}
-        remaining = set(all_steps)
-        rank = 0
-        while remaining:
-            ready = {s for s in remaining if not predecessors.get(s, set()) & remaining}
-            if not ready:  # cycle — bail out deterministically
-                ready = remaining
-            for step in sorted(ready):
-                step_position[step] = rank
-                rank += 1
-            remaining -= ready
-
-        return (
-            df.assign(
-                _prev_pos=df["prev_step"].map(step_position),
-                _step_pos=df["step"].map(step_position),
-            )
-            .sort_values(["_prev_pos", "_step_pos"], na_position="first")
-            .drop(columns=["_prev_pos", "_step_pos"])
-            .reset_index(drop=True)
-        )
-
-    def _lookup_channel_predicates(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Add ``input_predicate`` / ``output_predicate`` columns to ``df``.
-
-        Each side's predicate is looked up from the catalog on the
-        respective component (``:reader_predicate`` for the receiving
-        step, ``:writer_predicate`` for the sending step). If the
-        lookup returns zero matches (missing annotation) or two-plus
-        distinct matches (ambiguity — e.g. branching), the compiler
-        falls back to the generic ``:in`` / ``:out`` placeholders so
-        a partially-annotated catalog still produces a working file.
-        """
-
-        def _resolve(component, predicate: str, fallback: str) -> str:
-            if pd.isna(component):
-                return fallback
-            matches = {
-                v
-                for v in self.input_reader.filter(sub=component, pred=predicate).df[
-                    "obj"
-                ]
-                if pd.notna(v)
-            }
-            return next(iter(matches)) if len(matches) == 1 else fallback
-
-        df["input_predicate"] = df["component"].map(
-            lambda c: _resolve(c, ":reader_predicate", ":in")
-        )
-        df["output_predicate"] = df["prev_component"].map(
-            lambda c: _resolve(c, ":writer_predicate", ":out")
-        )
-        return df
-
     def describe_channels(self) -> None:
+        """Emit the ``?channel a rdfc:Reader, rdfc:Writer`` boilerplate.
 
-        df_channels = self.df_channel.loc[self.df_channel["prev_step"].notna()]
+        Concrete step→channel wiring (``?step rdfc:reader ?channel`` /
+        ``?step rdfc:writer ?channel`` / ``?step rdfc:memberStream
+        ?channel`` etc.) is the PipelineDefinition author's
+        responsibility: it lives in each step's ``tcs:embedded``
+        config and is emitted verbatim by :meth:`describe_configs`.
+        Only the author knows which framework predicate their step
+        expects — the compiler cannot guess it reliably.
 
-        for index, row in df_channels.iterrows():
-            # Grabbing the necessary references
-            step = row["step"]
-            prev_step = row["prev_step"]
-            component = row["component"]
-            channel_id = row["channel_id"]
-            input_predicate = row["input_predicate"]
-            output_predicate = row["output_predicate"]
-
-            # Adding the relevant triples to the output graph
-            channel_reader = self.rdfc_reader.construct(
-                f"""
-                    {channel_id} a rdfc:Reader, rdfc:Writer .
-                    {prev_step} {output_predicate} {channel_id} .
-                    {step} {input_predicate} {channel_id} . """,
-                "",
-            )
-
-            # Appending the output graph
-            self.rdfc_reader = self.rdfc_reader.add(channel_reader.graph)
+        What the compiler *can* do without ambiguity is add the
+        uniform type declaration every RDF-Connect channel needs.
+        Scope of "channel worth typing": any ``tcs:Channel`` already
+        referenced in the emitted pipeline graph (``self.rdfc_reader``).
+        ``describe_configs`` pulls in each config's ``tcs:embedded``
+        block via ``GraphDict``/``traverse``, which follows through
+        to every channel IRI referenced by the config and picks up
+        the ``?ch a tcs:Channel`` triple that ``inference_rules.yaml``
+        adds from ``tcs:readsFrom`` / ``tcs:writesTo``. Constraining
+        on those already-present triples means we emit boilerplate
+        exactly for the channels the pipeline.ttl uses — no dead
+        declarations for cross-framework channels whose RDFC-side
+        step has no wiring config referencing them (e.g., an LDIO→RDFC
+        boundary channel that only appears as a ``tcs:readsFrom``
+        annotation).
+        """
+        channel_types = self.rdfc_reader.construct(
+            "?ch a rdfc:Reader, rdfc:Writer .",
+            "?ch a tcs:Channel .",
+        ).graph
+        self.rdfc_reader = self.rdfc_reader.add(channel_types)

@@ -2,6 +2,7 @@ from .prefix_store import PrefixStore
 from .utils import load_yaml
 from rdflib import Graph, URIRef, BNode, Literal
 import pandas as pd
+import pyshacl
 from typing import Self
 
 
@@ -27,6 +28,7 @@ class GraphReader:
             - serialize
             - sparql
             - traverse
+            - validate
     Private methods:
             - _df_to_graph
             - _filter_via_dataframe
@@ -422,6 +424,59 @@ class GraphReader:
             format=output_format,
             base=self._basepath,
         )
+
+    def validate(self, **pyshacl_kwargs) -> Self:
+        """Validate the graph against SHACL shapes via pySHACL.
+
+        The graph is expected to carry its own SHACL shapes — the
+        data graph and the shapes graph are one and the same. This
+        matches how the toolchain catalog is authored (shapes live
+        next to the components they constrain) and keeps the method
+        signature minimal.
+
+        Returns the SHACL validation report as a new
+        :class:`GraphReader`, preserving the graph-in / graph-out
+        contract so callers can chain the usual reader operations on
+        the result:
+
+        .. code-block:: python
+
+            report = reader.validate(advanced=True, inference='rdfs')
+            if not report.ask("?r sh:conforms true"):
+                raise RuntimeError(report.serialize("ttl"))
+
+        Conformance is carried inside the returned graph as
+        ``?report sh:conforms ?bool`` — there is no separate return
+        type.
+
+        Args:
+            **pyshacl_kwargs: Forwarded verbatim to
+                :func:`pyshacl.validate`. Common options include
+                ``inference='rdfs'`` (materialize subclass triples
+                before validation) and ``advanced=True`` (enable
+                SHACL-AF SPARQL targets and constraints).
+
+        Returns:
+            :class:`GraphReader` wrapping pySHACL's
+            ``results_graph``. The caller's prefix bindings are
+            copied onto the report so focus-node / value-node IRIs
+            compact naturally in ``serialize`` output.
+        """
+        # pySHACL returns (conforms, results_graph, results_text). We
+        # only keep the results graph — conformance lives inside it
+        # as ?r sh:conforms ?bool and the text form is redundant
+        # with the graph, which callers can serialize themselves.
+        _conforms, results_graph, _results_text = pyshacl.validate(
+            self.graph,
+            shacl_graph=self.graph,
+            **pyshacl_kwargs,
+        )
+
+        # Copy the caller's prefix bindings onto the report so
+        # violation IRIs (focus / value / source-shape nodes) compact
+        # nicely when the caller serializes or filters the report.
+        self.prefix_store.bind_to_namespace(results_graph)
+        return type(self)(results_graph)
 
     # Executes a SPARQL query against the graph
     def sparql(

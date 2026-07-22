@@ -23,16 +23,16 @@ rules:
       ?obj a tcs:PipelineDefinition .
   - 
     construct: | 
-      ?obj a tcs:InstancePipelineComponent .
-    where: |
-      ?sub p-plan:isPrecededBy ?obj .
       ?sub a tcs:InstancePipelineComponent .
+      ?obj a tcs:Channel .
+    where: |
+      ?sub tcs:writesTo ?obj .
   - 
     construct: | 
       ?sub a tcs:InstancePipelineComponent .
+      ?obj a tcs:Channel .
     where: |
-      ?sub p-plan:isPrecededBy ?obj .
-      ?obj a tcs:InstancePipelineComponent .
+      ?sub tcs:readsFrom ?obj .
   - 
     construct: | 
       ?obj a tcs:Config .

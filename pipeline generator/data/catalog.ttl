@@ -1,3 +1,7 @@
+#################################################################
+# Prefixes
+#################################################################
+
 @prefix : <http://example.org/example/> .
 @prefix dcat: <http://www.w3.org/ns/dcat#> .
 @prefix dct: <http://purl.org/dc/terms/>.
@@ -15,6 +19,78 @@
 @prefix sw: <https://semantic.works/services/> .
 @prefix tcs: <https://w3id.org/toolchain#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+
+:prefixes
+    sh:declare 
+    [
+        sh:prefix "" ;
+        sh:namespace "http://example.org/example/" ;
+    ] ,
+    [
+        sh:prefix "dcat" ;
+        sh:namespace "http://www.w3.org/ns/dcat#" ;
+    ] ,
+    [
+        sh:prefix "dct" ;
+        sh:namespace "http://purl.org/dc/terms/" ;
+    ] ,
+    [
+        sh:prefix "ldio" ;
+        sh:namespace "http://example.org/example/ldio/" ;
+    ] ,
+    [
+        sh:prefix "mu" ;
+        sh:namespace "http://mu.semte.ch/vocabularies/core/" ;
+    ] ,
+    [
+        sh:prefix "nfo" ;
+        sh:namespace "http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#" ;
+    ] ,
+    [
+        sh:prefix "owl" ;
+        sh:namespace "http://www.w3.org/2002/07/owl#" ;
+    ] ,
+    [
+        sh:prefix "p-plan" ;
+        sh:namespace "http://purl.org/net/p-plan#" ;
+    ] ,
+    [
+        sh:prefix "prov" ;
+        sh:namespace "http://www.w3.org/ns/prov#" ;
+    ] ,
+    [
+        sh:prefix "rdf" ;
+        sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#" ;
+    ] ,
+    [
+        sh:prefix "rdfc" ;
+        sh:namespace "https://w3id.org/rdf-connect#" ;
+    ] ,
+    [
+        sh:prefix "rdfs" ;
+        sh:namespace "http://www.w3.org/2000/01/rdf-schema#" ;
+    ] ,
+    [
+        sh:prefix "sh" ;
+        sh:namespace "http://www.w3.org/ns/shacl#" ;
+    ] ,
+    [
+        sh:prefix "spdx" ;
+        sh:namespace "http://spdx.org/rdf/terms#" ;
+    ] ,
+    [
+        sh:prefix "sw" ;
+        sh:namespace "https://semantic.works/services/" ;
+    ] ,
+    [
+        sh:prefix "tcs" ;
+        sh:namespace "https://w3id.org/toolchain#" ;
+    ] ,
+    [
+        sh:prefix "xsd" ;
+        sh:namespace "http://www.w3.org/2001/XMLSchema#" ;
+    ] .
 
 
 #################################################################
@@ -93,126 +169,6 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
         dcat:hadRole :outputShape ;
         dct:relation :waterLevelsInMmShape
     ] .
-
-#################################################################
-# Pipeline Definition
-#################################################################
-
-
-:DemonstratorPipeline a tcs:PipelineDefinition;
-    rdfs:label "Demonstrator Pipeline.";
-    rdfs:comment "Polls API, transforms to RDF, detects threshold, triggers email alert.".
-
-
-:ApiPoll a tcs:InstancePipelineComponent ;
-    prov:specializationOf ldio:HttpInPoller ;
-    p-plan:isStepOfPlan :DemonstratorPipeline ;
-    p-plan:hasInputVar [ a tcs:PipelineConfig ;
-                tcs:embedded 
-                    [
-                        :url "https://dishacled-api.azurewebsites.net/api/v1/source-a/current" ;
-                        :cron "*/10 * * * * *" # Every 10 seconds
-            ] 
-    ] .
-
-    
-:RdfConversion a tcs:InstancePipelineComponent ;
-    prov:specializationOf ldio:RdfAdapter ;
-    p-plan:isStepOfPlan :DemonstratorPipeline ;
-    p-plan:isPrecededBy :ApiPoll .
-
-
-:SparqlConstruct a tcs:InstancePipelineComponent ;
-    prov:specializationOf ldio:SparqlConstructTransformer ;
-    p-plan:isStepOfPlan :DemonstratorPipeline ;
-    p-plan:isPrecededBy :RdfConversion ;
-    p-plan:hasInputVar [
-        a tcs:PipelineConfig;
-        tcs:embedded
-        [
-          :query """
-            PREFIX dct: <http://purl.org/dc/terms/> .
-            PREFIX prov: <http://www.w3.org/ns/prov#> .
-            CONSTRUCT {
-              ?versionedS ?p ?o ;
-                  prov:generatedAtTime ?generatedAtTime ;
-                  dct:isVersionOf ?s .
-            } WHERE {
-              ?s ?p ?o .
-              BIND(URI(CONCAT(STR(?s), '/', STR(?now))) as ?versionedS)
-              BIND (NOW() as ?generatedAtTime)
-            }
-          """
-        ]
-    ] .
-
-:HttpOut a tcs:InstancePipelineComponent ;
-    prov:specializationOf ldio:HttpOut ;
-    p-plan:isStepOfPlan :DemonstratorPipeline ;
-    p-plan:isPrecededBy :SparqlConstruct .
-
-
-:HttpIn a tcs:InstancePipelineComponent ;
-    prov:specializationOf rdfc:HttpIn ;
-    p-plan:isStepOfPlan :DemonstratorPipeline ;
-    p-plan:isPrecededBy :HttpOut .
-
-
-:ThresholdMonitoring  a tcs:InstancePipelineComponent ;
-    prov:specializationOf rdfc:thresholdMonitoringProcessor ;
-    p-plan:isStepOfPlan :DemonstratorPipeline ;
-    p-plan:isPrecededBy :HttpIn ;
-      p-plan:hasInputVar [
-    a tcs:PipelineConfig;
-    tcs:embedded
-    [
-      rdfc:value 30 ;
-      rdfc:unit <http://qudt.org/vocab/unit/CentiM>
-    ]
-  ] .
-
-:SparqlIngest a tcs:InstancePipelineComponent ;
-  prov:specializationOf rdfc:SparqlIngest ;
-  p-plan:isStepOfPlan :DemonstratorPipeline ;
-  p-plan:isPrecededBy :ThresholdMonitoring ;
-  p-plan:hasInputVar [
-    a tcs:Config;
-    tcs:embedded
-    [
-      rdfc:ingestConfig [
-        rdfc:operationMode "Replication"
-      ]
-    ]
-  ] .
-
-:TriggerAlert a tcs:InstancePipelineComponent ;
-  prov:specializationOf sw:loket-error-alert-service ;
-    p-plan:isStepOfPlan :DemonstratorPipeline ;  
-    p-plan:isPrecededBy :SparqlIngest ;
-    p-plan:hasInputVar [
-      a tcs:Config;
-      tcs:embedded
-      [
-        :EMAIL_FROM "info@dishacled.com" ;
-        :EMAIL_TO "everyone@world.com";
-        :DEBUG false
-      ]
-] .
-
-:DeliverEmail a tcs:InstancePipelineComponent ;
-  prov:specializationOf sw:deliver-email-service ;
-    p-plan:isStepOfPlan :DemonstratorPipeline ;
-    p-plan:isPrecededBy :TriggerAlert ;
-    p-plan:hasInputVar [
-        a tcs:Config;
-        tcs:embedded
-        [
-          :MAILFOLDER_URI "http://data.lblod.info/id/mail-folders/2" ;
-          :EMAIL_CRON_PATTERN '*/1 * * * * *' ;
-          :HOURS_DELIVERING_TIMEOUT '1' ;
-        ]
-] .
-
 
 
 #################################################################
@@ -310,69 +266,112 @@ rdfc:SparqlIngest a tcs:PipelineComponent, dcat:Resource;
         spdx:suppliedBy :npm
     ];
     owl:imports <./node_modules/@rdfc/sparql-ingest-processor-ts/processors.ttl> ;
-    :reader_predicate rdfc:memberStream ;
-    :writer_predicate rdfc:sparqlWriter ;
     dcat:qualifiedRelation [
-      dct:relation :SparqlIngestConfigShape, :SparqlIngestPerformanceShape;
+      dct:relation :SparqlIngestShape, :SparqlIngestConfigShape;
       dcat:hadRole "configShape" ;
     ] .
 
 
-:SparqlIngestConfigShape a sh:NodeShape;
-  sh:targetClass rdfc:SPARQLIngest;
+# This is an example of a nested Config in RDF-Connect: This shape references ingestConfig, which is an embedded config.
+:SparqlIngestShape a sh:NodeShape;
+      sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes :prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf rdfc:SparqlIngest ;
+                      p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
   sh:property [
     sh:path rdfc:memberStream;
     sh:name "memberStream";
-    sh:class rdfc:Reader;
+    sh:class tcs:Channel;
     sh:minCount 1;
     sh:maxCount 1;
   ], [
     sh:path rdfc:ingestConfig;
     sh:name "config";
-    sh:class rdfc:IngestConfig;
+    sh:node :SparqlIngestConfigShape;
     sh:minCount 1;
     sh:maxCount 1;
   ], [
     sh:path rdfc:sparqlWriter;
     sh:name "sparqlWriter";
-    sh:class rdfc:Writer;
+    sh:class tcs:Channel;
     sh:maxCount 1;
   ].
 
-:SparqlIngestPerformanceShape a sh:NodeShape;
-  sh:targetClass rdfc:PerformanceConfig;
+
+:SparqlIngestConfigShape a sh:NodeShape;
+  sh:targetObjectsOf rdfc:ingestConfig;
   sh:property [
-    sh:path rdfc:name;
+    sh:path rdfc:operationMode;
     sh:datatype xsd:string;
-    sh:name "name";
+    sh:name "operationMode";
     sh:maxCount 1;
-    sh:minCount 1;
   ], [
-    sh:path rdfc:outputPath;
+    sh:path rdfc:memberBatchSize;
+    sh:datatype xsd:integer;
+    sh:name "memberBatchSize";
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:memberShape;
     sh:datatype xsd:string;
-    sh:name "outputPath";
+    sh:name "memberShape";
     sh:maxCount 1;
-    sh:minCount 1;
   ], [
-    sh:path rdfc:failureIsFatal;
-    sh:datatype xsd:boolean;
-    sh:name "failureIsFatal";
+    sh:path rdfc:changeSemantics;
+    sh:class rdfc:ChangeSemantics;
+    sh:name "changeSemantics";
     sh:maxCount 1;
     sh:minCount 0;
   ], [
-    sh:path rdfc:queryTimeout;
-    sh:datatype xsd:integer;
-    sh:name "queryTimeout";
+    sh:path rdfc:targetNamedGraph;
+    sh:datatype xsd:string;
+    sh:name "targetNamedGraph";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:transactionConfig;
+    sh:class rdfc:TransactionConfig;
+    sh:name "transactionConfig";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:graphStoreUrl;
+    sh:datatype xsd:string;
+    sh:name "graphStoreUrl";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:forVirtuoso;
+    sh:datatype xsd:boolean;
+    sh:name "forVirtuoso";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:accessToken;
+    sh:datatype xsd:string;
+    sh:name "accessToken";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:measurePerformance;
+    sh:class rdfc:PerformanceConfig;
+    sh:name "measurePerformance";
     sh:maxCount 1;
     sh:minCount 0;
   ].
+
+
+
 
 
 rdfc:HttpIn a tcs:PipelineComponent, dcat:Resource;
     rdfs:label "RDF Connect Http In";
     dct:requires rdfc:PyRunner;
-    :reader_predicate rdfc:reader ; # placeholders
-    :writer_predicate rdfc:writer ; # placeholders
     owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_in/processor.ttl> . # I still need to build this component
 
 
@@ -385,15 +384,11 @@ rdfc:HttpOut a tcs:PipelineComponent, dcat:Resource;
         spdx:downloadLocation "file:///workspace/pipeline/local_processors/rdfc_http_out" ;
         spdx:suppliedBy :pip
     ] ;
-    :reader_predicate rdfc:reader ;
-    :writer_predicate rdfc:writer ;
     owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl> . 
 
 
 rdfc:thresholdMonitoringProcessor a :PipelineComponent, dcat:Resource ; # I still need to build this component
   dct:requires rdfc:NodeRunner ;
-  :reader_predicate rdfc:reader ; # placeholders
-  :writer_predicate rdfc:writer ; # placeholders
   owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_threshold_monitoring/processor.ttl> . 
 
 

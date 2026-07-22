@@ -27,6 +27,7 @@ dependencies = [
     "boltons>=23.0",
     "glom>=23.0",
     "validators>=0.22",
+    "pyshacl>=0.25",
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,772 @@
+@prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix spdx: <http://spdx.org/rdf/terms#> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+
+###############################################################################
+# Toolchain-specification shapes
+#
+# Two-part structure:
+#
+#   Section 1 — Generic application profile.
+#     Vocabulary-level constraints on how the tcs: model must be used, valid
+#     for every catalog and every pipeline. Comparable to an OWL application
+#     profile in DCAT: no new semantics, only tightened usage rules stated in
+#     prose in `semantic model/README.md`.
+#
+#   Section 2 — Compiler-specific constraints.
+#     Rules that only apply to PipelineComponents targeted at a specific
+#     framework (RDF-Connect, LDIO, …). These extend the generic profile
+#     with framework-implementation requirements; they never contradict it.
+#     Each subsection targets its components via a discriminator predicate
+#     (e.g. `dct:requires ldio:LinkedDataInteractionsOrchestrator`) so
+#     unrelated components are left alone.
+#
+# SHACL-AF (SPARQL-based) constraints appear where SHACL Core cannot express
+# the intent (transitive reachability, grouped cardinalities, cross-step
+# ordering). They all reference the shared `tcs:prefixes` block below.
+###############################################################################
+
+
+###############################################################################
+# SECTION 1 — Generic application profile
+###############################################################################
+
+
+#################################################################
+# Minimal RDFS class hierarchy
+#
+# The semantic model README states these subclass relations in prose.
+# Declaring them here lets pySHACL's `sh:class` constraint follow
+# the hierarchy (e.g. a `tcs:PipelineConfig` value satisfies
+# `sh:class tcs:Config`).
+#################################################################
+
+tcs:PipelineDefinition          rdfs:subClassOf p-plan:Plan .
+tcs:InstancePipelineComponent   rdfs:subClassOf p-plan:Step .
+tcs:PipelineGenerator           rdfs:subClassOf prov:SoftwareAgent .
+tcs:PipelineBuild               rdfs:subClassOf prov:SoftwareAgent, spdx:Build .
+tcs:Catalog                     rdfs:subClassOf dcat:Catalog .
+
+tcs:DefaultConfig         rdfs:subClassOf tcs:Config .
+tcs:PipelineConfig        rdfs:subClassOf tcs:Config .
+tcs:DockerComposeConfig   rdfs:subClassOf tcs:Config .
+tcs:DockerImageConfig     rdfs:subClassOf tcs:Config .
+
+
+#################################################################
+# Prefix declarations for SHACL-AF SPARQL targets
+#################################################################
+
+tcs:prefixes
+    sh:declare
+        [ sh:prefix ""       ; sh:namespace "http://example.org/example/"^^xsd:anyURI ] ,
+        [ sh:prefix "dcat"   ; sh:namespace "http://www.w3.org/ns/dcat#"^^xsd:anyURI ] ,
+        [ sh:prefix "dct"    ; sh:namespace "http://purl.org/dc/terms/"^^xsd:anyURI ] ,
+        [ sh:prefix "ldio"   ; sh:namespace "http://example.org/example/ldio/"^^xsd:anyURI ] ,
+        [ sh:prefix "owl"    ; sh:namespace "http://www.w3.org/2002/07/owl#"^^xsd:anyURI ] ,
+        [ sh:prefix "p-plan" ; sh:namespace "http://purl.org/net/p-plan#"^^xsd:anyURI ] ,
+        [ sh:prefix "prov"   ; sh:namespace "http://www.w3.org/ns/prov#"^^xsd:anyURI ] ,
+        [ sh:prefix "rdf"    ; sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ] ,
+        [ sh:prefix "rdfc"   ; sh:namespace "https://w3id.org/rdf-connect#"^^xsd:anyURI ] ,
+        [ sh:prefix "rdfs"   ; sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ] ,
+        [ sh:prefix "spdx"   ; sh:namespace "http://spdx.org/rdf/terms#"^^xsd:anyURI ] ,
+        [ sh:prefix "tcs"    ; sh:namespace "https://w3id.org/toolchain#"^^xsd:anyURI ] .
+
+
+#################################################################
+# tcs:PipelineComponent
+#
+# Every deployable unit: its dependencies and configs must be
+# well-typed, and it must be transitively "docker-deployable" —
+# either it carries its own tcs:DockerComposeConfig or it reaches
+# one via dct:requires+.
+#################################################################
+
+tcs:PipelineComponentShape a sh:NodeShape ;
+    rdfs:label "PipelineComponent application-profile shape" ;
+    sh:targetClass tcs:PipelineComponent ;
+
+    sh:property [
+        sh:path tcs:config ;
+        sh:class tcs:Config ;
+        sh:name "config" ;
+        sh:message "tcs:config must point at a tcs:Config."
+    ] ;
+
+    sh:property [
+        sh:path dct:requires ;
+        sh:or (
+            [ sh:class tcs:PipelineComponent ]
+            [ sh:class spdx:Package ]
+        ) ;
+        sh:name "requires" ;
+        sh:message "dct:requires on a PipelineComponent must point at a tcs:PipelineComponent or spdx:Package."
+    ] ;
+
+    # Deployability. Every PipelineComponent must, along a chain of
+    # dct:requires, reach some component that carries a
+    # tcs:DockerComposeConfig. dct:requires* (zero-or-more) also
+    # matches ``?this = ?deployable`` so components that are
+    # themselves microservices trivially satisfy the rule.
+    #
+    # The FILTER excludes spdx:Package-typed nodes: the current
+    # inference rule (?sub dct:requires ?obj ; ?sub a tcs:PipelineComponent
+    # => ?obj a tcs:PipelineComponent) over-types dependency packages
+    # as components. Packages are not deployable and should not be
+    # subjected to this check. A cleaner fix would tighten that
+    # inference rule; the FILTER is the defensive counterpart until
+    # then.
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "PipelineComponent {?this} is not deployable: neither it nor any component reachable via dct:requires+ carries a tcs:DockerComposeConfig." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:PipelineComponent .
+                FILTER NOT EXISTS { ?this a spdx:Package . }
+                FILTER NOT EXISTS {
+                    ?this dct:requires* ?deployable .
+                    ?deployable tcs:config ?cfg .
+                    ?cfg a tcs:DockerComposeConfig .
+                }
+            }
+        """
+    ] ;
+
+    # At-most-one DefaultConfig per Config subtype. A DefaultConfig
+    # may bear several types (e.g. both tcs:DockerComposeConfig and
+    # tcs:DockerImageConfig) — the constraint fires per subtype.
+    # Uses SHACL-AF because SHACL Core cannot express
+    # cardinality-grouped-by-a-typed-variable.
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "PipelineComponent {?this} has more than one tcs:DefaultConfig of subtype {?subtype} — at most one default per Config subtype." ;
+        sh:select """
+            SELECT DISTINCT ?this ?subtype WHERE {
+                ?this tcs:config ?d1, ?d2 .
+                FILTER ( STR(?d1) < STR(?d2) )
+                ?d1 a tcs:DefaultConfig, ?subtype .
+                ?d2 a tcs:DefaultConfig, ?subtype .
+                ?subtype rdfs:subClassOf tcs:Config .
+                FILTER ( ?subtype != tcs:Config && ?subtype != tcs:DefaultConfig )
+            }
+        """
+    ] .
+
+
+#################################################################
+# tcs:InstancePipelineComponent
+#
+# A step in a pipeline definition. Belongs to exactly one plan,
+# specializes exactly one component, may carry configs and channel
+# annotations.
+#################################################################
+
+tcs:InstancePipelineComponentShape a sh:NodeShape ;
+    rdfs:label "InstancePipelineComponent application-profile shape" ;
+    sh:targetClass tcs:InstancePipelineComponent ;
+
+    sh:property [
+        sh:path p-plan:isStepOfPlan ;
+        sh:class tcs:PipelineDefinition ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:name "isStepOfPlan" ;
+        sh:message "Every step must belong to exactly one tcs:PipelineDefinition."
+    ] ;
+
+    sh:property [
+        sh:path prov:specializationOf ;
+        sh:class tcs:PipelineComponent ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:name "specializationOf" ;
+        sh:message "Every step must specialize exactly one tcs:PipelineComponent."
+    ] ;
+
+    sh:property [
+        sh:path p-plan:hasInputVar ;
+        sh:class tcs:Config ;
+        sh:name "hasInputVar" ;
+        sh:message "p-plan:hasInputVar on a step must point at a tcs:Config."
+    ] ;
+
+    sh:property [
+        sh:path tcs:readsFrom ;
+        sh:class tcs:Channel ;
+        sh:name "readsFrom" ;
+        sh:message "tcs:readsFrom must point at a tcs:Channel."
+    ] ;
+
+    sh:property [
+        sh:path tcs:writesTo ;
+        sh:class tcs:Channel ;
+        sh:name "writesTo" ;
+        sh:message "tcs:writesTo must point at a tcs:Channel."
+    ] .
+
+
+#################################################################
+# tcs:PipelineDefinition
+#
+# A plan must contain at least one step (otherwise it isn't a
+# pipeline). The link goes step → plan, so we assert reachability
+# from the other side.
+#################################################################
+
+tcs:PipelineDefinitionShape a sh:NodeShape ;
+    rdfs:label "PipelineDefinition application-profile shape" ;
+    sh:targetClass tcs:PipelineDefinition ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "PipelineDefinition {?this} has no steps — at least one tcs:InstancePipelineComponent must reference it via p-plan:isStepOfPlan." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:PipelineDefinition .
+                FILTER NOT EXISTS { ?step p-plan:isStepOfPlan ?this . }
+            }
+        """
+    ] .
+
+
+#################################################################
+# tcs:Config
+#
+# Every config carries either an embedded RDF body or a literal
+# string body — exactly one, so the compiler can dispatch without
+# tie-breaking. A literal body additionally requires dct:format so
+# the compiler knows how to parse it.
+#################################################################
+
+tcs:ConfigShape a sh:NodeShape ;
+    rdfs:label "Config application-profile shape" ;
+    sh:targetClass tcs:Config ;
+
+    sh:xone (
+        [ sh:property [ sh:path tcs:embedded ; sh:minCount 1 ] ]
+        [ sh:property [ sh:path tcs:literal  ; sh:minCount 1 ] ]
+    ) ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Config {?this} uses tcs:literal but has no dct:format — the compiler cannot know how to parse the string body." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:Config ;
+                      tcs:literal ?lit .
+                FILTER NOT EXISTS { ?this dct:format ?fmt . }
+            }
+        """
+    ] .
+
+
+#################################################################
+# tcs:Catalog
+#################################################################
+
+tcs:CatalogShape a sh:NodeShape ;
+    rdfs:label "Catalog application-profile shape" ;
+    sh:targetClass tcs:Catalog ;
+
+    sh:property [
+        sh:path dcat:resource ;
+        sh:class tcs:PipelineComponent ;
+        sh:name "resource" ;
+        sh:message "tcs:Catalog dcat:resource entries must be tcs:PipelineComponent instances."
+    ] .
+
+
+#################################################################
+# tcs:PipelineBuild
+#
+# The compiler's output. These shapes describe the shape the
+# compiled build must have — usable for post-generator validation
+# too (unlike the pre-generator test suite the plan describes,
+# which only sees catalog + pipeline definition).
+#################################################################
+
+tcs:PipelineBuildShape a sh:NodeShape ;
+    rdfs:label "PipelineBuild application-profile shape" ;
+    sh:targetClass tcs:PipelineBuild ;
+
+    sh:property [
+        sh:path prov:hadPlan ;
+        sh:class tcs:PipelineDefinition ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:name "hadPlan" ;
+        sh:message "A PipelineBuild must be linked to exactly one PipelineDefinition via prov:hadPlan."
+    ] ;
+
+    sh:property [
+        sh:path dct:hasPart ;
+        sh:class tcs:DockerContainer ;
+        sh:name "hasPart" ;
+        sh:message "dct:hasPart on a PipelineBuild must point at a tcs:DockerContainer."
+    ] ;
+
+    sh:property [
+        sh:path tcs:compiledFile ;
+        sh:class spdx:File ;
+        sh:name "compiledFile" ;
+        sh:message "tcs:compiledFile must point at an spdx:File."
+    ] .
+
+
+#################################################################
+# tcs:DockerContainer
+#################################################################
+
+tcs:DockerContainerShape a sh:NodeShape ;
+    rdfs:label "DockerContainer application-profile shape" ;
+    sh:targetClass tcs:DockerContainer ;
+
+    sh:property [
+        sh:path tcs:instantiates ;
+        sh:class tcs:PipelineComponent ;
+        sh:minCount 1 ;
+        sh:name "instantiates" ;
+        sh:message "A DockerContainer must instantiate at least one tcs:PipelineComponent."
+    ] ;
+
+    sh:property [
+        sh:path tcs:runs ;
+        sh:class tcs:InstancePipelineComponent ;
+        sh:name "runs" ;
+        sh:message "tcs:runs must point at a tcs:InstancePipelineComponent."
+    ] .
+
+
+#################################################################
+# spdx:Package
+#
+# The pipeline generator treats packages as opaque dependency records:
+# it needs a name to write into pyproject.toml / package.json, and a
+# suppliedBy annotation to decide which of the two files a package
+# belongs in. A package without either is silently dropped by
+# `RdfcDockerFileCompiler._collect_packages`, so the shape catches the
+# modelling error at authoring time.
+#################################################################
+
+tcs:SpdxPackageShape a sh:NodeShape ;
+    rdfs:label "spdx:Package application-profile shape" ;
+    sh:targetClass spdx:Package ;
+
+    sh:property [
+        sh:path spdx:name ;
+        sh:minCount 1 ;
+        sh:name "name" ;
+        sh:message "spdx:Package must declare spdx:name — required for pyproject.toml / package.json emission."
+    ] ;
+
+    sh:property [
+        sh:path spdx:suppliedBy ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:name "suppliedBy" ;
+        sh:message "spdx:Package must declare spdx:suppliedBy (an IRI) — the pipeline generator routes packages to the right manifest file based on this value."
+    ] .
+
+
+###############################################################################
+# SECTION 2 — Compiler-specific constraints
+#
+# Rules that only apply to PipelineComponents targeted at a specific
+# framework. Each subsection uses a discriminator predicate to select
+# only the relevant components / steps. Non-framework components are
+# untouched, so multiple framework blocks can coexist and be validated
+# together against a mixed-framework catalog.
+###############################################################################
+
+
+#################################################################
+# 2.1  RDF-Connect
+#################################################################
+
+# Every RDF-Connect processor must declare `owl:imports` pointing at the
+# processor's own `.ttl` shape file. The RdfcConfigCompiler copies these
+# imports onto the pipeline (`<> owl:imports ?import`) so the runner can
+# locate the processor definition at startup — a processor without
+# owl:imports would be present in the emitted pipeline.ttl but unbootable.
+#
+# Discriminator: `dct:requires` some `rdfc:Runner` (i.e., is a processor,
+# not the orchestrator itself). Runners are exempt because they are
+# not processors — even though the current catalog happens to attach
+# owl:imports to them too, that's a modelling convenience, not a
+# requirement.
+tcs:RdfcProcessorShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect processor shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:PipelineComponent ;
+                      dct:requires ?runner .
+                ?runner a rdfc:Runner .
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path owl:imports ;
+        sh:minCount 1 ;
+        sh:name "imports" ;
+        sh:message "RDF-Connect processor {?this} must declare owl:imports pointing at its processor.ttl — otherwise the runner cannot locate the processor definition at startup."
+    ] .
+
+
+# Every rdfc:Runner must declare an orchestrator dependency. The
+# RdfcConfigCompiler emits one `rdfc:consistsOf :env_N` per runner
+# and needs the runner-to-orchestrator link to identify which
+# processors it should collect. A runner without the link ends up
+# with an empty env in the generated pipeline.ttl.
+tcs:RdfcRunnerShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect runner shape" ;
+    sh:targetClass rdfc:Runner ;
+
+    sh:property [
+        sh:path dct:requires ;
+        sh:hasValue rdfc:Orchestrator ;
+        sh:name "requires-orchestrator" ;
+        sh:message "rdfc:Runner {?this} must dct:requires rdfc:Orchestrator — the compiler needs the link to place processors inside the runner's env."
+    ] .
+
+
+# The RDF-Connect orchestrator must carry both a compose fragment
+# (so the container gets started) and an image fragment (so the
+# tailored Dockerfile can be produced). RdfcConfigCompiler and
+# RdfcDockerFileCompiler both `receive_first`-crash if either config
+# is missing.
+tcs:RdfcOrchestratorConfigShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect orchestrator config shape" ;
+    sh:targetNode rdfc:Orchestrator ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "rdfc:Orchestrator must carry at least one tcs:DockerComposeConfig — without it the compose aggregator cannot start the container." ;
+        sh:select """
+            SELECT ?this WHERE {
+                FILTER NOT EXISTS {
+                    ?this tcs:config ?cfg .
+                    ?cfg a tcs:DockerComposeConfig .
+                }
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "rdfc:Orchestrator must carry at least one tcs:DockerImageConfig — without it RdfcDockerFileCompiler cannot emit a Dockerfile for the RDFC container." ;
+        sh:select """
+            SELECT ?this WHERE {
+                FILTER NOT EXISTS {
+                    ?this tcs:config ?cfg .
+                    ?cfg a tcs:DockerImageConfig .
+                }
+            }
+        """
+    ] .
+
+
+# Packages in the RDF-Connect dependency closure must be routed by
+# a manager the RdfcDockerFileCompiler recognises: :pip goes to
+# pyproject.toml, :npm goes to package.json. Anything else is
+# silently dropped from both, so the shape catches routing errors
+# at authoring time.
+#
+# Target: every spdx:Package reachable via dct:requires from anything
+# that transitively (dct:requires*) requires rdfc:Orchestrator. That
+# includes packages required by rdfc:Orchestrator itself, packages
+# required by rdfc:*Runner, and packages required by RDFC processors.
+tcs:RdfcPackageManagerShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect package manager shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a spdx:Package .
+                ?owner dct:requires ?this ;
+                       dct:requires* rdfc:Orchestrator .
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path spdx:suppliedBy ;
+        sh:in ( :pip :npm ) ;
+        sh:name "suppliedBy" ;
+        sh:message "spdx:Package {?this} is part of the RDF-Connect dependency closure; its spdx:suppliedBy must be :pip or :npm so RdfcDockerFileCompiler can route it to pyproject.toml or package.json."
+    ] .
+
+
+#################################################################
+# 2.2  LDIO
+#################################################################
+
+# Every LDIO processing component must declare its role in the pipeline
+# via `ldio:type`. The value drives `LdioConfigCompiler.fill_in_components`,
+# which slots each processor into `input:` / `input.adapter:` /
+# `transformers[]` / `outputs[]` of the emitted LDIO YAML. Any other value
+# would fall through those branches silently and drop the processor from
+# the config.
+#
+# Discriminator: components that `dct:requires` the LDIO orchestrator
+# directly. The orchestrator itself and the pipeline-starter service are
+# exempt: they are infrastructure, not processing steps.
+tcs:LdioComponentTypeShape a sh:NodeShape ;
+    rdfs:label "LDIO component type shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:PipelineComponent ;
+                      dct:requires ldio:LinkedDataInteractionsOrchestrator .
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path ldio:type ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:in ( "Input" "Adapter" "Transformer" "Output" ) ;
+        sh:name "type" ;
+        sh:message "LDIO component {?this} must declare exactly one ldio:type in {\"Input\", \"Adapter\", \"Transformer\", \"Output\"}."
+    ] ;
+
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:name "label" ;
+        sh:message "LDIO component {?this} must declare rdfs:label — LdioConfigCompiler uses it as the ``name:`` key in the emitted YAML pipeline."
+    ] .
+
+
+# LDIO steps are strictly serial: each step has at most one upstream
+# channel (`tcs:readsFrom`) and at most one downstream channel
+# (`tcs:writesTo`). LDIO's YAML pipeline model has no branching primitive;
+# a step with two upstream feeds or two downstream sinks cannot be
+# rendered by `LdioConfigCompiler`.
+#
+# Discriminator: instance-pipeline-components whose specialized component
+# carries `ldio:type` (i.e., is an LDIO processing component).
+tcs:LdioStepSerialityShape a sh:NodeShape ;
+    rdfs:label "LDIO step seriality shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp .
+                ?comp ldio:type ?anytype .
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path tcs:readsFrom ;
+        sh:maxCount 1 ;
+        sh:name "readsFrom" ;
+        sh:message "LDIO step {?this} reads from more than one channel — LDIO pipelines are strictly serial (max 1 upstream)."
+    ] ;
+
+    sh:property [
+        sh:path tcs:writesTo ;
+        sh:maxCount 1 ;
+        sh:name "writesTo" ;
+        sh:message "LDIO step {?this} writes to more than one channel — LDIO pipelines are strictly serial (max 1 downstream)."
+    ] .
+
+
+# LDIO step-ordering: an `Output` must be terminal in its LDIO segment,
+# an `Input` must be initial. Concretely:
+#   * If step X is an `Output`, no other LDIO step may read from a
+#     channel X writes to. (A downstream *non-LDIO* step is allowed —
+#     e.g. LDIO `HttpOut` writes to a channel that RDF-Connect
+#     `HttpIn` reads. Cross-framework hand-offs stay legal.)
+#   * If step X is an `Input`, no other LDIO step may write to a
+#     channel X reads from.
+#
+# The FILTER excludes the step itself so a self-loop (nonsensical but
+# not caught here) doesn't accidentally validate.
+tcs:LdioStepOrderingShape a sh:NodeShape ;
+    rdfs:label "LDIO step ordering shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp .
+                ?comp ldio:type ?anytype .
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "LDIO Output step {?this} is followed by another LDIO step ({?downstream}) via channel {?ch} — Output must be terminal within its LDIO segment." ;
+        sh:select """
+            SELECT ?this ?ch ?downstream WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp ;
+                      tcs:writesTo ?ch .
+                ?comp ldio:type "Output" .
+                ?downstream tcs:readsFrom ?ch ;
+                            prov:specializationOf ?dcomp .
+                ?dcomp ldio:type ?danytype .
+                FILTER ( ?downstream != ?this )
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "LDIO Input step {?this} is preceded by another LDIO step ({?upstream}) via channel {?ch} — Input must be initial within its LDIO segment." ;
+        sh:select """
+            SELECT ?this ?ch ?upstream WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp ;
+                      tcs:readsFrom ?ch .
+                ?comp ldio:type "Input" .
+                ?upstream tcs:writesTo ?ch ;
+                          prov:specializationOf ?ucomp .
+                ?ucomp ldio:type ?uanytype .
+                FILTER ( ?upstream != ?this )
+            }
+        """
+    ] .
+
+
+#################################################################
+# 2.3  Semantic.works
+#
+# SemanticWorksCompiler folds each step's `p-plan:hasInputVar` config
+# into the `environment:` section of its component's compose config.
+# It identifies its inputs by IRI namespace (`sw:` == `https://semantic.works/services/`),
+# not by rdf:type, so these shapes use the same namespace-based
+# discriminator for consistency.
+#################################################################
+
+# Every semantic.works component must directly own a
+# tcs:DockerComposeConfig. `fetch_components` requires
+# ?component tcs:config ?dc ; ?dc a tcs:DockerComposeConfig in a
+# single hop — components without one are silently skipped, so no
+# service ever appears in the emitted docker-compose.yml.
+#
+# This is a SW-specific tightening of the generic
+# `tcs:PipelineComponentShape` deployability check, which permits
+# reaching a DockerComposeConfig transitively via dct:requires+.
+tcs:SwComponentDockerConfigShape a sh:NodeShape ;
+    rdfs:label "Semantic.works component DockerComposeConfig shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:PipelineComponent .
+                FILTER ( STRSTARTS(STR(?this), "https://semantic.works/services/") )
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Semantic.works component {?this} must directly carry a tcs:DockerComposeConfig via tcs:config — the compiler needs it to fold env vars into." ;
+        sh:select """
+            SELECT ?this WHERE {
+                FILTER NOT EXISTS {
+                    ?this tcs:config ?dc .
+                    ?dc a tcs:DockerComposeConfig .
+                }
+            }
+        """
+    ] .
+
+
+# Semantic.works steps may declare at most one `p-plan:hasInputVar`.
+# With multiple, `SemanticWorksCompiler.update_docker_config` selects
+# only the first via `receive_first` — SPARQL result order is
+# non-deterministic, so the remaining configs are dropped silently.
+tcs:SwStepInputVarShape a sh:NodeShape ;
+    rdfs:label "Semantic.works step InputVar cardinality shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp .
+                FILTER ( STRSTARTS(STR(?comp), "https://semantic.works/services/") )
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path p-plan:hasInputVar ;
+        sh:maxCount 1 ;
+        sh:name "hasInputVar" ;
+        sh:message "Semantic.works step {?this} has more than one p-plan:hasInputVar — the compiler folds only one into the compose environment, silently dropping the rest."
+    ] .
+
+
+# Semantic.works step-config values must be RDF literals. The
+# compiler writes them verbatim into docker-compose's `environment:`
+# section, which expects scalar `key: value` pairs. An IRI or
+# blank-node value would be run through `prefix_store.drop` and end
+# up as a stringified IRI in the emitted env vars — almost certainly
+# not what the author intended.
+#
+# The FILTER on `?p != rdf:type` guards against the (rare) case where
+# an author annotates the embedded bnode itself with a type; that
+# type triple is harmless boilerplate the compiler ignores.
+tcs:SwStepEnvValueShape a sh:NodeShape ;
+    rdfs:label "Semantic.works step env-value literal shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp ;
+                      p-plan:hasInputVar/tcs:embedded ?this .
+                FILTER ( STRSTARTS(STR(?comp), "https://semantic.works/services/") )
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Semantic.works step config {?this} has non-literal value at predicate {?p} — docker-compose environment values must be scalars, not IRIs or blank nodes." ;
+        sh:select """
+            SELECT ?this ?p WHERE {
+                ?this ?p ?v .
+                FILTER ( ?p != rdf:type && !isLiteral(?v) )
+            }
+        """
+    ] .
