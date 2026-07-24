@@ -1,0 +1,815 @@
+﻿#################################################################
+# Component configs — bodies (docker-compose stanzas, Dockerfile,
+# etc.) attached to catalog components via `tcs:config` in
+# catalog-core.ttl. Split out from the component definitions so the
+# catalog stays readable as boilerplate configs grow.
+#
+# Naming convention: `:<ComponentSuffix><ConfigKind>` — e.g. an
+# `rdfc:Orchestrator` docker-compose stanza is
+# `:RdfcOrchestratorDockerCompose`, its Dockerfile is
+# `:RdfcOrchestratorDockerImage`.
+#
+# Meant to be loaded together with catalog-core.ttl (which owns the
+# `tcs:config <name>` triples pointing to the configs below) and
+# catalog-shapes.ttl.
+#################################################################
+
+
+#################################################################
+# Prefixes
+#################################################################
+
+@prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+
+
+#################################################################
+# LDIO
+#################################################################
+
+:LdioDefaultDockerComposeConfig
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+ldio-workbench:
+    container_name: ldio-workbench
+    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
+    ports:
+      - "8080:8080"
+""" .
+
+
+:LdioPipelineStarterDockerComposeConfig
+    a tcs:Config, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal '''
+ldio-pipeline-starter:
+    image: curlimages/curl
+    volumes:
+      - ./ldio_pipeline.yml:/pipeline.yml:ro
+    command: >
+      sh -c "
+      sleep 30 &&
+      curl -X POST
+      -H 'content-type: application/yaml'
+      http://ldio-workbench:8080/admin/api/v1/pipeline
+      --data-binary @/pipeline.yml
+      "         
+''' .
+
+
+#################################################################
+# RDF-Connect
+#################################################################
+
+:RdfcOrchestratorDockerCompose
+    a tcs:Config, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+  rdfc:
+    container_name: rdfc
+    image: rdf-connect:latest
+    build: ../../resources/rdfc-docker
+    volumes:
+      - ./rdfc_pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro
+    environment:
+      LOG_LEVEL: debug
+    command: npx rdfc /workspace/pipeline/pipeline.ttl
+""" .
+
+
+:RdfcOrchestratorDockerImage
+    a tcs:Config, tcs:DockerImageConfig ;
+    dct:format "text/x-dockerfile" ;
+    tcs:literal """
+# Base: Alpine with Python 3.13
+FROM python:3.13-slim-trixie AS rdfc-base
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    bash \\
+    curl \\
+    wget \\
+    unzip \\
+    git \\
+    openjdk-21-jdk-headless \\
+    nodejs \\
+    npm \\
+    make \\
+    g++ \\
+    libc-dev \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Gradle 8.10.2
+ARG GRADLE_VERSION=8.10.2
+RUN wget https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -P /tmp \\
+    && unzip /tmp/gradle-${GRADLE_VERSION}-bin.zip -d /opt \\
+    && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/bin/gradle \\
+    && rm -rf /tmp/*.zip
+
+# Install Python tools Hatch and uv
+RUN pip install --no-cache-dir hatch uv
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy package.json and package-lock.json for npm caching
+COPY package.json ./pipeline/
+
+# Install all processors listed in package.json
+RUN cd pipeline && npm install
+
+# Set default working dir
+WORKDIR /workspace/pipeline
+
+# Keep container interactive
+CMD ["/bin/bash"]
+""" .
+
+
+#################################################################
+# Semantic.works — visible services (declared in catalog.ttl proper)
+#################################################################
+
+:LoketErrorAlertServiceDockerCompose
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+error-alert:
+    image: lblod/loket-error-alert-service:1.0.2
+    volumes:
+        - ./config/error-alert/:/config/
+""" .
+
+
+:DeliverEmailServiceDockerCompose
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+  berichtencentrum-deliver-email-service:
+    image: lblod/berichtencentrum-deliver-email-service
+""" .
+
+
+:TripleStoreDockerCompose
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+triplestore:
+  image: redpencil/virtuoso:1.4.0
+  environment:
+    SPARQL_UPDATE: 'true'
+""" .
+
+
+#################################################################
+# Semantic.works — mu-semtech infrastructure services
+#################################################################
+
+:MuIdentifierDockerCompose
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+identifier:
+    image: semtech/mu-identifier:1.11.0
+    environment:
+        SESSION_COOKIE_SECURE: 'on'
+""" .
+
+
+:MuDispatcherDockerCompose
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+dispatcher:
+    image: semtech/mu-dispatcher:2.1.1
+    volumes:
+      - ./semantic-works/config/dispatcher:/config
+""" .
+
+
+:MuClResourcesDockerCompose
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+resource:
+    image: semtech/mu-cl-resources:1.27.2
+    volumes:
+      - ./semantic-works/config/resources:/config
+""" .
+
+
+:MuDeltaNotifierDockerCompose
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+delta-notifier:
+    image: semtech/mu-delta-notifier:0.4.0
+    volumes:
+      - ./semantic-works/config/delta:/config/
+""" .
+
+
+:MuAuthorizationDockerCompose
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+database:
+    image: semtech/sparql-parser:0.0.15
+    volumes:
+      - ./semantic-works/config/authorization/:/config/
+      - ./semantic-works/data/authorization/:/data/
+""" .
+
+
+#################################################################
+# Semantic.works — Tier-1/2 boilerplate configs
+#
+# Verbatim bodies from `demonstrator/semantic-works/config/`,
+# attached to the corresponding sw components as `tcs:DefaultConfig`s.
+# Materialized by the per-service compilers under `compilers/sw/`.
+#
+# ⚠️ Limitations. Several of the configs below contain content that is
+# genuinely pipeline-specific but which the current compiler has no
+# override mechanism to displace. Concretely:
+#
+# - `MuDeltaNotifierRulesJsDefault` — ships the demonstrator's full
+#   `rules.js`, including the `rdf:type oslc:Error → error-alert` rule
+#   that ties the RDFC threshold sink to the sw error-alert service.
+#   That second rule is cross-framework glue specific to the DiSHACLed
+#   demonstrator; long-term it should be derived from a `tcs:Channel`
+#   between the two frameworks (semantic-model gap; see AGENTS.md §8).
+# - `ErrorAlertTemplateHbsDefault` — the "UFFFFFF!! Water levels is
+#   exceeded!!!" email copy is pure demonstrator content, not a stock
+#   default for `loket-error-alert-service`.
+# - `ErrorAlertConfigJsonDefault` — the `email.folder` / `graph.email`
+#   IRIs happen to match the demonstrator's deployment.
+# - `MuAuthorizationConfigLispDefault` — the single-`public`-graph +
+#   everyone-can-read/write ACL matches the demonstrator's trivial
+#   authorization setup.
+# - `MuDispatcherExDefault` — only forwards `/sparql` → database and
+#   404s everything else, matching the demonstrator's minimal routes.
+#
+# See `README.md` §5 (Limitations) for the general story and the
+# override-mechanism roadmap item.
+#################################################################
+:VirtuosoIniDefault
+    a tcs:Config, tcs:DefaultConfig ;
+    dct:format "text/plain" ;
+    tcs:literal """;
+;  virtuoso.ini
+;
+;  Configuration file for the OpenLink Virtuoso VDBMS Server
+;
+;  To learn more about this product, or any other product in our
+;  portfolio, please check out our web site at:
+;
+;      http://virtuoso.openlinksw.com/
+;
+;  or contact us at:
+;
+;      general.information@openlinksw.com
+;
+;  If you have any technical questions, please contact our support
+;  staff at:
+;
+;      technical.support@openlinksw.com
+;
+
+;
+;  Database setup
+;
+[Database]
+DatabaseFile			= /usr/local/virtuoso-opensource/var/lib/virtuoso/db/virtuoso.db
+ErrorLogFile			= /usr/local/virtuoso-opensource/var/lib/virtuoso/db/virtuoso.log
+LockFile			= /usr/local/virtuoso-opensource/var/lib/virtuoso/db/virtuoso.lck
+TransactionFile			= /usr/local/virtuoso-opensource/var/lib/virtuoso/db/virtuoso.trx
+xa_persistent_file		= /usr/local/virtuoso-opensource/var/lib/virtuoso/db/virtuoso.pxa
+ErrorLogLevel			= 7
+FileExtend			= 200
+MaxCheckpointRemap		= 40000
+Striping			= 0
+TempStorage			= TempDatabase
+
+
+[TempDatabase]
+DatabaseFile			= /usr/local/virtuoso-opensource/var/lib/virtuoso/db/virtuoso-temp.db
+TransactionFile			= /usr/local/virtuoso-opensource/var/lib/virtuoso/db/virtuoso-temp.trx
+MaxCheckpointRemap		= 2000
+Striping			= 0
+
+
+;
+;  Server parameters
+;
+[Parameters]
+ServerPort			= 1111
+LiteMode			= 0
+DisableUnixSocket		= 1
+DisableTcpSocket		= 0
+;SSLServerPort			= 2111
+;SSLCertificate			= cert.pem
+;SSLPrivateKey			= pk.pem
+;X509ClientVerify		= 0
+;X509ClientVerifyDepth		= 0
+;X509ClientVerifyCAFile		= ca.pem
+MaxClientConnections		= 10
+CheckpointInterval		= 60
+O_DIRECT			= 0
+TraceOn       = errors ; log errors
+TransactionAfterImageLimit = 150000000	; max 150MB transaction, total transient consumption is 450MB (roll forward + roll back)
+CaseMode			= 2
+MaxStaticCursorRows		= 5000
+CheckpointAuditTrail		= 0
+AllowOSCalls			= 0
+SchedulerInterval		= 10
+DirsAllowed			= ., /usr/local/virtuoso-opensource/share/virtuoso/vad
+ThreadCleanupInterval		= 10
+ThreadThreshold			= 10
+ResourcesCleanupInterval	= 10
+FreeTextBatchSize		= 100000
+SingleCPU			= 0
+VADInstallDir			= /usr/local/virtuoso-opensource/share/virtuoso/vad/
+PrefixResultNames               = 0
+RdfFreeTextRulesSize		= 100
+IndexTreeMaps			= 256
+MaxMemPoolSize                  = 400000000
+PrefixResultNames               = 0
+MacSpotlight                    = 0
+MaxQueryMem 		 	= 4G		; memory allocated to query processor
+VectorSize 		 	= 10000		; initial parallel query vector (array of query operations) size
+MaxVectorSize 		 	= 1000000	; query vector size threshold.
+AdjustVectorSize 	 	= 1
+ThreadsPerQuery 	 	= 4
+AsyncQueueMaxThreads 	 	= 10
+;;
+;; When running with large data sets, one should configure the Virtuoso
+;; process to use between 2/3 to 3/5 of free system memory and to stripe
+;; storage on all available disks.
+;;
+;; Uncomment next two lines if there is 2 GB system memory free
+NumberOfBuffers          = 170000
+MaxDirtyBuffers          = 130000
+;; Uncomment next two lines if there is 4 GB system memory free
+;NumberOfBuffers          = 340000
+; MaxDirtyBuffers          = 250000
+;; Uncomment next two lines if there is 8 GB system memory free
+;NumberOfBuffers          = 680000
+;MaxDirtyBuffers          = 500000
+;; Uncomment next two lines if there is 16 GB system memory free
+;NumberOfBuffers          = 1360000
+;MaxDirtyBuffers          = 1000000
+;; Uncomment next two lines if there is 32 GB system memory free
+;NumberOfBuffers          = 2720000
+;MaxDirtyBuffers          = 2000000
+;; Uncomment next two lines if there is 48 GB system memory free
+;NumberOfBuffers          = 4000000
+;MaxDirtyBuffers          = 3000000
+;; Uncomment next two lines if there is 64 GB system memory free
+;NumberOfBuffers          = 5450000
+;MaxDirtyBuffers          = 4000000
+
+
+[HTTPServer]
+ServerPort			= 8890
+ServerRoot			= /usr/local/virtuoso-opensource/var/lib/virtuoso/vsp
+MaxClientConnections		= 10
+DavRoot				= DAV
+EnabledDavVSP			= 0
+HTTPProxyEnabled		= 0
+TempASPXDir			= 0
+DefaultMailServer		= localhost:25
+ServerThreads			= 10
+MaxKeepAlives			= 10
+KeepAliveTimeout		= 10
+MaxCachedProxyConnections	= 10
+ProxyConnectionCacheTimeout	= 15
+HTTPThreadSize			= 280000
+HttpPrintWarningsInOutput	= 0
+Charset				= UTF-8
+;;HTTPLogFile		        = http.log
+MaintenancePage             	= atomic.html
+EnabledGzipContent          	= 1
+
+
+[AutoRepair]
+BadParentLinks			= 0
+
+[Client]
+SQL_PREFETCH_ROWS		= 100
+SQL_PREFETCH_BYTES		= 16000
+SQL_QUERY_TIMEOUT		= 0
+SQL_TXN_TIMEOUT			= 0
+;SQL_NO_CHAR_C_ESCAPE		= 1
+;SQL_UTF8_EXECS			= 0
+;SQL_NO_SYSTEM_TABLES		= 0
+;SQL_BINARY_TIMESTAMP		= 1
+;SQL_ENCRYPTION_ON_PASSWORD	= -1
+
+[VDB]
+ArrayOptimization		= 0
+NumArrayParameters		= 10
+VDBDisconnectTimeout		= 1000
+KeepConnectionOnFixedThread	= 0
+
+[Replication]
+ServerName			= db-D602566B774E
+ServerEnable			= 1
+QueueMax			= 50000
+
+
+;
+;  Striping setup
+;
+;  These parameters have only effect when Striping is set to 1 in the
+;  [Database] section, in which case the DatabaseFile parameter is ignored.
+;
+;  With striping, the database is spawned across multiple segments
+;  where each segment can have multiple stripes.
+;
+;  Format of the lines below:
+;    Segment<number> = <size>, <stripe file name> [, <stripe file name> .. ]
+;
+;  <number> must be ordered from 1 up.
+;
+;  The <size> is the total size of the segment which is equally divided
+;  across all stripes forming  the segment. Its specification can be in
+;  gigabytes (g), megabytes (m), kilobytes (k) or in database blocks
+;  (b, the default)
+;
+;  Note that the segment size must be a multiple of the database page size
+;  which is currently 8k. Also, the segment size must be divisible by the
+;  number of stripe files forming  the segment.
+;
+;  The example below creates a 200 meg database striped on two segments
+;  with two stripes of 50 meg and one of 100 meg.
+;
+;  You can always add more segments to the configuration, but once
+;  added, do not change the setup.
+;
+[Striping]
+Segment1			= 100M, db-seg1-1.db, db-seg1-2.db
+Segment2			= 100M, db-seg2-1.db
+;...
+
+;[TempStriping]
+;Segment1			= 100M, db-seg1-1.db, db-seg1-2.db
+;Segment2			= 100M, db-seg2-1.db
+;...
+
+;[Ucms]
+;UcmPath			= <path>
+;Ucm1				= <file>
+;Ucm2				= <file>
+;...
+
+
+[Zero Config]
+ServerName			= virtuoso (D602566B774E)
+;ServerDSN			= ZDSN
+;SSLServerName			= 
+;SSLServerDSN			= 
+
+
+[Mono]
+;MONO_TRACE			= Off
+;MONO_PATH			= <path_here>
+;MONO_ROOT			= <path_here>
+;MONO_CFG_DIR			= <path_here>
+;virtclr.dll			=
+
+
+[URIQA]
+DynamicLocal			= 0
+DefaultHost			= localhost:8890
+
+
+[SPARQL]
+;ExternalQuerySource		= 1
+;ExternalXsltSource 		= 1
+;DefaultGraph      		= http://localhost:8890/dataspace
+;ImmutableGraphs    		= http://localhost:8890/dataspace
+ResultSetMaxRows           	= 10000
+MaxQueryCostEstimationTime 	= 400	; in seconds
+MaxQueryExecutionTime      	= 60	; in seconds
+DefaultQuery               	= SELECT * WHERE { GRAPH <http://mu.semte.ch/graphs/public> { ?s ?p ?o. } } LIMIT 100
+DeferInferenceRulesInit    	= 0  ; controls inference rules loading
+;PingService       		= http://rpc.pingthesemanticweb.com/
+
+
+[Plugins]
+LoadPath			= /usr/local/virtuoso-opensource/lib/virtuoso/hosting
+;Load1				= plain, wikiv
+;Load2				= plain, mediawiki
+;Load3				= plain, creolewiki
+;Load4			= plain, im
+;Load5		= plain, wbxml2
+;Load6			= plain, hslookup
+;Load7			= attach, libphp5.so
+;Load8			= Hosting, hosting_php.so
+;Load9			= Hosting,hosting_perl.so
+;Load10		= Hosting,hosting_python.so
+;Load11		= Hosting,hosting_ruby.so
+;Load12				= msdtc,msdtc_sample
+""" .
+
+:MuResourcesDomainJsonDefault
+    a tcs:Config, tcs:DefaultConfig ;
+    dct:format "application/json" ;
+    tcs:literal """{
+  "version": "0.1",
+  "prefixes": {
+  },
+  "resources": {
+  }
+}
+""" .
+
+:MuResourcesDomainLispDefault
+    a tcs:Config, tcs:DefaultConfig, tcs:ResourcesDomainConfig ;
+    dct:format "text/x-common-lisp" ;
+    tcs:literal """(in-package :mu-cl-resources)
+
+(setf *include-count-in-paginated-responses* t)
+(setf *supply-cache-headers-p* t)
+(setf sparql:*experimental-no-application-graph-for-sudo-select-queries* t)
+(setf *cache-model-properties-p* t)
+(setf mu-support::*use-custom-boolean-type-p* nil)
+(setq *cache-count-queries-p* t)
+(setf sparql:*query-log-types* nil) ;; hint: use app-http-logger for logging queries instead, all is '(:default :update-group :update :query :ask)
+
+
+;; example
+;; (define-resource dataset ()
+;;   :class (s-prefix "dcat:Dataset")
+;;   :properties `((:title :string ,(s-prefix "dct:title"))
+;;                 (:description :string ,(s-prefix "dct:description")))
+;;   :has-one `((catalog :via ,(s-prefix "dcat:dataset")
+;;                       :inverse t
+;;                       :as "catalog"))
+;;   :has-many `((theme :via ,(s-prefix "dcat:theme")
+;;                      :as "themes"))
+;;   :resource-base (s-url "http://webcat.tmp.semte.ch/datasets/")
+;;   :on-path "datasets")
+
+;; reading in the domain.json
+(read-domain-file "domain.json")
+""" .
+
+:MuResourcesRepositoryLispDefault
+    a tcs:Config, tcs:DefaultConfig, tcs:ResourcesRepositoryConfig ;
+    dct:format "text/x-common-lisp" ;
+    tcs:literal """(in-package :mu-cl-resources)
+
+;;;;
+;; NOTE
+;; docker-compose stop; docker-compose rm; docker-compose up
+;; after altering this file.
+
+
+;;;;
+;; Describe the prefixes which you'll use in the domain file here.
+;; This is a short-form which allows you to write, for example,
+;; (s-url "http://purl.org/dc/terms/title")
+;; as (s-prefix "dct:title")
+
+;; (add-prefix "dct" "http://purl.org/dc/terms/")
+
+
+;;;;;
+;; The following is the commented out version of those used in the
+;; commented out domain.lisp.
+
+;; (add-prefix "dcat" "http://www.w3.org/ns/dcat#")
+;; (add-prefix "dct" "http://purl.org/dc/terms/")
+;; (add-prefix "skos" "http://www.w3.org/2004/02/skos/core#")
+
+
+;;;;;
+;; You can use the ext: prefix when you're still searching for
+;; the right predicates during development.  This should *not* be
+;; used to publish any data under.  It's merely a prefix of which
+;; the mu.semte.ch organisation indicates that it will not be used
+;; by them and that it shouldn't be used for permanent URIs.
+
+(add-prefix "ext" "http://mu.semte.ch/vocabularies/ext/")
+""" .
+
+:MuDeltaNotifierRulesJsDefault
+    a tcs:Config, tcs:DefaultConfig ;
+    dct:format "application/javascript" ;
+    tcs:literal """export default [
+  {
+    match: {
+      subject: {},
+    },
+    callback: {
+      url: "http://resource/.mu/delta",
+      method: "POST",
+    },
+    options: {
+      resourceFormat: "v0.0.1",
+      gracePeriod: 1000,
+      foldEffectiveChanges: true,
+      ignoreFromSelf: true,
+    },
+  },
+  {
+  match: {
+    predicate: {
+      type: 'uri',
+      value: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
+    },
+    object: {
+      type: 'uri',
+      value:'http://open-services.net/ns/core#Error'
+    }
+  },
+  callback: {
+    url: 'http://error-alert/delta',
+    method:'POST'
+  },
+  options: {
+    resourceFormat: 'v0.0.1',
+    gracePeriod: 1000,
+    ignoreFromSelf: true
+  }
+}
+];
+""" .
+
+:MuDispatcherExDefault
+    a tcs:Config, tcs:DefaultConfig ;
+    dct:format "text/x-elixir" ;
+    tcs:literal """defmodule Dispatcher do
+  use Matcher
+  define_accept_types [
+    html: [ "text/html", "application/xhtml+html" ],
+    json: [ "application/json", "application/vnd.api+json" ]
+  ]
+
+  @any %{}
+  @json %{ accept: %{ json: true } }
+  @html %{ accept: %{ html: true } }
+
+  define_layers [ :static, :services, :fall_back, :not_found ]
+
+  # In order to forward the 'themes' resource to the
+  # resource service, use the following forward rule:
+  #
+  # match "/themes/*path", @json do
+  #   Proxy.forward conn, path, "http://resource/themes/"
+  # end
+  #
+  # Run `docker-compose restart dispatcher` after updating
+  # this file.
+
+  match "/sparql", @any do
+    Proxy.forward conn, [], "http://database:8890/"
+    # send_resp( conn, 404, "sparql route found." )
+  end
+
+  match "/*_", %{ layer: :not_found } do
+    send_resp( conn, 404, "Route not found.  See config/dispatcher.ex" )
+  end
+end
+""" .
+
+:MuAuthorizationConfigLispDefault
+    a tcs:Config, tcs:DefaultConfig ;
+    dct:format "text/x-common-lisp" ;
+    tcs:literal """;;;;;;;;;;;;;;;;;;;
+;;; delta messenger
+(in-package :delta-messenger)
+
+;; (push (make-instance 'delta-logging-handler) *delta-handlers*) ;; enable if delta messages should be logged on terminal
+(add-delta-messenger "http://delta-notifier/")
+(setf *log-delta-messenger-message-bus-processing* t) ;; set to t for extra messages for debugging delta messenger
+
+;;;;;;;;;;;;;;;;;
+;;; configuration
+(in-package :client)
+(setf *log-sparql-query-roundtrip* t) ; change nil to t for logging requests to virtuoso (and the response)
+(setf *backend* "http://triplestore:8890/sparql")
+
+(in-package :server)
+(setf *log-incoming-requests-p* t) ; change nil to t for logging all incoming requests
+
+;;;;;;;;;;;;;;;;
+;;; prefix types
+(in-package :type-cache)
+
+(add-type-for-prefix "http://mu.semte.ch/sessions/" "http://mu.semte.ch/vocabularies/session/Session") ; each session URI will be handled for updates as if it had this mussession:Session type
+
+;;;;;;;;;;;;;;;;;
+;;; access rights
+
+(in-package :acl)
+
+;; these three reset the configuration, they are likely not necessary
+(defparameter *access-specifications* nil)
+(defparameter *graphs* nil)
+(defparameter *rights* nil)
+
+;; Prefixes used in the constraints below (not in the SPARQL queries)
+(define-prefixes
+  ;; Core
+  :mu "http://mu.semte.ch/vocabularies/core/"
+  :session "http://mu.semte.ch/vocabularies/session/"
+  :ext "http://mu.semte.ch/vocabularies/ext/"
+  ;; Custom prefix URIs here, prefix casing is ignored
+  )
+
+
+;;;;;;;;;
+;; Graphs
+;;
+;; These are the graph specifications known in the system.  No
+;; guarantees are given as to what content is readable from a graph.  If
+;; two graphs are nearly identical and have the same name, perhaps the
+;; specifications can be folded too.  This could help when building
+;; indexes.
+
+(define-graph public ("http://mu.semte.ch/graphs/public")
+  (_ -> _)) ; public allows ANY TYPE -> ANY PREDICATE in the direction
+            ; of the arrow
+
+;; Example:
+;; (define-graph company ("http://mu.semte.ch/graphs/companies/")
+;;   ("foaf:OnlineAccount"
+;;    -> "foaf:accountName"
+;;    -> "foaf:accountServiceHomepage")
+;;   ("foaf:Group"
+;;    -> "foaf:name"
+;;    -> "foaf:member"))
+
+
+;;;;;;;;;;;;;
+;; User roles
+
+(supply-allowed-group "public")
+
+(grant (read write)
+       :to-graph public
+       :for-allowed-group "public")
+
+;; example:
+
+;; (supply-allowed-group "company"
+;;   :query "PREFIX ext: <http://mu.semte.ch/vocabularies/ext/>
+;;           SELECT DISTINCT ?uuid WHERE {
+;;             <SESSION_ID> ext:belongsToCompany/mu:uuid ?uuid
+;;           }"
+;;   :parameters ("uuid"))
+
+;; (grant (read write)
+;;        :to company
+;;        :for "company")
+""" .
+
+:ErrorAlertConfigJsonDefault
+    a tcs:Config, tcs:DefaultConfig ;
+    dct:format "application/json" ;
+    tcs:literal """{
+  "base": "http://lblod.data.gift",
+  "service": {
+    "uri": "http://lblod.data.gift/services/loket-error-alert-service"
+  },
+  "creators": [],
+  "email": {
+    "folder": "http://data.lblod.info/id/mail-folders/2"
+  },
+  "graph": {
+    "email": "http://mu.semte.ch/graphs/system/email"
+  }
+}""" .
+
+:ErrorAlertTemplateHbsDefault
+    a tcs:Config, tcs:DefaultConfig ;
+    dct:format "text/html" ;
+    tcs:literal """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="nl">
+<head>
+    <meta charset="UTF-8"/>
+    <meta http-equiv="Content-Type" content="text/html charset=UTF-8"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0 "/>
+    <meta name="format-detection" content="telephone=no"/>
+    <!--[if !mso]><! -->
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700" rel="stylesheet"/>
+    <!--<![endif]-->
+</head>
+<body>
+    <p>UFFFFFF!! Water levels is exceeded!!!</p>
+    <p>subject : {{subject}}</p>
+    <p>appName : {{appName}}</p>
+    <p>appName : {{message}}</p>
+</body>
+</html>""" .
+
+
+

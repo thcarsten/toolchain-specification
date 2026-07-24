@@ -126,6 +126,23 @@ def _normalize_newlines(value):
     return value
 
 
+def read_literal(reader: GraphReader, config_id: str) -> str:
+    """Return the raw ``tcs:literal`` body of a ``tcs:Config`` node.
+
+    Bypasses :func:`extract_config`'s ``dct:format``-based dispatch
+    — useful when a compiler wants the bytes verbatim (e.g. to write
+    a JSON file whose original whitespace / formatting matters, or
+    for any config that does not need parsing).
+
+    Callers get a plain ``str``. If the config has no ``tcs:literal``
+    (only ``tcs:embedded``, or missing entirely), :func:`receive_first`
+    raises.
+    """
+    return str(
+        receive_first(reader.filter(sub=config_id, pred="tcs:literal").df["obj"])
+    )
+
+
 def extract_config(reader: GraphReader, config_id: str) -> Union[dict, str]:
     """Return the parsed body of a ``tcs:Config`` node.
 
@@ -379,7 +396,7 @@ def rewrite_compose_volume_host_path(
     than a no-op.
 
     The rewrite follows the same idiom as
-    :class:`SemanticWorksCompiler`: strip the existing
+    :class:`SemanticWorksEnvVarCompiler`: strip the existing
     ``tcs:literal`` / ``tcs:embedded`` triples off the config node
     and re-attach a fresh ``tcs:literal`` carrying the normalised
     JSON body. :func:`parse_docker_compose_config` re-parses that

@@ -129,7 +129,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 ### Config
 | | |
 |----------|----------|
-| **Definition** | A Config is a set of input parameters for a Pipeline Component, which defines its behavior in a pipeline. In its simplest case, it is a set of key-value pairs. However, also nested configurations are possible. As a data structure a Config is equivalent to the "object" type in JSON, consisting of an unordered set of name/value pairs. The name is a string and the value is a string, number, boolean, array, or object (same concept as in the [Common Workflow Language](https://www.commonwl.org/v1.2/Workflow.html#Data_concepts)), resulting in an unordered, tree-like (acyclic) structure. Each Config requires either a tcs:embedded or tcs:literal-predicate. This tells the Pipeline Generator whether the Config is contained in the graph or must be parsed from a string-literal. If tcs:embedded is used, the Config points to a blank node representing a data object: Predicates serve as keys and objects as values. If tcs:literal is used, the Config points to a string, with the format of the Config specified with dct:format. In this case the Pipeline Generator parses the string to extract the configuration data. A Config can be stored as a preset in the Component Catalog. In this case a Pipeline Component can point to its associated Configs via tcs:config. This is ideal for attaching default configurations, or attaching configurations often needed for specific use cases. |
+| **Definition** | A Config is a set of input parameters for a Pipeline Component, which defines its behavior in a pipeline. In its simplest case, it is a set of key-value pairs. However, also nested configurations are possible. As a data structure a Config is equivalent to the "object" type in JSON, consisting of an unordered set of name/value pairs. The name is a string and the value is a string, number, boolean, array, or object (same concept as in the [Common Workflow Language](https://www.commonwl.org/v1.2/Workflow.html#Data_concepts)), resulting in an unordered, tree-like (acyclic) structure. Each Config requires either a tcs:embedded or tcs:literal-predicate. This tells the Pipeline Generator whether the Config is contained in the graph or must be parsed from a string-literal. If tcs:embedded is used, the Config points to a blank node representing a data object: Predicates serve as keys and objects as values. If tcs:literal is used, the Config points to a string, with the format of the Config specified with dct:format. In this case the Pipeline Generator parses the string to extract the configuration data. A Config can be stored as a preset in the Component Catalog. In this case a Pipeline Component can point to its associated Configs via tcs:config. This is ideal for attaching default configurations, or attaching configurations often needed for specific use cases. Subclasses of tcs:Config (see section 2.5) act as **compiler-facing hints** identifying what the Config concerns — a Dockerfile, a docker-compose stanza, a pipeline runtime config, etc. — which lets compilers select the configs relevant to them from among the multiple configs a component may carry. |
 | **subclass of** | --- |
 <br>
 
@@ -167,6 +167,8 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 
 ## 2.5. Subclasses of Config
 
+The subclasses below classify a Config by what it concerns — a docker-compose stanza, a Dockerfile, a pipeline's runtime parameters, a default fallback. This lets compilers select the configs relevant to their target output from among the multiple configs a component may carry. Adding a new kind of config (for a new framework or file type) is done by minting a new subclass.
+
 ### DockerComposeConfig
 | | |
 |----------|----------|
@@ -174,7 +176,7 @@ Even if the Pipeline Generator is not utilized, the *toolchain* ontology provide
 | **subclass of** | tcs:Config |
 <br>
 
-### DockerComposeConfig
+### DockerImageConfig
 | | |
 |----------|----------|
 | **Definition** | The DockerImageConfig defines how the a docker image must be build, it is the content of a Dockerfile. |

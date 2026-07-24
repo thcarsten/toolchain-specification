@@ -7,7 +7,7 @@ from rdfine import GraphReader
 from rdfine import receive_first
 
 from .base import Compiler
-from .pipeline_extractor import PipelineExtractor
+from .core.pipeline_extractor import PipelineExtractor
 
 
 class PipelineGenerator:

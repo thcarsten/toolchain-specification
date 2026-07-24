@@ -1,4 +1,18 @@
 #################################################################
+# Catalog — core component definitions
+#
+# One block per pipeline component: types, labels, `dct:requires`
+# (both component→component and component→spdx:Package), `ldio:type`,
+# `owl:imports`, `spdx:versionInfo`, `tcs:config` pointing at the
+# named config bodies in catalog-configs.ttl, `dcat:qualifiedRelation`
+# pointing at shapes in catalog-shapes.ttl.
+#
+# Meant to be loaded together with catalog-configs.ttl and
+# catalog-shapes.ttl.
+#################################################################
+
+
+#################################################################
 # Prefixes
 #################################################################
 
@@ -21,86 +35,6 @@
 @prefix tcs: <https://w3id.org/toolchain#> .
 @prefix tm: <https://w3id.org/rdf-connect/threshold-monitor#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
-
-
-:prefixes
-    sh:declare 
-    [
-        sh:prefix "" ;
-        sh:namespace "http://example.org/example/" ;
-    ] ,
-    [
-        sh:prefix "dcat" ;
-        sh:namespace "http://www.w3.org/ns/dcat#" ;
-    ] ,
-    [
-        sh:prefix "dct" ;
-        sh:namespace "http://purl.org/dc/terms/" ;
-    ] ,
-    [
-        sh:prefix "ldio" ;
-        sh:namespace "http://example.org/example/ldio/" ;
-    ] ,
-    [
-        sh:prefix "mu" ;
-        sh:namespace "http://mu.semte.ch/vocabularies/core/" ;
-    ] ,
-    [
-        sh:prefix "nfo" ;
-        sh:namespace "http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#" ;
-    ] ,
-    [
-        sh:prefix "owl" ;
-        sh:namespace "http://www.w3.org/2002/07/owl#" ;
-    ] ,
-    [
-        sh:prefix "p-plan" ;
-        sh:namespace "http://purl.org/net/p-plan#" ;
-    ] ,
-    [
-        sh:prefix "proc" ;
-        sh:namespace "http://dishacled.example.org/processors#" ;
-    ] ,
-    [
-        sh:prefix "prov" ;
-        sh:namespace "http://www.w3.org/ns/prov#" ;
-    ] ,
-    [
-        sh:prefix "rdf" ;
-        sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#" ;
-    ] ,
-    [
-        sh:prefix "rdfc" ;
-        sh:namespace "https://w3id.org/rdf-connect#" ;
-    ] ,
-    [
-        sh:prefix "rdfs" ;
-        sh:namespace "http://www.w3.org/2000/01/rdf-schema#" ;
-    ] ,
-    [
-        sh:prefix "sh" ;
-        sh:namespace "http://www.w3.org/ns/shacl#" ;
-    ] ,
-    [
-        sh:prefix "spdx" ;
-        sh:namespace "http://spdx.org/rdf/terms#" ;
-    ] ,
-    [
-        sh:prefix "sw" ;
-        sh:namespace "https://semantic.works/services/" ;
-    ] ,
-    [
-        sh:prefix "tcs" ;
-        sh:namespace "https://w3id.org/toolchain#" ;
-    ] ,
-    [
-        sh:prefix "tm" ;
-        sh:namespace "https://w3id.org/rdf-connect/threshold-monitor#" ;
-    ] ,
-    [
-        sh:prefix "xsd" ;
-        sh:namespace "http://www.w3.org/2001/XMLSchema#" ;
-    ] .
 
 
 #################################################################
@@ -235,41 +169,21 @@ ldio:LinkedDataInteractionsOrchestrator
     dct:requires ldio:LdioPipelineStarterService .
 
 
-:LdioDefaultDockerComposeConfig
-    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
-    dct:format "text/yaml" ;
-    tcs:literal """
-ldio-workbench:
-    container_name: ldio-workbench
-    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
-    ports:
-      - "8080:8080"
-""" .
-
-
 ldio:LdioPipelineStarterService 
     a tcs:PipelineComponent, dcat:Resource ;
     rdfs:label "Ldio Pipeline Starter Service" ;
-    tcs:config :LdioPipelineStarterDockerComposeConfig. 
+    tcs:config :LdioPipelineStarterDockerComposeConfig . 
 
 
-:LdioPipelineStarterDockerComposeConfig
-        a tcs:Config, tcs:DockerComposeConfig ;
-        dct:format "text/yaml" ;
-        tcs:literal '''
-ldio-pipeline-starter:
-    image: curlimages/curl
-    volumes:
-      - ./ldio_pipeline.yml:/pipeline.yml:ro
-    command: >
-      sh -c "
-      sleep 30 &&
-      curl -X POST
-      -H 'content-type: application/yaml'
-      http://ldio-workbench:8080/admin/api/v1/pipeline
-      --data-binary @/pipeline.yml
-      "         
-''' .
+# The source-a API serves JSON-LD bodies with `Content-Type: application/json`.
+# `ldio:RdfAdapter` refuses that content-type; `ldio:JsonToLdAdapter` accepts
+# it when `force-content-type: true` is set and applies an inline JSON-LD
+# `context` to re-expand terms.
+ldio:JsonToLdAdapter a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Ldio:JsonToLdAdapter" ;
+    ldio:type "Adapter" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.13.0/ldio/ldio-adapters/ldio-json-to-json-ld" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator .
 
 
 #################################################################
@@ -292,103 +206,6 @@ rdfc:SPARQLIngest a tcs:PipelineComponent, dcat:Resource;
       dct:relation :SparqlIngestShape, :SparqlIngestConfigShape;
       dcat:hadRole "configShape" ;
     ] .
-
-
-# This is an example of a nested Config in RDF-Connect: This shape references ingestConfig, which is an embedded config.
-:SparqlIngestShape a sh:NodeShape;
-      sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes :prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf rdfc:SPARQLIngest ;
-                      p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
-  sh:property [
-    sh:path rdfc:memberStream;
-    sh:name "memberStream";
-    sh:class tcs:Channel;
-    sh:minCount 1;
-    sh:maxCount 1;
-  ], [
-    sh:path rdfc:ingestConfig;
-    sh:name "config";
-    sh:node :SparqlIngestConfigShape;
-    sh:minCount 1;
-    sh:maxCount 1;
-  ], [
-    sh:path rdfc:sparqlWriter;
-    sh:name "sparqlWriter";
-    sh:class tcs:Channel;
-    sh:maxCount 1;
-  ].
-
-
-:SparqlIngestConfigShape a sh:NodeShape;
-  sh:targetObjectsOf rdfc:ingestConfig;
-  sh:property [
-    sh:path rdfc:operationMode;
-    sh:datatype xsd:string;
-    sh:name "operationMode";
-    sh:maxCount 1;
-  ], [
-    sh:path rdfc:memberBatchSize;
-    sh:datatype xsd:integer;
-    sh:name "memberBatchSize";
-    sh:maxCount 1;
-  ], [
-    sh:path rdfc:memberShape;
-    sh:datatype xsd:string;
-    sh:name "memberShape";
-    sh:maxCount 1;
-  ], [
-    sh:path rdfc:changeSemantics;
-    sh:class rdfc:ChangeSemantics;
-    sh:name "changeSemantics";
-    sh:maxCount 1;
-    sh:minCount 0;
-  ], [
-    sh:path rdfc:targetNamedGraph;
-    sh:datatype xsd:string;
-    sh:name "targetNamedGraph";
-    sh:maxCount 1;
-    sh:minCount 0;
-  ], [
-    sh:path rdfc:transactionConfig;
-    sh:class rdfc:TransactionConfig;
-    sh:name "transactionConfig";
-    sh:maxCount 1;
-    sh:minCount 0;
-  ], [
-    sh:path rdfc:graphStoreUrl;
-    sh:datatype xsd:string;
-    sh:name "graphStoreUrl";
-    sh:maxCount 1;
-    sh:minCount 0;
-  ], [
-    sh:path rdfc:forVirtuoso;
-    sh:datatype xsd:boolean;
-    sh:name "forVirtuoso";
-    sh:maxCount 1;
-    sh:minCount 0;
-  ], [
-    sh:path rdfc:accessToken;
-    sh:datatype xsd:string;
-    sh:name "accessToken";
-    sh:maxCount 1;
-    sh:minCount 0;
-  ], [
-    sh:path rdfc:measurePerformance;
-    sh:class rdfc:PerformanceConfig;
-    sh:name "measurePerformance";
-    sh:maxCount 1;
-    sh:minCount 0;
-  ].
-
-
-
 
 
 rdfc:HttpIn a tcs:PipelineComponent, dcat:Resource;
@@ -452,137 +269,9 @@ rdfc:Orchestrator a tcs:PipelineComponent, dcat:Resource ;
         spdx:versionInfo "^2.2.1" ;
         spdx:suppliedBy :npm
     ]; 
-    tcs:config [
-        a tcs:Config, tcs:DockerComposeConfig ;
-        dct:format "text/yaml" ;
-        tcs:literal """
-  rdfc:
-    container_name: rdfc
-    image: rdf-connect:latest
-    build: ../../resources/rdfc-docker
-    volumes:
-      - ./rdfc_pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro
-    environment:
-      LOG_LEVEL: debug
-    command: npx rdfc /workspace/pipeline/pipeline.ttl
-"""
-];
-tcs:config [
-        a tcs:Config, tcs:DockerImageConfig ;
-        dct:format "text/x-dockerfile" ;
-        tcs:literal """
-# Base: Alpine with Python 3.13
-FROM python:3.13-slim-trixie AS rdfc-base
+    tcs:config :RdfcOrchestratorDockerCompose ,
+               :RdfcOrchestratorDockerImage .
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \\
-    bash \\
-    curl \\
-    wget \\
-    unzip \\
-    git \\
-    openjdk-21-jdk-headless \\
-    nodejs \\
-    npm \\
-    make \\
-    g++ \\
-    libc-dev \\
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Gradle 8.10.2
-ARG GRADLE_VERSION=8.10.2
-RUN wget https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -P /tmp \\
-    && unzip /tmp/gradle-${GRADLE_VERSION}-bin.zip -d /opt \\
-    && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/bin/gradle \\
-    && rm -rf /tmp/*.zip
-
-# Install Python tools Hatch and uv
-RUN pip install --no-cache-dir hatch uv
-
-# Set working directory
-WORKDIR /workspace
-
-# Copy package.json and package-lock.json for npm caching
-COPY package.json ./pipeline/
-
-# Install all processors listed in package.json
-RUN cd pipeline && npm install
-
-# Set default working dir
-WORKDIR /workspace/pipeline
-
-# Keep container interactive
-CMD ["/bin/bash"]
-"""
-] .
-
-
-#################################################################
-# Semantic.works Components
-#################################################################
-
-sw:loket-error-alert-service a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
-  rdfs:description "Service that is responsible for sending out alerts when errors are inserted in the store. Build using the MU Javascript template.";
-  dcat:landingPage <https://github.com/lblod/loket-error-alert-service> ;
-  dct:requires sw:triple-store ;
-  tcs:config [
-        a tcs:DefaultConfig, tcs:DockerComposeConfig ;
-        dct:format "text/yaml" ;
-        tcs:literal """
-error-alert:
-    image: lblod/loket-error-alert-service:1.0.2
-    volumes:
-        - ./config/error-alert/:/config/
-"""
-] .
-
-
-sw:deliver-email-service a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
-  rdfs:description "Microservice that delivers emails from a mail folder" ;
-  dcat:landingPage <https://github.com/lblod/berichtencentrum-deliver-email-service> ;
-  dct:requires sw:triple-store ;
-  tcs:config [
-        a tcs:DefaultConfig, tcs:DockerComposeConfig ;
-        dct:format "text/yaml" ;
-        tcs:literal """
-  berichtencentrum-deliver-email-service:
-    image: lblod/berichtencentrum-deliver-email-service
-"""
-] .
-
-
-sw:triple-store a tcs:PipelineComponent, dcat:Resource;
-  dcat:landingPage <https://virtuoso.dev/react-virtuoso/> ;
-    tcs:config [
-        a tcs:DefaultConfig, tcs:DockerComposeConfig ;
-        dct:format "text/yaml" ;
-        tcs:literal """
-triplestore:
-  image: redpencil/virtuoso:1.4.0
-  environment:
-    SPARQL_UPDATE: 'true'
-"""
-] .
-
-
-#################################################################
-# LDIO — extra adapter used by the DiSHACLed demonstrator
-#################################################################
-
-# The source-a API serves JSON-LD bodies with `Content-Type: application/json`.
-# `ldio:RdfAdapter` refuses that content-type; `ldio:JsonToLdAdapter` accepts
-# it when `force-content-type: true` is set and applies an inline JSON-LD
-# `context` to re-expand terms.
-ldio:JsonToLdAdapter a tcs:PipelineComponent, dcat:Resource ;
-    rdfs:label "Ldio:JsonToLdAdapter" ;
-    ldio:type "Adapter" ;
-    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.13.0/ldio/ldio-adapters/ldio-json-to-json-ld" ;
-    dct:requires ldio:LinkedDataInteractionsOrchestrator .
-
-
-#################################################################
-# RDF-Connect — processors used by the demonstrator's pipeline.ttl
-#################################################################
 
 # HTTP ingest server. The demonstrator switched from the pull-based
 # `rdfc:HttpFetch`/`rdfc:HttpIn` to an accept-a-POST server so the LDIO
@@ -692,6 +381,35 @@ proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource ;
 
 
 #################################################################
+# Semantic.works — visible services
+#################################################################
+
+sw:loket-error-alert-service a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
+  rdfs:description "Service that is responsible for sending out alerts when errors are inserted in the store. Build using the MU Javascript template.";
+  dcat:landingPage <https://github.com/lblod/loket-error-alert-service> ;
+  dct:requires sw:triple-store ,
+               sw:mu-delta-notifier ,
+               sw:mu-identifier ;
+  tcs:config :LoketErrorAlertServiceDockerCompose ,
+             :ErrorAlertConfigJsonDefault ,
+             :ErrorAlertTemplateHbsDefault .
+
+
+sw:deliver-email-service a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
+  rdfs:description "Microservice that delivers emails from a mail folder" ;
+  dcat:landingPage <https://github.com/lblod/berichtencentrum-deliver-email-service> ;
+  dct:requires sw:triple-store ,
+               sw:mu-identifier ;
+  tcs:config :DeliverEmailServiceDockerCompose .
+
+
+sw:triple-store a tcs:PipelineComponent, dcat:Resource;
+  dcat:landingPage <https://virtuoso.dev/react-virtuoso/> ;
+  tcs:config :TripleStoreDockerCompose ,
+             :VirtuosoIniDefault .
+
+
+#################################################################
 # Semantic.works — mu-semtech infrastructure services
 #
 # The demonstrator's `docker-compose-sw.yml` deploys a full mu stack.
@@ -710,100 +428,39 @@ sw:mu-identifier a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
     rdfs:description "SPARQL gateway. Front door for every SPARQL update / query in the mu stack; adds the session cookie header used by the authorisation layer." ;
     dcat:landingPage <https://github.com/mu-semtech/mu-identifier> ;
     dct:requires sw:mu-dispatcher ;
-    tcs:config [
-        a tcs:DefaultConfig, tcs:DockerComposeConfig ;
-        dct:format "text/yaml" ;
-        tcs:literal """
-identifier:
-    image: semtech/mu-identifier:1.11.0
-    environment:
-        SESSION_COOKIE_SECURE: 'on'
-""" ] .
+    tcs:config :MuIdentifierDockerCompose .
 
 
 sw:mu-dispatcher a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
     rdfs:description "HTTP routing. Dispatches incoming requests to the right microservice based on `config/dispatcher/dispatcher.ex`." ;
     dcat:landingPage <https://github.com/mu-semtech/mu-dispatcher> ;
-    dct:requires sw:mu-authorization ;
-    dct:requires sw:mu-cl-resources ;
-    tcs:config [
-        a tcs:DefaultConfig, tcs:DockerComposeConfig ;
-        dct:format "text/yaml" ;
-        tcs:literal """
-dispatcher:
-    image: semtech/mu-dispatcher:2.1.1
-    volumes:
-      - ./semantic-works/config/dispatcher:/config
-""" ] .
+    dct:requires sw:mu-authorization ,
+                 sw:mu-cl-resources ;
+    tcs:config :MuDispatcherDockerCompose ,
+               :MuDispatcherExDefault .
 
 
 sw:mu-cl-resources a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
     rdfs:description "JSON-API layer over the triple store. Serves the domain model declared in `config/resources/`." ;
     dcat:landingPage <https://github.com/mu-semtech/mu-cl-resources> ;
     dct:requires sw:mu-authorization ;
-    tcs:config [
-        a tcs:DefaultConfig, tcs:DockerComposeConfig ;
-        dct:format "text/yaml" ;
-        tcs:literal """
-resource:
-    image: semtech/mu-cl-resources:1.27.2
-    volumes:
-      - ./semantic-works/config/resources:/config
-""" ] .
+    tcs:config :MuClResourcesDockerCompose ,
+               :MuResourcesDomainJsonDefault ,
+               :MuResourcesDomainLispDefault ,
+               :MuResourcesRepositoryLispDefault .
 
 
 sw:mu-delta-notifier a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
     rdfs:description "Pub/sub bus. Watches SPARQL updates on the shared store and fires per-service webhooks per `config/delta/rules.js` — the mechanism that lets `error-alert` react to a fresh `oslc:Error` insertion." ;
     dcat:landingPage <https://github.com/mu-semtech/mu-delta-notifier> ;
     dct:requires sw:triple-store ;
-    tcs:config [
-        a tcs:DefaultConfig, tcs:DockerComposeConfig ;
-        dct:format "text/yaml" ;
-        tcs:literal """
-delta-notifier:
-    image: semtech/mu-delta-notifier:0.4.0
-    volumes:
-      - ./semantic-works/config/delta:/config/
-""" ] .
+    tcs:config :MuDeltaNotifierDockerCompose ,
+               :MuDeltaNotifierRulesJsDefault .
 
 
 sw:mu-authorization a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
     rdfs:description "SPARQL parser + authorisation gate. Enforces the ACL declared in `config/authorization/config.lisp`." ;
     dcat:landingPage <https://github.com/mu-semtech/mu-authorization> ;
     dct:requires sw:triple-store ;
-    tcs:config [
-        a tcs:DefaultConfig, tcs:DockerComposeConfig ;
-        dct:format "text/yaml" ;
-        tcs:literal """
-database:
-    image: semtech/sparql-parser:0.0.15
-    volumes:
-      - ./semantic-works/config/authorization/:/config/
-      - ./semantic-works/data/authorization/:/data/
-""" ] .
-
-
-# Wire the previously-declared sw services to the infrastructure services
-# above, so PipelineAssembler's `dct:requires` reachability walk pulls
-# the whole mu stack into the compose file whenever
-# `loket-error-alert-service` or `deliver-email-service` is used.
-#
-# Rationale (matches demonstrator/docker-compose-sw.yml):
-#   - error-alert reacts to delta notifications from mu-delta-notifier,
-#     and issues SPARQL updates back through mu-identifier.
-#   - deliver-email polls the mail folder through mu-identifier.
-#   - Both indirectly need mu-dispatcher / mu-cl-resources /
-#     mu-authorization via the identifier → dispatcher → auth chain.
-sw:loket-error-alert-service
-    dct:requires sw:mu-delta-notifier ,
-                 sw:mu-identifier .
-
-sw:deliver-email-service
-    dct:requires sw:mu-identifier .
-
-
-
-
-
-
-
+    tcs:config :MuAuthorizationDockerCompose ,
+               :MuAuthorizationConfigLispDefault .

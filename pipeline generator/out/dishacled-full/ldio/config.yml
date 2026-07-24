@@ -1,0 +1,50 @@
+input:
+  adapter:
+    name: Ldio:JsonToLdAdapter
+    config:
+      context: "{\n              \"@context\": {\n                \"@vocab\": \"https://schema.org/\"\
+        ,\n                \"sosa\": \"http://www.w3.org/ns/sosa/\",\n           \
+        \     \"dcterms\": \"http://purl.org/dc/terms/\",\n                \"measuredAt\"\
+        : \"sosa:resultTime\",\n                \"conformsTo\": \"dcterms:conformsTo\"\
+        ,\n                \"source\": \"https://schema.org/source\"\n           \
+        \   }\n            }"
+      force-content-type:
+        '@type': boolean
+        '@value': true
+  name: Ldio:HttpInPoller
+  config:
+    cron: '*/10 * * * * *'
+    url: https://dishacled-api.azurewebsites.net/api/v1/source-a/current
+transformers:
+- name: Ldio:SparqlConstructTransformer
+  config:
+    query: "\n                PREFIX schema: <https://schema.org/>\n             \
+      \   PREFIX sosa:   <http://www.w3.org/ns/sosa/>\n                PREFIX qudt:\
+      \   <http://qudt.org/schema/qudt/>\n                PREFIX unit:   <http://qudt.org/vocab/unit/>\n\
+      \                PREFIX dct:    <http://purl.org/dc/terms/>\n              \
+      \  PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>\n                PREFIX\
+      \ xsd:    <http://www.w3.org/2001/XMLSchema#>\n                PREFIX ex:  \
+      \   <http://dishacled.example.org/>\n                CONSTRUCT {\n         \
+      \         ?obs a sosa:Observation ;\n                       sosa:madeBySensor\
+      \         ?sensor ;\n                       sosa:observedProperty     ?prop\
+      \ ;\n                       sosa:hasFeatureOfInterest ?place ;\n           \
+      \            sosa:resultTime           ?time ;\n                       sosa:hasSimpleResult\
+      \      ?value ;\n                       sosa:hasResult            ?result .\n\
+      \                  ?result a qudt:QuantityValue ;\n                        \
+      \  qudt:numericValue ?value ;\n                          qudt:unit         ?unit\
+      \ .\n                }\n                WHERE {\n                  ?obs a schema:PropertyValue\
+      \ ;\n                       schema:value    ?value ;\n                     \
+      \  schema:unitCode ?unitCode ;\n                       sosa:resultTime ?time\
+      \ ;\n                       schema:source   ?source ;\n                    \
+      \   schema:location ?place .\n                  VALUES (?unitCode ?unit) {\n\
+      \                    (\"CMT\" <http://qudt.org/vocab/unit/CentiM>)\n       \
+      \           }\n                  BIND(<http://dishacled.example.org/sensor/source-a>\
+      \     AS ?sensor)\n                  BIND(<http://dishacled.example.org/property/waterLevel>\
+      \ AS ?prop)\n                  BIND(IRI(CONCAT(STR(?obs), \"/result\"))    \
+      \            AS ?result)\n                }\n            "
+outputs:
+- name: Ldio:HttpOut
+  config:
+    endpoint: http://rdfc:9000/source-a
+    rdf-writer:
+      content-type: application/ld+json

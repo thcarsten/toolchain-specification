@@ -1,0 +1,13 @@
+{
+  "base": "http://lblod.data.gift",
+  "service": {
+    "uri": "http://lblod.data.gift/services/loket-error-alert-service"
+  },
+  "creators": [],
+  "email": {
+    "folder": "http://data.lblod.info/id/mail-folders/2"
+  },
+  "graph": {
+    "email": "http://mu.semte.ch/graphs/system/email"
+  }
+}

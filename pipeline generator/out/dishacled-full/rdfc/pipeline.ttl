@@ -1,0 +1,123 @@
+@base <file:///workspace/pipeline/> .
+@prefix : <http://example.org/example/> .
+@prefix demo: <http://example.org/example/demonstrator/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix proc: <http://dishacled.example.org/processors#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix sosa: <http://www.w3.org/ns/sosa/> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix tm: <https://w3id.org/rdf-connect/threshold-monitor#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<> a rdfc:Pipeline ;
+    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/http-utils-processor-ts/processors.ttl>,
+        <file:///workspace/pipeline/node_modules/@rdfc/log-processor-ts/processor.ttl>,
+        <file:///workspace/pipeline/node_modules/@rdfc/sds-processors-ts/configs/sdsify.ttl>,
+        <file:///workspace/pipeline/node_modules/@rdfc/skolemization-processor-ts/processor.ttl>,
+        <file:///workspace/pipeline/node_modules/@rdfc/sparql-ingest-processor-ts/processors.ttl>,
+        <file:///workspace/pipeline/node_modules/@rdfc/threshold-monitor-processor-ts/processor.ttl>,
+        <file:///workspace/pipeline/processors/jsonld-to-nquads/processor.ttl> ;
+    rdfc:consistsOf :env_1 .
+
+demo:HttpIngest a rdfc:HttpServer ;
+    rdfc:options [ rdfc:method "POST" ;
+            rdfc:path "/source-a" ;
+            rdfc:successStatusCode 202 ] ;
+    rdfc:port 9000 ;
+    rdfc:writer demo:rawJson .
+
+demo:JsonLdToRdf a proc:JsonLdToNQuads ;
+    rdfc:reader demo:rawJson ;
+    rdfc:writer demo:rdf .
+
+demo:LogMeasurementsMeta a rdfc:LogProcessorJs ;
+    rdfc:label "sds-measurements-metadata" ;
+    rdfc:level "debug" ;
+    rdfc:reader demo:sdsMeasurementsMeta .
+
+demo:LogViolationsMeta a rdfc:LogProcessorJs ;
+    rdfc:label "sds-violations-metadata" ;
+    rdfc:level "debug" ;
+    rdfc:reader demo:sdsViolationsMeta .
+
+demo:SdsifyMeasurements a rdfc:Sdsify ;
+    rdfc:input demo:rdf ;
+    rdfc:metadataConfig [ rdfc:description "SDS stream of sosa:Observation water level measurements from source-a" ;
+            rdfc:streamId demo:measurementsStream ] ;
+    rdfc:metadataOutput demo:sdsMeasurementsMeta ;
+    rdfc:output demo:sdsMeasurements ;
+    rdfc:typeFilter sosa:Observation .
+
+demo:SdsifyViolations a rdfc:Sdsify ;
+    rdfc:input demo:violationsSkolemized ;
+    rdfc:metadataConfig [ rdfc:description "SDS stream of threshold-violation alerts for source-a" ;
+            rdfc:streamId demo:violationsStream ] ;
+    rdfc:metadataOutput demo:sdsViolationsMeta ;
+    rdfc:output demo:sdsViolations ;
+    rdfc:typeFilter <http://open-services.net/ns/core#Error> .
+
+demo:SkolemizeViolations a rdfc:SkolemizationProcessor ;
+    rdfc:incoming demo:violations ;
+    rdfc:mime "text/turtle" ;
+    rdfc:outgoing demo:violationsSkolemized .
+
+demo:SparqlIngest a rdfc:SPARQLIngest ;
+    rdfc:ingestConfig [ rdfc:forVirtuoso true ;
+            rdfc:graphStoreUrl "http://identifier/sparql" ;
+            rdfc:memberBatchSize 1 ;
+            rdfc:operationMode "Sync" ;
+            rdfc:targetNamedGraph "http://mu.semte.ch/graphs/public" ] ;
+    rdfc:memberStream demo:sdsViolations .
+
+demo:ThresholdMonitor a tm:ThresholdMonitorJs ;
+    rdfc:reader demo:sdsMeasurements ;
+    rdfc:writer demo:violations ;
+    tm:creator demo:thresholdMonitorAgent ;
+    tm:max 3e+02 ;
+    tm:min 0e+00 ;
+    tm:path sosa:hasSimpleResult ;
+    tm:stream demo:measurementsStream .
+
+:env_1 rdfc:instantiates rdfc:NodeRunner ;
+    rdfc:processor demo:HttpIngest,
+        demo:JsonLdToRdf,
+        demo:LogMeasurementsMeta,
+        demo:LogViolationsMeta,
+        demo:SdsifyMeasurements,
+        demo:SdsifyViolations,
+        demo:SkolemizeViolations,
+        demo:SparqlIngest,
+        demo:ThresholdMonitor .
+
+demo:rawJson a rdfc:Reader,
+        rdfc:Writer,
+        tcs:Channel .
+
+demo:rdf a rdfc:Reader,
+        rdfc:Writer,
+        tcs:Channel .
+
+demo:sdsMeasurements a rdfc:Reader,
+        rdfc:Writer,
+        tcs:Channel .
+
+demo:sdsMeasurementsMeta a rdfc:Reader,
+        rdfc:Writer,
+        tcs:Channel .
+
+demo:sdsViolations a rdfc:Reader,
+        rdfc:Writer,
+        tcs:Channel .
+
+demo:sdsViolationsMeta a rdfc:Reader,
+        rdfc:Writer,
+        tcs:Channel .
+
+demo:violations a rdfc:Reader,
+        rdfc:Writer,
+        tcs:Channel .
+
+demo:violationsSkolemized a rdfc:Reader,
+        rdfc:Writer,
+        tcs:Channel .
+
