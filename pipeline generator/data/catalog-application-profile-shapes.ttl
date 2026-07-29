@@ -67,22 +67,14 @@ tcs:DockerImageConfig     rdfs:subClassOf tcs:Config .
 
 #################################################################
 # Prefix declarations for SHACL-AF SPARQL targets
+#
+# `tcs:prefixes` itself is declared once in catalog-core.ttl (the
+# common file every other catalog file — including this one — is
+# meant to be loaded alongside), so every `sh:prefixes tcs:prefixes`
+# reference below resolves against that single canonical registry.
+# Not redeclared here to avoid two competing `sh:declare` sets on the
+# same subject.
 #################################################################
-
-tcs:prefixes
-    sh:declare
-        [ sh:prefix ""       ; sh:namespace "http://example.org/example/"^^xsd:anyURI ] ,
-        [ sh:prefix "dcat"   ; sh:namespace "http://www.w3.org/ns/dcat#"^^xsd:anyURI ] ,
-        [ sh:prefix "dct"    ; sh:namespace "http://purl.org/dc/terms/"^^xsd:anyURI ] ,
-        [ sh:prefix "ldio"   ; sh:namespace "http://example.org/example/ldio/"^^xsd:anyURI ] ,
-        [ sh:prefix "owl"    ; sh:namespace "http://www.w3.org/2002/07/owl#"^^xsd:anyURI ] ,
-        [ sh:prefix "p-plan" ; sh:namespace "http://purl.org/net/p-plan#"^^xsd:anyURI ] ,
-        [ sh:prefix "prov"   ; sh:namespace "http://www.w3.org/ns/prov#"^^xsd:anyURI ] ,
-        [ sh:prefix "rdf"    ; sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ] ,
-        [ sh:prefix "rdfc"   ; sh:namespace "https://w3id.org/rdf-connect#"^^xsd:anyURI ] ,
-        [ sh:prefix "rdfs"   ; sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ] ,
-        [ sh:prefix "spdx"   ; sh:namespace "http://spdx.org/rdf/terms#"^^xsd:anyURI ] ,
-        [ sh:prefix "tcs"    ; sh:namespace "https://w3id.org/toolchain#"^^xsd:anyURI ] .
 
 
 #################################################################

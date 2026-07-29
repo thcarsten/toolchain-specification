@@ -1,0 +1,566 @@
+#################################################################
+# Catalog — RDF-Connect components
+#
+# Every `rdfc:*` / `tm:*` / `proc:*` `tcs:PipelineComponent`
+# definition (types, labels, `owl:imports`, `dct:requires` including
+# `spdx:Package` dependencies), their `dcat:qualifiedRelation`
+# configShapes, and the RDF-Connect `tcs:Config` docker-compose +
+# Dockerfile bodies (`:RdfcOrchestratorDockerCompose`,
+# `:RdfcOrchestratorDockerImage`).
+#
+# `:DishacledCatalog`'s base declaration + full `dcat:resource` list,
+# the `:pip`/`:npm` package-manager stubs, and the shared
+# `tcs:prefixes` SPARQL-prefix registry all live in catalog-core.ttl
+# instead — the common file every other catalog file is meant to be
+# loaded alongside (catalog-ldio.ttl, catalog-sw.ttl and
+# catalog-application-profile-shapes.ttl).
+#################################################################
+
+
+#################################################################
+# Prefixes
+#################################################################
+
+@prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix proc: <http://dishacled.example.org/processors#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix spdx: <http://spdx.org/rdf/terms#> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix tm: <https://w3id.org/rdf-connect/threshold-monitor#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+
+#################################################################
+# RDF Connect Components
+#################################################################
+
+rdfc:SPARQLIngest a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Sparql Ingest";
+    rdfs:description "This processor takes a stream of RDF records, transforms them into corresponding SPARQL Update queries, and executes them against a SPARQL Graph Store via the SPARQL Protocol." ; 
+    dcat:landingPage "https://github.com/rdf-connect/sparql-ingest-processor-ts";
+    dct:requires rdfc:NodeRunner;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "@rdfc/sparql-ingest-processor-ts" ;
+        spdx:versionInfo "^2.1.7" ;
+        spdx:suppliedBy :npm
+    ];
+    owl:imports <./node_modules/@rdfc/sparql-ingest-processor-ts/processors.ttl> ;
+    dcat:qualifiedRelation [
+      dcat:hadRole tcs:configShape ;
+      dct:relation [
+        a sh:NodeShape ;
+        sh:property [
+        sh:path rdfc:memberStream;
+        sh:name "memberStream";
+        sh:class tcs:Channel;
+        sh:minCount 1;
+        sh:maxCount 1;
+        ], [
+        sh:path rdfc:sparqlWriter;
+        sh:name "sparqlWriter";
+        sh:class tcs:Channel;
+        sh:maxCount 1;
+        ],[
+        sh:path rdfc:ingestConfig;
+        sh:name "config";
+        sh:node rdfc:IngestConfig;
+        sh:minCount 1;
+        sh:maxCount 1;
+        ]
+      ]
+] .
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:IngestConfig;
+  sh:property [
+    sh:path rdfc:operationMode;
+    sh:datatype xsd:string;
+    sh:name "operationMode";
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:memberBatchSize;
+    sh:datatype xsd:integer;
+    sh:name "memberBatchSize";
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:memberShape;
+    sh:datatype xsd:string;
+    sh:name "memberShape";
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:changeSemantics;
+    sh:class rdfc:ChangeSemantics;
+    sh:name "changeSemantics";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:targetNamedGraph;
+    sh:datatype xsd:string;
+    sh:name "targetNamedGraph";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:transactionConfig;
+    sh:class rdfc:TransactionConfig;
+    sh:name "transactionConfig";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:graphStoreUrl;
+    sh:datatype xsd:string;
+    sh:name "graphStoreUrl";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:forVirtuoso;
+    sh:datatype xsd:boolean;
+    sh:name "forVirtuoso";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:accessToken;
+    sh:datatype xsd:string;
+    sh:name "accessToken";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:measurePerformance;
+    sh:class rdfc:PerformanceConfig;
+    sh:name "measurePerformance";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:PerformanceConfig;
+  sh:property [
+    sh:path rdfc:name;
+    sh:datatype xsd:string;
+    sh:name "name";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:path rdfc:outputPath;
+    sh:datatype xsd:string;
+    sh:name "outputPath";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:path rdfc:failureIsFatal;
+    sh:datatype xsd:boolean;
+    sh:name "failureIsFatal";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:queryTimeout;
+    sh:datatype xsd:integer;
+    sh:name "queryTimeout";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:ChangeSemantics;
+  sh:property [
+    sh:path rdfc:changeTypePath;
+    sh:datatype xsd:string;
+    sh:name "changeTypePath";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:path rdfc:createValue;
+    sh:datatype xsd:string;
+    sh:name "createValue";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:path rdfc:updateValue;
+    sh:datatype xsd:string;
+    sh:name "updateValue";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:path rdfc:deleteValue;
+    sh:datatype xsd:string;
+    sh:name "deleteValue";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:TransactionConfig;
+  sh:property [
+    sh:path rdfc:transactionIdPath;
+    sh:datatype xsd:string;
+    sh:name "transactionIdPath";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:path rdfc:transactionEndPath;
+    sh:datatype xsd:string;
+    sh:name "transactionEndPath";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ].
+
+
+
+rdfc:HttpIn a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "RDF Connect Http In";
+    dct:requires rdfc:PyRunner;
+    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_in/processor.ttl> . # I still need to build this component
+
+
+rdfc:HttpOut a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "RDF Connect Http Out";
+    dct:requires rdfc:PyRunner;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "rdfc_http_out" ;
+        spdx:downloadLocation "file:///workspace/pipeline/local_processors/rdfc_http_out" ;
+        spdx:suppliedBy :pip
+    ] ;
+    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl> . 
+
+
+rdfc:thresholdMonitoringProcessor a tcs:PipelineComponent, dcat:Resource ; # I still need to build this component
+  dct:requires rdfc:NodeRunner ;
+  owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_threshold_monitoring/processor.ttl> . 
+
+
+rdfc:NodeRunner a tcs:PipelineComponent, rdfc:Runner, dcat:Resource;
+    rdfs:label "RDF Connect Javascript Node Runner" ; 
+    dct:requires rdfc:Orchestrator ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "@rdfc/js-runner" ;
+        spdx:versionInfo "^3.2.0" ;
+        spdx:suppliedBy :npm
+    ];
+    owl:imports <./node_modules/@rdfc/js-runner/index.ttl> . # This is specific to RDF Connect
+
+
+rdfc:PyRunner a tcs:PipelineComponent, rdfc:Runner, dcat:Resource;
+    rdfs:label "RDF Connect Python Runner" ; 
+    dct:requires rdfc:Orchestrator ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "rdfc-runner" ;
+        spdx:versionInfo ">=1.0.0" ;
+        spdx:suppliedBy :pip
+    ]; 
+    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl> . 
+
+
+rdfc:Orchestrator a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "RDF Connect Orchestrator" ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "rdfc-proto" ;
+        spdx:versionInfo ">=1.0.0" ;
+        spdx:suppliedBy :pip
+    ]; 
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "@rdfc/orchestrator-js" ;
+        spdx:versionInfo "^2.2.1" ;
+        spdx:suppliedBy :npm
+    ]; 
+    tcs:config :RdfcOrchestratorDockerCompose ,
+               :RdfcOrchestratorDockerImage .
+
+
+# HTTP ingest server. The demonstrator switched from the pull-based
+# `rdfc:HttpFetch`/`rdfc:HttpIn` to an accept-a-POST server so the LDIO
+# workbench can push enriched observations to `http://rdfc:9000/source-a`.
+rdfc:HttpServer a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "RDF Connect HTTP Server" ;
+    rdfs:description "Receives POSTed RDF (or JSON-LD) payloads at a configurable path and writes them onto an outgoing channel." ;
+    dcat:landingPage "https://github.com/rdf-connect/http-utils-processor-ts" ;
+    dct:requires rdfc:NodeRunner ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "@rdfc/http-utils-processor-ts" ;
+        spdx:versionInfo "^1.2.0-alpha.1" ;
+        spdx:suppliedBy :npm
+    ] ;
+    owl:imports <./node_modules/@rdfc/http-utils-processor-ts/processors.ttl> .
+
+
+# Streaming envelope. Wraps each entity of a given type
+# (e.g. `sosa:Observation`) as an SDS record, and emits stream metadata
+# on a paired `metadataOutput` channel.
+rdfc:Sdsify a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "RDF Connect Sdsify" ;
+    rdfs:description "Wraps typed subgraphs as SDS records for downstream stream processors." ;
+    dcat:landingPage "https://github.com/rdf-connect/sds-processors-ts" ;
+    dct:requires rdfc:NodeRunner ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "@rdfc/sds-processors-ts" ;
+        spdx:versionInfo "^3.0.1" ;
+        spdx:suppliedBy :npm
+    ] ;
+    owl:imports <./node_modules/@rdfc/sds-processors-ts/configs/sdsify.ttl> .
+
+
+# Skolemization. Rewrites blank-node subjects to fresh named IRIs so
+# downstream `rdfc:Sdsify` (which only extracts members with URIRef subjects)
+# can process `oslc:Error` payloads emitted by the threshold monitor.
+rdfc:SkolemizationProcessor a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "RDF Connect Skolemization Processor" ;
+    dcat:landingPage "https://github.com/rdf-connect/skolemization-processor-ts" ;
+    dct:requires rdfc:NodeRunner ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "@rdfc/skolemization-processor-ts" ;
+        spdx:versionInfo "^1.0.0" ;
+        spdx:suppliedBy :npm
+    ] ;
+    owl:imports <./node_modules/@rdfc/skolemization-processor-ts/processor.ttl> .
+
+
+# Log processor. Terminal step that drains a channel to the container
+# log — used in the demonstrator to consume Sdsify's mandatory-but-unused
+# metadata sidechannels.
+rdfc:LogProcessorJs a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "RDF Connect Log Processor (JS)" ;
+    dcat:landingPage "https://github.com/rdf-connect/log-processor-ts" ;
+    dct:requires rdfc:NodeRunner ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "@rdfc/log-processor-ts" ;
+        spdx:versionInfo "^2.0.3" ;
+        spdx:suppliedBy :npm
+    ] ;
+    owl:imports <./node_modules/@rdfc/log-processor-ts/processor.ttl> .
+
+
+# Threshold monitor (JS implementation). Replaces the stub
+# `rdfc:thresholdMonitoringProcessor` above — the demonstrator targets
+# `tm:ThresholdMonitorJs` from the `tm:` namespace, with additional
+# per-run configuration on `tm:stream` / `tm:creator` / `tm:path`.
+tm:ThresholdMonitorJs a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Threshold Monitor (JS)" ;
+    rdfs:description "Compares a numeric value along an RDF path on each incoming SDS member against configurable min/max bounds; emits an oslc:Error on violation." ;
+    dcat:landingPage "https://github.com/rdf-connect/threshold-monitor-processor-ts" ;
+    dct:requires rdfc:NodeRunner ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "@rdfc/threshold-monitor-processor-ts" ;
+        spdx:versionInfo "^0.0.1-alpha.2" ;
+        spdx:suppliedBy :npm
+    ] ;
+    owl:imports <./node_modules/@rdfc/threshold-monitor-processor-ts/processor.ttl> .
+
+
+# Custom local processor. Converts incoming JSON-LD bytes to N-Quads
+# for the SDS tooling downstream. Not published on npm — the source lives
+# in the demonstrator repo at `demonstrator/RDFC/processors/jsonld-to-nquads/`
+# and is copied into the RDFC container at build time.
+proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "JSON-LD to N-Quads converter" ;
+    rdfs:description "Locally-built RDF-Connect processor that parses JSON-LD bytes on the input channel into N-Quads on the output channel." ;
+    dct:requires rdfc:NodeRunner ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "jsonld-to-nquads" ;
+        spdx:downloadLocation "file:///workspace/pipeline/processors/jsonld-to-nquads" ;
+        spdx:suppliedBy :npm
+    ] ;
+    dct:requires [
+        a spdx:Package ;
+        spdx:name "jsonld" ;
+        spdx:versionInfo "^9.0.0" ;
+        spdx:suppliedBy :npm
+    ] ;
+    owl:imports <./processors/jsonld-to-nquads/processor.ttl> .
+
+
+#################################################################
+# RDF-Connect configs
+#################################################################
+
+:RdfcOrchestratorDockerCompose
+    a tcs:Config, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+  rdfc:
+    container_name: rdfc
+    image: rdf-connect:latest
+    build: ../../resources/rdfc-docker
+    volumes:
+      - ./rdfc_pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro
+    environment:
+      LOG_LEVEL: debug
+    command: npx rdfc /workspace/pipeline/pipeline.ttl
+""" .
+
+
+:RdfcOrchestratorDockerImage
+    a tcs:Config, tcs:DockerImageConfig ;
+    dct:format "text/x-dockerfile" ;
+    tcs:literal """
+# Base: Alpine with Python 3.13
+FROM python:3.13-slim-trixie AS rdfc-base
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    bash \\
+    curl \\
+    wget \\
+    unzip \\
+    git \\
+    openjdk-21-jdk-headless \\
+    nodejs \\
+    npm \\
+    make \\
+    g++ \\
+    libc-dev \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Gradle 8.10.2
+ARG GRADLE_VERSION=8.10.2
+RUN wget https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -P /tmp \\
+    && unzip /tmp/gradle-${GRADLE_VERSION}-bin.zip -d /opt \\
+    && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/bin/gradle \\
+    && rm -rf /tmp/*.zip
+
+# Install Python tools Hatch and uv
+RUN pip install --no-cache-dir hatch uv
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy package.json and package-lock.json for npm caching
+COPY package.json ./pipeline/
+
+# Install all processors listed in package.json
+RUN cd pipeline && npm install
+
+# Set default working dir
+WORKDIR /workspace/pipeline
+
+# Keep container interactive
+CMD ["/bin/bash"]
+""" .
+
+
+#################################################################
+# RDF-Connect — component-scoped SHACL shapes
+#
+# Discovered by pySHACL via the tcs application profile. Distinct
+# from `catalog-application-profile-shapes.ttl` (the tcs application
+# profile that applies to the whole vocabulary, independent of catalog
+# contents). Uses the shared `tcs:prefixes` registry declared in
+# catalog-core.ttl.
+#################################################################
+
+
+#################################################################
+# rdfc:SPARQLIngest — outer shape and its nested config shape.
+# The outer shape uses a SHACL SPARQL target to walk from the step
+# through its embedded pipeline config, so `sh:targetObjectsOf` alone
+# is not expressive enough.
+#################################################################
+
+:SparqlIngestShape a sh:NodeShape;
+      sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf rdfc:SPARQLIngest ;
+                      p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+  sh:property [
+    sh:path rdfc:memberStream;
+    sh:name "memberStream";
+    sh:class tcs:Channel;
+    sh:minCount 1;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:ingestConfig;
+    sh:name "config";
+    sh:node :SparqlIngestConfigShape;
+    sh:minCount 1;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:sparqlWriter;
+    sh:name "sparqlWriter";
+    sh:class tcs:Channel;
+    sh:maxCount 1;
+  ].
+
+
+:SparqlIngestConfigShape a sh:NodeShape;
+  sh:targetObjectsOf rdfc:ingestConfig;
+  sh:property [
+    sh:path rdfc:operationMode;
+    sh:datatype xsd:string;
+    sh:name "operationMode";
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:memberBatchSize;
+    sh:datatype xsd:integer;
+    sh:name "memberBatchSize";
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:memberShape;
+    sh:datatype xsd:string;
+    sh:name "memberShape";
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:changeSemantics;
+    sh:class rdfc:ChangeSemantics;
+    sh:name "changeSemantics";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:targetNamedGraph;
+    sh:datatype xsd:string;
+    sh:name "targetNamedGraph";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:transactionConfig;
+    sh:class rdfc:TransactionConfig;
+    sh:name "transactionConfig";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:graphStoreUrl;
+    sh:datatype xsd:string;
+    sh:name "graphStoreUrl";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:forVirtuoso;
+    sh:datatype xsd:boolean;
+    sh:name "forVirtuoso";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:accessToken;
+    sh:datatype xsd:string;
+    sh:name "accessToken";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ], [
+    sh:path rdfc:measurePerformance;
+    sh:class rdfc:PerformanceConfig;
+    sh:name "measurePerformance";
+    sh:maxCount 1;
+    sh:minCount 0;
+  ].

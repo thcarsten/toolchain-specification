@@ -199,4 +199,4 @@ The subclasses below classify a Config by what it concerns — a docker-compose 
 
 # 3. Examples
 
-For a concrete example check [the catalog](../pipeline%20generator/data/catalog.ttl) and [pipeline definition](../pipeline%20generator/data/pipeline_definition.ttl) used by the pipeline generator. 
+For a concrete example check [the catalog](../pipeline%20generator/data/catalog-rdf.ttl) and [pipeline definition](../pipeline%20generator/data/pipeline_definition.ttl) used by the pipeline generator. 

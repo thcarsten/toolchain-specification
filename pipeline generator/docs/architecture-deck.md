@@ -88,7 +88,7 @@ what it does and how it works.
 Companion notes for the presenter. Assumes comfort with RDF, Turtle, SPARQL, rdflib.
 
 REPOSITORY CONTEXT
-- Location: toolchain-specification/pipeline generator/. Compilers under src/compilers/, grouped into per-framework subfolders (core/, ldio/, rdfc/, sw/). End-to-end walkthrough in src/demo.ipynb. Sample catalog in data/catalog-core.ttl + data/catalog-configs.ttl + data/catalog-shapes.ttl.
+- Location: toolchain-specification/pipeline generator/. Compilers under src/compilers/, grouped into per-framework subfolders (core/, ldio/, rdfc/, sw/). End-to-end walkthrough in src/demo.ipynb. Sample catalog split by framework in data/catalog-ldio.ttl + data/catalog-rdf.ttl + data/catalog-sw.ttl.
 - What it does: reads a pipeline definition and a component catalog (both RDF), assembles an in-memory build graph, emits a project folder with framework-specific configs and docker-compose.yml.
 - Target frameworks: RDF-Connect, LDIO, semantic.works.
 - rdfine (src/rdfine/): in-repo wrapper over rdflib exposing GraphReader (filter, traverse, select, construct, add). Used by every compiler.
@@ -358,7 +358,7 @@ The table lists every concrete compiler with its trigger and output. PipelineExt
 
 VOCABULARY (for reference)
 - Pipeline Definition: RDF description of a data pipeline, expressed against the public semantic model.
-- Component / Catalog: a component is a reusable pipeline building block; the catalog is the RDF library of all available components (data/catalog.ttl).
+- Component / Catalog: a component is a reusable pipeline building block; the catalog is the RDF library of all available components (data/catalog-ldio.ttl + data/catalog-rdf.ttl + data/catalog-sw.ttl).
 - Build graph: the in-memory rdflib.Graph the generator assembles. All build state lives here.
 - tcs:PipelineBuild: root node of a build graph. Generated files hang off it via tcs:compiledFile.
 - spdx:File: RDF node representing a generated file. Carries tcs:filename, tcs:filepath, tcs:literal (the body).

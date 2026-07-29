@@ -1,17 +1,17 @@
-﻿#################################################################
-# Component configs — bodies (docker-compose stanzas, Dockerfile,
-# etc.) attached to catalog components via `tcs:config` in
-# catalog-core.ttl. Split out from the component definitions so the
-# catalog stays readable as boilerplate configs grow.
+#################################################################
+# Catalog — semantic.works (mu-semtech) components
 #
-# Naming convention: `:<ComponentSuffix><ConfigKind>` — e.g. an
-# `rdfc:Orchestrator` docker-compose stanza is
-# `:RdfcOrchestratorDockerCompose`, its Dockerfile is
-# `:RdfcOrchestratorDockerImage`.
+# Every `sw:*` `tcs:PipelineComponent` definition (both the visible
+# services — `loket-error-alert-service`, `deliver-email-service`,
+# `triple-store` — and the mu-semtech infrastructure services that
+# exist purely to satisfy `dct:requires` chains), plus the
+# semantic.works `tcs:Config` docker-compose stanzas and Tier-1/2/3
+# boilerplate config bodies materialized by the per-service compilers
+# under `compilers/sw/`.
 #
-# Meant to be loaded together with catalog-core.ttl (which owns the
-# `tcs:config <name>` triples pointing to the configs below) and
-# catalog-shapes.ttl.
+# Meant to be loaded together with catalog-core.ttl,
+# catalog-ldio.ttl, catalog-rdfc.ttl and
+# catalog-application-profile-shapes.ttl.
 #################################################################
 
 
@@ -22,116 +22,99 @@
 @prefix : <http://example.org/example/> .
 @prefix dcat: <http://www.w3.org/ns/dcat#> .
 @prefix dct: <http://purl.org/dc/terms/> .
+@prefix mu: <http://mu.semte.ch/vocabularies/core/> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sw: <https://semantic.works/services/> .
 @prefix tcs: <https://w3id.org/toolchain#> .
 
-
 #################################################################
-# LDIO
+# Semantic.works — visible services
 #################################################################
 
-:LdioDefaultDockerComposeConfig
-    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
-    dct:format "text/yaml" ;
-    tcs:literal """
-ldio-workbench:
-    container_name: ldio-workbench
-    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
-    ports:
-      - "8080:8080"
-""" .
+sw:loket-error-alert-service a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
+  rdfs:description "Service that is responsible for sending out alerts when errors are inserted in the store. Build using the MU Javascript template.";
+  dcat:landingPage <https://github.com/lblod/loket-error-alert-service> ;
+  dct:requires sw:triple-store ,
+               sw:mu-delta-notifier ,
+               sw:mu-identifier ;
+  tcs:config :LoketErrorAlertServiceDockerCompose ,
+             :ErrorAlertConfigJsonDefault ,
+             :ErrorAlertTemplateHbsDefault .
 
 
-:LdioPipelineStarterDockerComposeConfig
-    a tcs:Config, tcs:DockerComposeConfig ;
-    dct:format "text/yaml" ;
-    tcs:literal '''
-ldio-pipeline-starter:
-    image: curlimages/curl
-    volumes:
-      - ./ldio_pipeline.yml:/pipeline.yml:ro
-    command: >
-      sh -c "
-      sleep 30 &&
-      curl -X POST
-      -H 'content-type: application/yaml'
-      http://ldio-workbench:8080/admin/api/v1/pipeline
-      --data-binary @/pipeline.yml
-      "         
-''' .
+sw:deliver-email-service a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
+  rdfs:description "Microservice that delivers emails from a mail folder" ;
+  dcat:landingPage <https://github.com/lblod/berichtencentrum-deliver-email-service> ;
+  dct:requires sw:triple-store ,
+               sw:mu-identifier ;
+  tcs:config :DeliverEmailServiceDockerCompose .
+
+
+sw:triple-store a tcs:PipelineComponent, dcat:Resource;
+  dcat:landingPage <https://virtuoso.dev/react-virtuoso/> ;
+  tcs:config :TripleStoreDockerCompose ,
+             :VirtuosoIniDefault .
 
 
 #################################################################
-# RDF-Connect
+# Semantic.works — mu-semtech infrastructure services
+#
+# The demonstrator's `docker-compose-sw.yml` deploys a full mu stack.
+# The three sw components above (`loket-error-alert-service`,
+# `deliver-email-service`, `triple-store`) cover the visible endpoints;
+# the routing / auth / delta infrastructure below is needed so the
+# generator emits a compose file that actually boots the stack.
+#
+# These are **infrastructure** components — they don't correspond to
+# `InstancePipelineComponent` steps. They exist purely to satisfy
+# `dct:requires` chains from the components that *do* have steps
+# (loket-error-alert-service → triple-store → delta-notifier → identifier).
 #################################################################
 
-:RdfcOrchestratorDockerCompose
-    a tcs:Config, tcs:DockerComposeConfig ;
-    dct:format "text/yaml" ;
-    tcs:literal """
-  rdfc:
-    container_name: rdfc
-    image: rdf-connect:latest
-    build: ../../resources/rdfc-docker
-    volumes:
-      - ./rdfc_pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro
-    environment:
-      LOG_LEVEL: debug
-    command: npx rdfc /workspace/pipeline/pipeline.ttl
-""" .
+sw:mu-identifier a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
+    rdfs:description "SPARQL gateway. Front door for every SPARQL update / query in the mu stack; adds the session cookie header used by the authorisation layer." ;
+    dcat:landingPage <https://github.com/mu-semtech/mu-identifier> ;
+    dct:requires sw:mu-dispatcher ;
+    tcs:config :MuIdentifierDockerCompose .
 
 
-:RdfcOrchestratorDockerImage
-    a tcs:Config, tcs:DockerImageConfig ;
-    dct:format "text/x-dockerfile" ;
-    tcs:literal """
-# Base: Alpine with Python 3.13
-FROM python:3.13-slim-trixie AS rdfc-base
+sw:mu-dispatcher a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
+    rdfs:description "HTTP routing. Dispatches incoming requests to the right microservice based on `config/dispatcher/dispatcher.ex`." ;
+    dcat:landingPage <https://github.com/mu-semtech/mu-dispatcher> ;
+    dct:requires sw:mu-authorization ,
+                 sw:mu-cl-resources ;
+    tcs:config :MuDispatcherDockerCompose ,
+               :MuDispatcherExDefault .
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \\
-    bash \\
-    curl \\
-    wget \\
-    unzip \\
-    git \\
-    openjdk-21-jdk-headless \\
-    nodejs \\
-    npm \\
-    make \\
-    g++ \\
-    libc-dev \\
-    && rm -rf /var/lib/apt/lists/*
 
-# Install Gradle 8.10.2
-ARG GRADLE_VERSION=8.10.2
-RUN wget https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -P /tmp \\
-    && unzip /tmp/gradle-${GRADLE_VERSION}-bin.zip -d /opt \\
-    && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/bin/gradle \\
-    && rm -rf /tmp/*.zip
+sw:mu-cl-resources a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
+    rdfs:description "JSON-API layer over the triple store. Serves the domain model declared in `config/resources/`." ;
+    dcat:landingPage <https://github.com/mu-semtech/mu-cl-resources> ;
+    dct:requires sw:mu-authorization ;
+    tcs:config :MuClResourcesDockerCompose ,
+               :MuResourcesDomainJsonDefault ,
+               :MuResourcesDomainLispDefault ,
+               :MuResourcesRepositoryLispDefault .
 
-# Install Python tools Hatch and uv
-RUN pip install --no-cache-dir hatch uv
 
-# Set working directory
-WORKDIR /workspace
+sw:mu-delta-notifier a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
+    rdfs:description "Pub/sub bus. Watches SPARQL updates on the shared store and fires per-service webhooks per `config/delta/rules.js` — the mechanism that lets `error-alert` react to a fresh `oslc:Error` insertion." ;
+    dcat:landingPage <https://github.com/mu-semtech/mu-delta-notifier> ;
+    dct:requires sw:triple-store ;
+    tcs:config :MuDeltaNotifierDockerCompose ,
+               :MuDeltaNotifierRulesJsDefault .
 
-# Copy package.json and package-lock.json for npm caching
-COPY package.json ./pipeline/
 
-# Install all processors listed in package.json
-RUN cd pipeline && npm install
-
-# Set default working dir
-WORKDIR /workspace/pipeline
-
-# Keep container interactive
-CMD ["/bin/bash"]
-""" .
+sw:mu-authorization a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
+    rdfs:description "SPARQL parser + authorisation gate. Enforces the ACL declared in `config/authorization/config.lisp`." ;
+    dcat:landingPage <https://github.com/mu-semtech/mu-authorization> ;
+    dct:requires sw:triple-store ;
+    tcs:config :MuAuthorizationDockerCompose ,
+               :MuAuthorizationConfigLispDefault .
 
 
 #################################################################
-# Semantic.works — visible services (declared in catalog.ttl proper)
+# Semantic.works — visible services (docker-compose configs)
 #################################################################
 
 :LoketErrorAlertServiceDockerCompose
@@ -166,7 +149,7 @@ triplestore:
 
 
 #################################################################
-# Semantic.works — mu-semtech infrastructure services
+# Semantic.works — mu-semtech infrastructure services (docker-compose configs)
 #################################################################
 
 :MuIdentifierDockerCompose
@@ -256,6 +239,23 @@ database:
 # See `README.md` §5 (Limitations) for the general story and the
 # override-mechanism roadmap item.
 #################################################################
+
+# Local tcs:Config subclasses. Two of `sw:mu-cl-resources`'s config
+# files below share `dct:format "text/x-common-lisp"`; the subclass
+# distinction lets the per-service compiler pick the right one for
+# each output filename.
+tcs:ResourcesDomainConfig
+    a rdfs:Class ;
+    rdfs:subClassOf tcs:Config ;
+    rdfs:label "mu-cl-resources domain.lisp config" ;
+    rdfs:comment "Marker subclass for the Lisp file that mu-cl-resources loads as domain.lisp (declares prefixes and calls read-domain-file)." .
+
+tcs:ResourcesRepositoryConfig
+    a rdfs:Class ;
+    rdfs:subClassOf tcs:Config ;
+    rdfs:label "mu-cl-resources repository.lisp config" ;
+    rdfs:comment "Marker subclass for the Lisp file that mu-cl-resources loads as repository.lisp (declares runtime settings)." .
+
 :VirtuosoIniDefault
     a tcs:Config, tcs:DefaultConfig ;
     dct:format "text/plain" ;
@@ -810,6 +810,3 @@ end
     <p>appName : {{message}}</p>
 </body>
 </html>""" .
-
-
-

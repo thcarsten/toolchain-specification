@@ -147,8 +147,8 @@ demo:ApiPoll a tcs:InstancePipelineComponent ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            :url "https://dishacled-api.azurewebsites.net/api/v1/source-a/current" ;
-            :cron "*/10 * * * * *"
+            ldio:url "https://dishacled-api.azurewebsites.net/api/v1/source-a/current" ;
+            ldio:cron "*/10 * * * * *"
         ]
     ] ;
     tcs:writesTo demo:sourceARaw .
@@ -162,8 +162,8 @@ demo:JsonLdParse a tcs:InstancePipelineComponent ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            :force-content-type true ;
-            :context """{
+            ldio:force-content-type true ;
+            ldio:context """{
               \"@context\": {
                 \"@vocab\": \"https://schema.org/\",
                 \"sosa\": \"http://www.w3.org/ns/sosa/\",
@@ -186,7 +186,7 @@ demo:SsnSosaMap a tcs:InstancePipelineComponent ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            :query """
+            ldio:query """
                 PREFIX schema: <https://schema.org/>
                 PREFIX sosa:   <http://www.w3.org/ns/sosa/>
                 PREFIX qudt:   <http://qudt.org/schema/qudt/>
@@ -236,8 +236,8 @@ demo:LdioForward a tcs:InstancePipelineComponent ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            :endpoint "http://rdfc:9000/source-a" ;
-            :rdf-writer [ :content-type "application/ld+json" ]
+            ldio:endpoint "http://rdfc:9000/source-a" ;
+            ldio:rdf-writer [ ldio:content-type "application/ld+json" ]
         ]
     ] ;
     tcs:readsFrom demo:sourceAObservations ;

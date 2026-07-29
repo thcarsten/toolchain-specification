@@ -240,7 +240,7 @@ Going from general to specific, `inputShape`s and `outputShape`s can be attached
 -  `InstancePipelineComponent`s if the schema of the data throughput depends on how the component is configured or positioned in a pipeline
 -  `Channel`s if disambiguation is needed between multiple inputs or outputs of a component. 
 
-Any of these entities can be attached with zero or more inputShapes and zero or more outputShapes.
+Any of these entities can be attached with zero or one inputShape and zero or one outputShape.
 
 ## Validation strategy
 

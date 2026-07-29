@@ -28,7 +28,7 @@ class ProjectBuilder:
         build_graph = gen.compile()
 
         builder = ProjectBuilder(build_graph)
-        builder.write("./out/demonstrator")
+        builder.write("./out/dishacled-full")
 
     The collected file records are exposed on :attr:`files` as a
     ``pandas.DataFrame`` with columns ``filepath``, ``filename`` and
