@@ -199,4 +199,4 @@ The subclasses below classify a Config by what it concerns — a docker-compose 
 
 # 3. Examples
 
-For a concrete example check [the catalog](../pipeline%20generator/data/catalog-rdf.ttl) and [pipeline definition](../pipeline%20generator/data/pipeline_definition.ttl) used by the pipeline generator. 
+For a concrete example check the catalog and [pipeline definition](../pipeline%20generator/data/pipeline_definition.ttl) used by the pipeline generator. The catalog is split per framework: [catalog-core.ttl](../pipeline%20generator/data/catalog-core.ttl) (shared declarations), [catalog-ldio.ttl](../pipeline%20generator/data/catalog-ldio.ttl), [catalog-sw.ttl](../pipeline%20generator/data/catalog-sw.ttl), and for RDF-Connect [catalog-rdfc.ttl](../pipeline%20generator/data/catalog-rdfc.ttl) — which is generated from each package's own published definition rather than hand-written, see [§3.1 of the pipeline generator README](../pipeline%20generator/README.md#31-generating-the-rdf-connect-catalog). 
