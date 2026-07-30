@@ -1,0 +1,62 @@
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+
+rdfc:HttpServer rdfc:jsImplementationOf rdfc:Processor;
+  rdfs:label "HTTP Server processor";
+  rdfs:description "This processor starts an HTTP server and writes the body of every incoming request to the output channel. It supports configuring the bind address, accepted HTTP method, path, and the status code returned to clients.";
+  rdfc:file <./lib/server.js>;
+  rdfc:class "HttpServer";
+  rdfc:entrypoint <./>.
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:HttpServerOptions;
+  sh:property [
+    sh:path rdfc:host;
+    sh:name "host";
+    sh:datatype xsd:string;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:method;
+    sh:name "method";
+    sh:datatype xsd:string;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:path;
+    sh:name "path";
+    sh:datatype xsd:string;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:successStatusCode;
+    sh:name "successStatusCode";
+    sh:datatype xsd:integer;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:streamThresholdBytes;
+    sh:name "streamThresholdBytes";
+    sh:datatype xsd:integer;
+    sh:maxCount 1;
+  ].
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:HttpServer;
+  sh:property [
+    sh:path rdfc:port;
+    sh:name "port";
+    sh:datatype xsd:integer;
+    sh:minCount 1;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:writer;
+    sh:name "writer";
+    sh:class rdfc:Writer;
+    sh:minCount 1;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:options;
+    sh:name "options";
+    sh:class rdfc:HttpServerOptions;
+    sh:maxCount 1;
+  ].
+

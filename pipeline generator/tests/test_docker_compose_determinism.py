@@ -14,18 +14,9 @@ showed dozens of moved lines with no change in meaning.
 from pathlib import Path
 
 import pytest
+
+from conftest import CATALOG_FILES, PIPELINE_ID
 import yaml
-
-CATALOG_FILES = [
-    "catalog-core.ttl",
-    "catalog-ldio.ttl",
-    "catalog-rdfc.ttl",
-    "catalog-sw.ttl",
-    "pipeline_definition.ttl",
-    "catalog-application-profile-shapes.ttl",
-]
-
-PIPELINE_ID = "demo:DishacledPipeline"
 
 
 def _compose(data_dir: Path) -> str:

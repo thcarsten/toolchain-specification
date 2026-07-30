@@ -62,20 +62,22 @@ rules:
       ?obj a tcs:Config .
     where: |
       ?sub tcs:config ?obj .
-  - 
-    construct: | 
-      ?obj a tcs:PipelineComponent .
-    where: |
-      ?sub dcat:resource ?obj .
-      ?sub a prov:specializationOfCatalog .
-  - 
-    construct: | 
+  # Removed: a rule typing every dcat:resource of a catalog as a
+  # tcs:PipelineComponent. It never fired — it matched
+  # `?sub a prov:specializationOfCatalog`, which is not a term (the
+  # catalog is typed tcs:Catalog / dcat:Catalog) — and fixing the typo
+  # would have been worse than deleting it. Being listed in a catalog
+  # should not *make* something a component; tcs:CatalogShape asserts
+  # that as a constraint, and inferring it instead would mask entries
+  # whose definitions have gone missing. That masking is exactly what
+  # let two dangling entries survive in catalog-core.ttl.
+  -
+    construct: |
       ?sub a tcs:Config .
     where: |
       ?sub a tcs:DefaultConfig .
-  - 
-    construct: | 
+  -
+    construct: |
       ?sub a tcs:Config .
     where: |
       ?sub a tcs:DockerComposeConfig .
-    

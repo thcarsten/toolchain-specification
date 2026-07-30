@@ -1,0 +1,12 @@
+{
+  "comment": "A simple Python processor to log an incoming stream to the RDF-Connect logging system.",
+  "component": "rdfc:LogProcessorPy",
+  "label": "Python Log Processor",
+  "landing_page": "https://rdf-connect.github.io",
+  "language": "python",
+  "module_path": "rdfc_log_processor.processor",
+  "package": "rdfc_log-processor",
+  "resolved_version": "1.0.0",
+  "source": "pypi",
+  "source_file": "rdfc_log_processor/processor.ttl"
+}

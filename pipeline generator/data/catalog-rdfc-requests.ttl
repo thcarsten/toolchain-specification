@@ -1,0 +1,92 @@
+#################################################################
+# Catalog requests — RDF-Connect components
+#
+# The complete hand-written input to `catalog-rdfc.ttl`. One block per
+# component naming the package it comes from; everything else in the
+# generated entry (rdfs:label, rdfs:description, dcat:landingPage,
+# dct:requires <runner>, the spdx:Package, owl:imports, and the full
+# SHACL config shape) is derived from that package's own
+# `processors.ttl` by the emitter.
+#
+# Regenerate with:
+#     python -m catalog harvest    # network; refreshes data/harvest/
+#     python -m catalog generate   # offline; rewrites catalog-rdfc.ttl
+#
+# `spdx:versionInfo` is the one field that cannot be derived — it is a
+# policy choice, not a fact about the package. It is copied verbatim
+# into the catalog and must carry its own comparison operator (`^`,
+# `>=`), because RdfcDockerFileCompiler concatenates name and version
+# without inserting one.
+#
+# Components NOT listed here are hand-maintained in
+# catalog-rdfc-manual.ttl: the orchestrator and its two Config
+# literals, the two runners, and the components whose source is not
+# resolvable from a registry or from this repo. See that file's header.
+#################################################################
+@prefix : <http://example.org/example/>.
+@prefix proc: <http://dishacled.example.org/processors#>.
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix spdx: <http://spdx.org/rdf/terms#>.
+@prefix tcs: <https://w3id.org/toolchain#>.
+@prefix tm: <https://w3id.org/rdf-connect/threshold-monitor#>.
+
+#################################################################
+# Published on npm
+#################################################################
+rdfc:SPARQLIngest a tcs:CatalogRequest;
+  tcs:package "@rdfc/sparql-ingest-processor-ts";
+  spdx:versionInfo "^2.1.7".
+
+# `@rdfc/http-utils-processor-ts` ships two processors in one
+# `processors.ttl`. Each needs its own request — the emitter picks the
+# shape whose `sh:targetClass` matches the requested component.
+rdfc:HttpServer a tcs:CatalogRequest;
+  tcs:package "@rdfc/http-utils-processor-ts";
+  spdx:versionInfo "^1.2.0-alpha.1".
+
+rdfc:HttpFetch a tcs:CatalogRequest;
+  tcs:package "@rdfc/http-utils-processor-ts";
+  spdx:versionInfo "^1.2.0-alpha.1".
+
+# `@rdfc/sds-processors-ts` ships ten Turtle files; `tcs:sourceFile`
+# names the one to read. Auto-detection would also find it, but stating
+# it keeps the emitted `owl:imports` stable if upstream adds a file
+# that happens to redeclare the same target class.
+rdfc:Sdsify a tcs:CatalogRequest;
+  tcs:package "@rdfc/sds-processors-ts";
+  tcs:sourceFile "configs/sdsify.ttl";
+  spdx:versionInfo "^3.0.1".
+
+rdfc:SkolemizationProcessor a tcs:CatalogRequest;
+  tcs:package "@rdfc/skolemization-processor-ts";
+  spdx:versionInfo "^1.0.0".
+
+rdfc:LogProcessorJs a tcs:CatalogRequest;
+  tcs:package "@rdfc/log-processor-ts";
+  spdx:versionInfo "^2.0.3".
+
+tm:ThresholdMonitorJs a tcs:CatalogRequest;
+  tcs:package "@rdfc/threshold-monitor-processor-ts";
+  spdx:versionInfo "^0.0.1-alpha.2".
+
+#################################################################
+# Published on PyPI
+#################################################################
+rdfc:LogProcessorPy a tcs:CatalogRequest;
+  tcs:package "rdfc_log-processor";
+  spdx:versionInfo ">=1.0.0".
+
+#################################################################
+# Local packages
+#
+# Source lives in this repo, so harvesting reads the filesystem rather
+# than a registry. `tcs:fromPath` is the host path read at harvest
+# time; `spdx:downloadLocation` is the container path pip/npm installs
+# from at image build time. The two are independent.
+#################################################################
+rdfc:HttpOut a tcs:CatalogRequest;
+  tcs:package "rdfc_http_out";
+  tcs:fromPath "resources/rdfc-docker/local_processors/rdfc_http_out";
+  spdx:downloadLocation "file:///workspace/pipeline/local_processors/rdfc_http_out";
+  spdx:suppliedBy ":pip".
+

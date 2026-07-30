@@ -1,0 +1,12 @@
+{
+  "comment": "Reads a stream of SDS members, extracts a value at a configured SHACL path, and writes a tm:ThresholdViolation alert whenever that value falls outside the configured min/max bounds.",
+  "component": "tm:ThresholdMonitorJs",
+  "label": "JS/TS Threshold Monitor Processor",
+  "landing_page": "https://github.com/rdf-connect/threshold-monitor-processor-ts",
+  "language": "js",
+  "module_path": null,
+  "package": "@rdfc/threshold-monitor-processor-ts",
+  "resolved_version": "0.0.1-alpha.2",
+  "source": "npm",
+  "source_file": "processor.ttl"
+}

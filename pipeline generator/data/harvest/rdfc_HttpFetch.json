@@ -1,0 +1,12 @@
+{
+  "comment": "This processor fetches a URL and writes the response to the output channel. It supports various options such as HTTP method, headers, authentication, and scheduling with cron expressions.",
+  "component": "rdfc:HttpFetch",
+  "label": "HTTP Fetch processor",
+  "landing_page": "https://github.com/rdf-connect/http-utils-processor-ts",
+  "language": "js",
+  "module_path": null,
+  "package": "@rdfc/http-utils-processor-ts",
+  "resolved_version": "1.2.0-alpha.1",
+  "source": "npm",
+  "source_file": "processors.ttl"
+}

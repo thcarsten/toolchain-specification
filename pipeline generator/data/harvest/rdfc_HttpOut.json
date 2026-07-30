@@ -1,0 +1,12 @@
+{
+  "comment": "Processor to forward data to a http endpoint via POST.",
+  "component": "rdfc:HttpOut",
+  "label": "Http Out Processor",
+  "landing_page": null,
+  "language": "python",
+  "module_path": "rdfc_http_out.processor",
+  "package": "rdfc_http_out",
+  "resolved_version": null,
+  "source": "path",
+  "source_file": "rdfc_http_out/processor.ttl"
+}

@@ -1,0 +1,12 @@
+{
+  "comment": "Ingest a stream of RDF dumps and produce a stream of SDS records, based on the provided configuration.",
+  "component": "rdfc:Sdsify",
+  "label": "Sdsify processor",
+  "landing_page": "https://github.com/rdf-connect/sds-processors-ts",
+  "language": "js",
+  "module_path": null,
+  "package": "@rdfc/sds-processors-ts",
+  "resolved_version": "3.0.1",
+  "source": "npm",
+  "source_file": "configs/sdsify.ttl"
+}

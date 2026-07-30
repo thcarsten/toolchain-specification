@@ -1,0 +1,65 @@
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+
+rdfc:LogProcessorPy rdfc:pyImplementationOf rdfc:Processor;
+    rdfs:label "Python Log Processor";
+    rdfs:comment "A simple Python processor to log an incoming stream to the RDF-Connect logging system.";
+    rdfc:modulePath "rdfc_log_processor.processor";
+    rdfc:class "Log".
+
+[ ] a sh:NodeShape;
+    sh:targetClass rdfc:LogProcessorPy;
+    sh:property [
+        sh:class rdfc:Reader;
+        sh:path rdfc:reader;
+        sh:name "reader";
+        sh:minCount 1;
+        sh:maxCount 1;
+    ], [
+        sh:class rdfc:Writer;
+        sh:path rdfc:writer;
+        sh:name "writer";
+        sh:minCount 0;
+        sh:maxCount 1;
+    ], [
+        sh:datatype xsd:string;
+        sh:path rdfc:label;
+        sh:name "label";
+        sh:minCount 0;
+        sh:maxCount 1;
+    ], [
+        sh:datatype xsd:string;
+        sh:path rdfc:level;
+        sh:name "level";
+        sh:minCount 0;
+        sh:maxCount 1;
+    ], [
+        sh:datatype xsd:boolean;
+        sh:path rdfc:raw;
+        sh:name "raw";
+        sh:minCount 0;
+        sh:maxCount 1;
+    ].
+
+
+rdfc:SendProcessorPy rdfc:pyImplementationOf rdfc:Processor;
+    rdfs:label "Python Send Processor";
+    rdfs:comment "A simple Python processor to send an array of messages to a channel.";
+    rdfc:modulePath "rdfc_log_processor.processor";
+    rdfc:class "Send".
+
+[ ] a sh:NodeShape;
+    sh:targetClass rdfc:SendProcessorPy;
+    sh:property [
+        sh:path rdfc:writer;
+        sh:name "writer";
+        sh:minCount 1;
+        sh:maxCount 1;
+        sh:class rdfc:Writer;
+    ], [
+        sh:path rdfc:msg;
+        sh:name "msgs";
+        sh:datatype xsd:string;
+    ].

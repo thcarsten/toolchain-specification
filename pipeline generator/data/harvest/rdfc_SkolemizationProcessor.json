@@ -1,0 +1,12 @@
+{
+  "comment": "A processor that converts a RDF data to a skolemized form (removing blank nodes).",
+  "component": "rdfc:SkolemizationProcessor",
+  "label": "Skolemization Processor",
+  "landing_page": "https://github.com/rdf-connect/skolemization-processor-ts",
+  "language": "js",
+  "module_path": null,
+  "package": "@rdfc/skolemization-processor-ts",
+  "resolved_version": "1.0.0",
+  "source": "npm",
+  "source_file": "processor.ttl"
+}

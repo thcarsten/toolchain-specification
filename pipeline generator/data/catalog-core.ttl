@@ -148,22 +148,10 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
     # LDIO — Orchestrator
     ldio:LinkedDataInteractionsOrchestrator,
     ldio:LdioPipelineStarterService ,
-    # RDF Connect
-    rdfc:HttpFetch,
-    rdfc:HttpIn,
-    rdfc:HttpServer,
-    rdfc:Sdsify,
-    rdfc:SkolemizationProcessor,
-    rdfc:LogProcessorJs,
-    rdfc:thresholdMonitoringProcessor,
-    rdfc:SPARQLIngest,
-    rdfc:LogProcessorPy,
-    rdfc:HttpOut,
-    rdfc:NodeRunner,
-    rdfc:PyRunner,
-    rdfc:Orchestrator,
-    tm:ThresholdMonitorJs,
-    proc:JsonLdToNQuads ,
+    # RDF Connect entries are NOT listed here. They are contributed by
+    # catalog-rdfc.ttl (generated) and catalog-rdfc-manual.ttl, each
+    # alongside the definitions it owns, so the list cannot outlive the
+    # components. RDF is additive: all three files add to this same node.
     # Semantic.Works
     sw:loket-error-alert-service,
     sw:deliver-email-service ,

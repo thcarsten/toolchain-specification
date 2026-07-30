@@ -1,0 +1,35 @@
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix owl: <http://www.w3.org/2002/07/owl#>.
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+
+rdfc:SkolemizationProcessor a owl:Class, rdfs:Class;
+  rdfc:jsImplementationOf rdfc:Processor;
+  rdfs:label "Skolemization Processor";
+  rdfs:comment "A processor that converts a RDF data to a skolemized form (removing blank nodes).";
+  rdfc:file <./lib/index.js>;
+  rdfc:class "SkolemizationProcessor";
+  rdfc:entrypoint <./>.
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:SkolemizationProcessor;
+  sh:property [
+    sh:class rdfc:Reader;
+    sh:path rdfc:incoming;
+    sh:name "incoming";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:class rdfc:Writer;
+    sh:path rdfc:outgoing;
+    sh:name "outgoing";
+    sh:maxCount 1;
+    sh:minCount 1;
+  ], [
+    sh:datatype xsd:string;
+    sh:path rdfc:mime;
+    sh:name "MIME type";
+    sh:maxCount 1;
+  ].
+

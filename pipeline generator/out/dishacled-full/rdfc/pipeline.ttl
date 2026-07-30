@@ -10,7 +10,7 @@
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 <> a rdfc:Pipeline ;
-    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/http-utils-processor-ts/processors.ttl>,
+    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/http-utils-processor-ts/server.ttl>,
         <file:///workspace/pipeline/node_modules/@rdfc/log-processor-ts/processor.ttl>,
         <file:///workspace/pipeline/node_modules/@rdfc/sds-processors-ts/configs/sdsify.ttl>,
         <file:///workspace/pipeline/node_modules/@rdfc/skolemization-processor-ts/processor.ttl>,

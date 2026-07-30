@@ -1,0 +1,72 @@
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>.
+
+rdfc:LogProcessorJs rdfc:jsImplementationOf rdfc:Processor;
+    rdfs:label "JS/TS Log Processor";
+    rdfs:comment "A simple JS/TS processor to log an incoming stream to the RDF-Connect logging system.";
+    rdfc:file <./lib/index.js>;
+    rdfc:class "LogProcessor";
+    rdfc:entrypoint <./>.
+
+[ ] a sh:NodeShape;
+    sh:targetClass rdfc:LogProcessorJs;
+    sh:property [
+        sh:class rdfc:Reader;
+        sh:path rdfc:reader;
+        sh:name "reader";
+        sh:minCount 1;
+        sh:maxCount 1;
+    ], [
+        sh:class rdfc:Writer;
+        sh:path rdfc:writer;
+        sh:name "writer";
+        sh:minCount 0;
+        sh:maxCount 1;
+    ], [
+        sh:datatype xsd:string;
+        sh:path rdfc:label;
+        sh:name "label";
+        sh:minCount 0;
+        sh:maxCount 1;
+    ], [
+        sh:datatype xsd:string;
+        sh:path rdfc:level;
+        sh:name "level";
+        sh:minCount 0;
+        sh:maxCount 1;
+    ], [
+        sh:datatype xsd:boolean;
+        sh:path rdfc:raw;
+        sh:name "raw";
+        sh:minCount 0;
+        sh:maxCount 1;
+    ], [
+        sh:datatype xsd:boolean;
+        sh:path rdfc:readAsStream;
+        sh:name "readAsStream";
+        sh:minCount 0;
+        sh:maxCount 1;
+    ].
+
+rdfc:SendProcessorJs rdfc:jsImplementationOf rdfc:Processor;
+  rdfs:label "JS/TS Send Processor";
+  rdfs:comment "A simple JS/TS processor to send messages to a writer channel.";
+  rdfc:entrypoint <./>;
+  rdfc:file <./lib/index.js>;
+  rdfc:class "SendProcessor".
+
+[ ] a sh:NodeShape;
+  sh:targetClass rdfc:SendProcessorJs;
+  sh:property [
+    sh:path rdfc:writer;
+    sh:name "writer";
+    sh:minCount 1;
+    sh:maxCount 1;
+    sh:class rdfc:Writer;
+  ], [
+    sh:path rdfc:msg;
+    sh:name "msgs";
+    sh:datatype xsd:string;
+  ].

@@ -1,0 +1,12 @@
+{
+  "comment": "This processor starts an HTTP server and writes the body of every incoming request to the output channel. It supports configuring the bind address, accepted HTTP method, path, and the status code returned to clients.",
+  "component": "rdfc:HttpServer",
+  "label": "HTTP Server processor",
+  "landing_page": "https://github.com/rdf-connect/http-utils-processor-ts",
+  "language": "js",
+  "module_path": null,
+  "package": "@rdfc/http-utils-processor-ts",
+  "resolved_version": "1.2.0-alpha.1",
+  "source": "npm",
+  "source_file": "server.ttl"
+}
