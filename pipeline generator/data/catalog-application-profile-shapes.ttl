@@ -217,6 +217,52 @@ tcs:InstancePipelineComponentShape a sh:NodeShape ;
 # from the other side.
 #################################################################
 
+# A step's channel wiring is expressed twice: framework-specifically
+# inside its `tcs:embedded` config (`rdfc:reader demo:sdsMeasurements`),
+# and framework-neutrally as `tcs:readsFrom` / `tcs:writesTo`. The two
+# had no connection — the compilers read the config, these shapes read
+# the annotation — so a step could wire one channel and declare another
+# with nothing objecting.
+#
+# `inference_rules.yaml` materialises what the config implies as
+# `tcs:derivedReadsFrom` / `tcs:derivedWritesTo`; this shape requires
+# that every derived edge was also declared.
+#
+# The check is deliberately one-directional (derived must be a subset of
+# declared, not equal to it). Plenty of declared edges are legitimately
+# underivable: LDIO steps carry no channel parameters at all, the
+# LDIO -> RDF-Connect boundary channel has no RDFC-side config property
+# behind it (`rdfc:HttpServer` receives an HTTP POST, not a channel), and
+# hand-maintained components such as `proc:JsonLdToNQuads` have no config
+# shape to key on. Those produce no derived triples, so they are not
+# constrained here.
+tcs:StepChannelWiringShape a sh:NodeShape ;
+    rdfs:label "Step channel wiring shape" ;
+    sh:targetClass tcs:InstancePipelineComponent ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Step {?this} reads from {?value} according to its config, but does not declare tcs:readsFrom {?value}. The framework-specific wiring and the framework-neutral annotation disagree." ;
+        sh:select """
+            SELECT ?this ?value WHERE {
+                ?this tcs:derivedReadsFrom ?value .
+                FILTER NOT EXISTS { ?this tcs:readsFrom ?value . }
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Step {?this} writes to {?value} according to its config, but does not declare tcs:writesTo {?value}. The framework-specific wiring and the framework-neutral annotation disagree." ;
+        sh:select """
+            SELECT ?this ?value WHERE {
+                ?this tcs:derivedWritesTo ?value .
+                FILTER NOT EXISTS { ?this tcs:writesTo ?value . }
+            }
+        """
+    ] .
+
+
 tcs:PipelineDefinitionShape a sh:NodeShape ;
     rdfs:label "PipelineDefinition application-profile shape" ;
     sh:targetClass tcs:PipelineDefinition ;
