@@ -293,7 +293,9 @@ Any pipeline that reuses these components today gets the demonstrator's content 
 
 ### 5.3. Runtime `depends_on` in the emitted `docker-compose.yml`
 
-`dct:requires` links between components already describe the runtime dependency chain (LDIO orchestrator → RDFC ingest, error-alert → delta-notifier → triple-store, …), but `DockerComposeCompiler` drops that information — the emitted compose file boots services in arbitrary order. Downstream this manifests as first-boot races that a `docker compose restart` typically clears.
+`dct:requires` links between components already describe the runtime dependency chain (LDIO orchestrator → RDFC ingest, error-alert → delta-notifier → triple-store, …), but `DockerComposeCompiler` drops that information — the emitted compose file declares no `depends_on`, so Docker is free to boot services in any order. Downstream this manifests as first-boot races that a `docker compose restart` typically clears.
+
+Note that this is about *runtime* start-up order, not the order services are written to the file: the emitted file is now sorted by service name and byte-stable across runs (see [`tests/test_docker_compose_determinism.py`](tests/test_docker_compose_determinism.py)). Making the boot order correct still requires translating `dct:requires` into `depends_on`.
 
 ### 5.4. LDIO service definition in the catalog
 

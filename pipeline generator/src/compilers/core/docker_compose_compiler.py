@@ -4,6 +4,30 @@ from rdfine import GraphReader, GraphDict
 from ..base import Compiler
 from ..utils import attach_file, parse_docker_compose_config
 
+# Top-level compose keys whose values are name-to-body mappings. Their
+# member order is meaningless to Docker, so they are sorted by name to
+# give a canonical file. Anything else (``version``, scalars, lists) is
+# left exactly as authored.
+_NAME_KEYED_SECTIONS = ("services", "volumes", "networks", "configs", "secrets")
+
+
+def _canonical(compose_file: dict) -> dict:
+    """Return ``compose_file`` with its name-keyed sections sorted.
+
+    Sorting the config list already makes the output deterministic;
+    sorting here additionally makes it *stable under renaming*, so
+    changing a ``tcs:DockerComposeConfig`` IRI no longer reshuffles
+    unrelated services. Service bodies are untouched — their key order
+    comes from the catalog literal and is the author's choice.
+    """
+    result = {}
+    for key, value in compose_file.items():
+        if key in _NAME_KEYED_SECTIONS and isinstance(value, dict):
+            result[key] = {name: value[name] for name in sorted(value)}
+        else:
+            result[key] = value
+    return result
+
 
 class DockerComposeCompiler(Compiler):
     """
@@ -28,20 +52,31 @@ class DockerComposeCompiler(Compiler):
 
     def compile(self) -> Graph:
 
-        # Getting a list of all microservice configs
-        config_list = self.output_reader.select(
-            "?config",
-            """
-                 ?config a tcs:DockerComposeConfig ;
-        """,
-        )["config"].to_list()
+        # Getting a list of all microservice configs.
+        #
+        # Sorted, because SPARQL SELECT results come back in whatever
+        # order the triple store yields and two things depend on this
+        # order: which config wins a name collision in the merge below,
+        # and — since the YAML dumper preserves insertion order — the
+        # order services appear in the emitted file. Without the sort,
+        # the same build graph produces a different (if equivalent)
+        # docker-compose.yml on each run.
+        config_list = sorted(
+            self.output_reader.select(
+                "?config",
+                """
+                     ?config a tcs:DockerComposeConfig ;
+            """,
+            )["config"].to_list()
+        )
 
         # Every ``tcs:DockerComposeConfig`` is normalized to the same
         # compose-file shape (``{"services": {...}, ...}``) by
         # ``parse_docker_compose_config``, so aggregating multiple
         # configs is just a shallow merge per top-level key. Later
         # configs override earlier ones on name collision within
-        # ``services`` / ``volumes`` / ``networks`` / etc.
+        # ``services`` / ``volumes`` / ``networks`` / etc. — now
+        # deterministically, following the sorted config order.
         compose_file: dict = {"services": {}}
         for config_id in config_list:
             normalized = parse_docker_compose_config(self.output_reader, config_id)
@@ -53,7 +88,7 @@ class DockerComposeCompiler(Compiler):
 
         # Serializing the output in the expected format
         yaml_string = GraphDict(
-            compose_file, prefix_store=self.output_reader.prefix_store
+            _canonical(compose_file), prefix_store=self.output_reader.prefix_store
         ).serialize("yml", "drop")
 
         self.output_reader = attach_file(
