@@ -10,6 +10,7 @@ To follow along, you should be familiar with the [semantic model](../semantic%20
   - [Overview](#overview)
   - [configShape](#configshape)
   - [inputShape and outputShape](#inputshape-and-outputshape)
+  - [passthroughShape](#passthroughshape)
 - [Validation strategy](#validation-strategy)
   - [Validation steps](#validation-steps)
   - [Architecture](#architecture)
@@ -28,7 +29,8 @@ In the table below we list the roles we have defined.
 | --- | --- | --- |
 | `tcs:configShape` | `tcs:PipelineComponent` | schema of the component's `tcs:PipelineConfig` |
 | `tcs:inputShape` | `tcs:PipelineComponent`, `tcs:InstancePipelineComponent` or `tcs:Channel` | Schema of data flowing **into** a `tcs:Channel` as part of a `tcs:PipelineDefinition` . | 
-| `tcs:outputShape` | `tcs:PipelineComponent`, `tcs:InstancePipelineComponent` or `tcs:Channel` | Schema of data flowing **into** a `tcs:Channel` as part of a `tcs:PipelineDefinition` . |
+| `tcs:outputShape` | `tcs:PipelineComponent`, `tcs:InstancePipelineComponent` or `tcs:Channel` | Schema of data flowing **out of** a `tcs:Channel` as part of a `tcs:PipelineDefinition` . |
+| `tcs:passthroughShape` | `tcs:PipelineComponent`, `tcs:InstancePipelineComponent` or `tcs:Channel` | Schema of data flowing **through** an `InstancePipelineComponent` unchanged. Asserts that output equals input and that both satisfy the attached shape. |
 
 Roles are extensible — new roles can be added without touching validation logic that concerns other roles. Using `dcat:Role` instead of `sh:target` is not default SHACL and hence will not be recognised or automatically validated by SHACL validators. Instead, we define our own strategy how and when these shapes are to be validated. 
 
@@ -242,6 +244,33 @@ Going from general to specific, `inputShape`s and `outputShape`s can be attached
 
 Any of these entities can be attached with zero or one inputShape and zero or one outputShape.
 
+### passthroughShape
+
+Some `PipelineComponent`s do not change the shape of the data they process — whatever is fed in comes out unchanged. Examples in the demonstrator pipeline include `ldio:HttpOut` and `rdfc:HttpServer` (they serialize / deserialize bytes but preserve triples), `ldio:JsonToLdAdapter` (parses JSON to RDF using an `@context` that fully determines the graph), and `rdfc:SkolemizationProcessor` (replaces blank nodes with IRIs but preserves the star pattern per subject). For these, it is worthwhile to annotate that whatever comes in, goes out unaltered.
+
+An `inputShape` / `outputShape` pair cannot express this in general. SHACL NodeShapes are absolute constraints on nodes in a graph, not *relational* constraints between two data points, so "output equals input" is not expressible as a NodeShape body. 
+
+To express shape-preservation at the vocabulary level, we introduce a fourth role, `tcs:passthroughShape`, attached the same way as the others. See the following example: 
+
+```turtle
+:EmailSender a tcs:PipelineComponent ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation :EmailNodeShape
+    ] .
+```
+
+This specifies that `EmailSender` requires its input to be an email node (`:EmailNodeShape`) but otherwise forwards its input unchanged.
+
+Semantically, `dcat:hadRole tcs:passthroughShape` on a component asserts two things at once:
+
+1. Every input on the component must satisfy the attached shape (like an `inputShape` would).
+2. The component's output equals its input (relational preservation).
+
+For pure passthrough (`ldio:HttpOut`, `rdfc:HttpServer`, …), the attached shape can be a trivial empty NodeShape (`[ a sh:NodeShape ]`) — the component accepts anything and forwards it. In the `EmailSender` example above, the attached shape carries a real constraint (`:EmailNodeShape`) and the preservation claim is still in force.
+
+
 ## Validation strategy
 
 ### Validation steps
@@ -258,12 +287,21 @@ Validation takes place **before** the pipeline generator compiles a pipeline bui
 - `inputShape`s and `outputShapes` are validated by pairwise matching: For each `Channel`, its `inputShape` and `outputShape` are compared. In other words, it is assessed whether the output schema of one component matches with the input schema of the other component. 
 <br><br>
 
-3. **Reporting validation results**
+3. **Validating passthrough shapes**
+- The `tcs:passthroughShape` becomes the `tcs:outputShape` of the `tcs:Channel` the passthrough `tcs:PipelineComponent` `tcs:readsFrom`.  
+- The `tcs:passthroughShape` becomes the `tcs:inputShape` of the `tcs:Channel` it `tcs:writesTo`.
+- pairwise matching takes place as above. 
+- **In addition** the `tcs:inputShape` of the `tcs:Channel` the passthrough `tcs:PipelineComponent` `tcs:readsFrom` is matched with the `tcs:outputShape` of the `tcs:Channel` the passthrough component `tcs:writesTo`.
+- In practice this means 3 checks: Preceding and following `tcs:PipelineComponent`s are compatible with the `tcs:passthroughShape` (2 checks) and preceding and following components are compatible with each other (1 check).
+- When several passthrough components chain together, the third check propagates across the whole chain: the `outputShape` of the last non-passthrough component upstream is compared directly against the `inputShape` of the first non-passthrough component downstream.
+
+4. **Reporting validation results**
 - Results of the validation check should be reported if violations occurred.
 - Warnings should be given if certain shapes were missing from the graph, as then it cannot be guaranteed that the validation report is accurate. This is the case if 
   - `InstancePipelineComponent`s were provided with a `tcs:PipelineConfig` which was **not** targeted by a shape via `sh:target`
-  - A `Channel` had an empty `inputShape` although an `InstancePipelineComponent` `tcs:writesTo` it. 
+  - A `Channel` had an empty `inputShape` although an `InstancePipelineComponent` `tcs:writesTo` it.
   - A `Channel` had an empty `outputShape` although an `InstancePipelineComponent` `tcs:readsFrom` it.
+  - A `PipelineComponent` (or `InstancePipelineComponent`) has both a `passthroughShape` and an `inputShape` or `outputShape` attached. This is not a conflict — the effective input constraint is the intersection — but usually indicates redundancy or an unintended override, and the user should confirm intent.
 - A violated validation report does not necessarily need to stop the `PipelineGenerator` from compiling a `PipelineBuild`, but the user needs to be informed that the `PipelineBuild` is invalid. 
 
 ### Architecture
@@ -280,8 +318,11 @@ Roughly speaking, the `ValidationReportCompiler` consists of the following metho
 - use [`GraphReader.validate()`](../pipeline%20generator/src/rdfine/graph_reader.py) for this, which is a simple wrapper around [pySHACL](https://github.com/RDFLib/pySHACL)
 4. **gather inputShapes and outputShapes**
 - Per `Channel`, gather the most specific `inputShapes` and `outputShapes`
-5. **validate `inputShapes` and `outputShapes` through shape-matching.**
-6. **Attach a validation report to the validated `PipelineDefinition`.**
+5. **normalize passthroughShapes**
+- For every `InstancePipelineComponent` whose `PipelineComponent` has a [`tcs:passthroughShape`](#passthroughshape), materialize it as the `outputShape` of the channel the instance `tcs:readsFrom` and as the `inputShape` of the channel it `tcs:writesTo`, and record the cross-component pair (`inputShape(C_in)`, `outputShape(C_out)`) for direct shape-matching in the next step.
+6. **validate `inputShapes` and `outputShapes` through shape-matching.**
+- In addition to per-channel matching, for every cross-component pair recorded in step 5, verify that the upstream writer's `outputShape` satisfies the downstream reader's `inputShape` across the chain of passthrough components between them.
+7. **Attach a validation report to the validated `PipelineDefinition`.**
 
 With the exception of shape-matching, all steps above can be executed in Python. Shape-matching however is implemented as a [Typescript library](https://github.com/DiSHACLed/query-shape-matching-algorithm). This requires a bridge between the `ValidationReportCompiler` and an external service responsible for shape-matching. For this, the `ValidationReportCompiler` talks to a small long-lived Node service over HTTP+JSON. 
 
@@ -315,5 +356,6 @@ One way this could be implemented is to write a new compiler called `ThroughputV
     - [ ] method: normalize_config_shapes
     - [ ] method: validate_regular_shapes
     - [ ] method: gather_throughput_shapes
+    - [ ] method: normalize_passthrough_shapes
     - [ ] method: validate_throughput_shapes
     - [ ] method: generate_validation_report
