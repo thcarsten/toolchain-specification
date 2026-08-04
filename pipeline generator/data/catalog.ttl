@@ -146,6 +146,7 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
     # Nifi 2
     nifi:GenerateFlowFile,
     nifi:FetchAzureBlobStorage_v12,
+    nifi:SplitText,
     nifi:AzureStorageCredentialsControllerService_v12,
     nifi:Funnel,
     nifi:InvokeHTTP,
@@ -665,6 +666,72 @@ nifi:FetchAzureBlobStorage_v12
         sh:name "Range Length" ;
         nifi:propertyName "Range Length" ;
         sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] .
+
+nifi:SplitText
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi SplitText" ;
+    nifi:processorType "org.apache.nifi.processors.standard.SplitText" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-standard-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:outgoingRelationship "splits" ;
+    nifi:autoTerminatedRelationship "failure", "original", "splits" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiSplitTextConfigShape
+    ] .
+
+:NifiSplitTextConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes :prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:SplitText ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:lineSplitCount ;
+        sh:name "Line Split Count" ;
+        nifi:propertyName "Line Split Count" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:headerLineCount ;
+        sh:name "Header Line Count" ;
+        nifi:propertyName "Header Line Count" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:headerLineMarkerCharacters ;
+        sh:name "Header Line Marker Characters" ;
+        nifi:propertyName "Header Line Marker Characters" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:maximumFragmentSize ;
+        sh:name "Maximum Fragment Size" ;
+        nifi:propertyName "Maximum Fragment Size" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:removeTrailingNewlines ;
+        sh:name "Remove Trailing Newlines" ;
+        nifi:propertyName "Remove Trailing Newlines" ;
+        sh:datatype xsd:string ;
+        sh:in ("true" "false") ;
         sh:maxCount 1
     ] .
 

@@ -58,11 +58,6 @@
       ]
     ] .
 
-:NifiFunnel
-    a tcs:InstancePipelineComponent ;
-    prov:specializationOf nifi:Funnel ;
-    p-plan:isStepOfPlan :DemonstratorPipeline ;
-    tcs:readsFrom :nifi_channel_2, :nifi_channel_azure .
 
 :nifi_channel_2
     nifi:selectedRelationship "Response" .
@@ -85,6 +80,35 @@
         ]
     ] .
 
+:SplitText
+    a tcs:InstancePipelineComponent ;
+    prov:specializationOf nifi:SplitText ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    nifi:scheduledState "RUNNING" ;
+    nifi:schedulingPeriod "0 sec" ;
+    tcs:readsFrom :nifi_channel_azure ;
+    tcs:writesTo :nifi_channel_split, :nifi_channel_split_failure ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            nifi:lineSplitCount "1" ;
+            nifi:headerLineCount "0" ;
+            nifi:removeTrailingNewlines "true"
+        ]
+    ] .
+
+:nifi_channel_split
+    nifi:selectedRelationship "splits" .
+
+:nifi_channel_split_failure
+    nifi:selectedRelationship "failure" .
+
+:NifiFunnel
+    a tcs:InstancePipelineComponent ;
+    prov:specializationOf nifi:Funnel ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    tcs:readsFrom :nifi_channel_2, :nifi_channel_split .
+
 :AzureStorageCredentials
     a nifi:ControllerService ;
     nifi:instantiatesControllerService nifi:AzureStorageCredentialsControllerService_v12 ;
@@ -99,4 +123,10 @@
     nifi:endpointSuffix "blob.core.windows.net" .
 
 :nifi_channel_azure
-    nifi:selected_relationship "success" .
+    nifi:selectedRelationship "success" .
+
+:FailureFunnel
+    a tcs:InstancePipelineComponent ;
+    prov:specializationOf nifi:Funnel ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    tcs:readsFrom :nifi_channel_split_failure .

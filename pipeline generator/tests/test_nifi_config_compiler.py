@@ -50,13 +50,15 @@ class NifiConfigCompilerTest(unittest.TestCase):
         flow = json.loads(str(files.iloc[0]["content"]))
         root = flow["rootGroup"]
 
-        self.assertEqual(3, len(root["processors"]))
+        self.assertEqual(4, len(root["processors"]))
         self.assertEqual(1, len(root["funnels"]))
-        self.assertEqual(3, len(root["connections"]))
+        self.assertEqual(5, len(root["connections"]))
         self.assertEqual(1, len(root["controllerServices"]))
         self.assertEqual(
             [
                 ("PROCESSOR", "PROCESSOR"),
+                ("PROCESSOR", "PROCESSOR"),
+                ("PROCESSOR", "FUNNEL"),
                 ("PROCESSOR", "PROCESSOR"),
                 ("PROCESSOR", "FUNNEL"),
             ],
@@ -66,7 +68,7 @@ class NifiConfigCompilerTest(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            [["success"], ["success"], ["Response"]],
+            [["success"], ["success"], ["Response"], ["splits"], ["failure"]],
             [
                 connection["selectedRelationships"]
                 for connection in root["connections"]
@@ -109,6 +111,21 @@ class NifiConfigCompilerTest(unittest.TestCase):
             ["identifiesControllerService"]
         )
         self.assertEqual(["failure"], fetch_azure["autoTerminatedRelationships"])
+        split_text = next(
+            processor
+            for processor in root["processors"]
+            if processor["name"] == "SplitText"
+        )
+        self.assertEqual("1", split_text["properties"]["Line Split Count"])
+        self.assertEqual(["original"], split_text["autoTerminatedRelationships"])
+        funnel_id = root["funnels"][0]["identifier"]
+        self.assertEqual(
+            2,
+            sum(
+                connection["destination"]["id"] == funnel_id
+                for connection in root["connections"]
+            ),
+        )
         self.assertEqual(
             ["Failure", "No Retry", "Original", "Retry"],
             invoke_http["autoTerminatedRelationships"],
