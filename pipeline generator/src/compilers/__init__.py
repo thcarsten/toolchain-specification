@@ -8,6 +8,7 @@ from .docker_compose_compiler import DockerComposeCompiler
 from .semantic_works_compiler import SemanticWorksCompiler
 from .pipeline_generator import PipelineGenerator
 from .project_builder import ProjectBuilder
+from .nifi_config_compiler import NifiConfigCompiler
 
 __all__ = [
     "Compiler",
@@ -20,4 +21,5 @@ __all__ = [
     "SemanticWorksCompiler",
     "PipelineGenerator",
     "ProjectBuilder",
+    "NifiConfigCompiler",
 ]

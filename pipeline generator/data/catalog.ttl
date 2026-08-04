@@ -19,6 +19,7 @@
 @prefix sw: <https://semantic.works/services/> .
 @prefix tcs: <https://w3id.org/toolchain#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix nifi: <http://example.org/example/nifi/> .
 
 
 :prefixes
@@ -46,6 +47,10 @@
     [
         sh:prefix "nfo" ;
         sh:namespace "http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#" ;
+    ] ,
+    [
+        sh:prefix "nifi" ;
+        sh:namespace "http://example.org/example/nifi/" ;
     ] ,
     [
         sh:prefix "owl" ;
@@ -136,8 +141,13 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
     rdfc:Orchestrator, 
     # Semantic works
     sw:loket-error-alert-service,
-    sw:deliver-email-service ,
-    sw:triple-store .
+    sw:deliver-email-service,
+    sw:triple-store,
+    # Nifi 2
+    nifi:GenerateFlowFile,
+    nifi:Funnel,
+    nifi:InvokeHTTP,
+    nifi:Orchestrator .
 
 
 #################################################################
@@ -542,9 +552,131 @@ virtuoso:
 """
 ] .
 
+#################################################################
+# Apache NiFi Components
+#################################################################
+
+nifi:GenerateFlowFile
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi GenerateFlowFile" ;
+    nifi:processorType "org.apache.nifi.processors.standard.GenerateFlowFile" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-standard-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:outgoingRelationship "success" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiGenerateFlowFileConfigShape
+    ] .
+
+:NifiGenerateFlowFileConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes :prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:GenerateFlowFile ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:customText ;
+        sh:name "Custom Text" ;
+        nifi:propertyName "Custom Text" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] .
+
+nifi:Funnel
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi Funnel" ;
+    nifi:componentType "FUNNEL" ;
+    dct:requires nifi:Orchestrator .
+
+nifi:InvokeHTTP
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi InvokeHTTP" ;
+    nifi:processorType "org.apache.nifi.processors.standard.InvokeHTTP" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-standard-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:autoTerminatedRelationship
+        "Failure",
+        "No Retry",
+        "Original",
+        "Response",
+        "Retry" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiInvokeHTTPConfigShape
+    ] .
+
+:NifiInvokeHTTPConfigShape
+    a sh:NodeShape ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes :prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:InvokeHTTP ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path nifi:httpMethod ;
+        sh:name "HTTP method" ;
+        nifi:propertyName "HTTP Method" ;
+        sh:datatype xsd:string ;
+        sh:in ("GET" "POST" "PUT" "DELETE" "PATCH") ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+
+    sh:property [
+        sh:path nifi:httpUrl ;
+        sh:name "HTTP URL" ;
+        nifi:propertyName "HTTP URL" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] .
+
+nifi:Orchestrator
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi 2 Orchestrator" ;
+    spdx:versionInfo "2.10.0" ;
+    tcs:config :NifiDefaultDockerComposeConfig .
 
 
-
-
-
-
+:NifiDefaultDockerComposeConfig
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+nifip:
+    container_name: nifip
+    image: apache/nifi:2.10.0
+    environment:
+        SINGLE_USER_CREDENTIALS_USERNAME: root
+        SINGLE_USER_CREDENTIALS_PASSWORD: rootrootrootroot
+        NIFI_SENSITIVE_PROPS_KEY: dishacled-nifi-dev-key
+    ports:
+        - "8443:8443"
+    volumes:
+        - ./nifi/flow.json:/opt/nifi/bootstrap/flow.json:ro
+    entrypoint:
+        - /bin/bash
+        - "-c"
+        - |
+            set -e
+            gzip -c /opt/nifi/bootstrap/flow.json > /opt/nifi/nifi-current/conf/flow.json.gz
+            exec /opt/nifi/scripts/start.sh
+""" .
