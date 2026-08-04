@@ -1,0 +1,60 @@
+# Start from this directory with: docker compose -f docker-compose.ldes.yml up -d
+# From the separately composed NiFi container, POST to:
+# http://host.docker.internal:9003/observations
+services:
+  ldes-postgresdb:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: minimal-server
+      POSTGRES_USER: administrator
+      POSTGRES_PASSWORD: changeme
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U administrator -d minimal-server"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  ldes-server:
+    image: openldes/ldes-server:latest
+    environment:
+      SIS_DATA: /tmp
+      LDESSERVER_HOSTNAME: http://localhost:9003
+      SPRING_DATASOURCE_URL: jdbc:postgresql://ldes-postgresdb:5432/minimal-server
+      SPRING_DATASOURCE_USERNAME: administrator
+      SPRING_DATASOURCE_PASSWORD: changeme
+      SPRING_BATCH_JDBC_INITIALIZESCHEMA: always
+      MANAGEMENT_TRACING_ENABLED: "false"
+      SPRING_TASK_SCHEDULING_POOL_SIZE: 5
+      LDESSERVER_FRAGMENTATIONCRON: "*/1 * * * * *"
+      LDESSERVER_MAINTENANCECRON: "-"
+    ports:
+      - "9003:8080"
+    depends_on:
+      ldes-postgresdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  ldes-init:
+    image: curlimages/curl:8.12.1
+    depends_on:
+      ldes-server:
+        condition: service_healthy
+    volumes:
+      - ./ldes/observations.ttl:/definitions/observations.ttl:ro
+      - ./ldes/observations.by-page.ttl:/definitions/observations.by-page.ttl:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        curl --fail-with-body --silent --show-error \
+          -H 'Content-Type: text/turtle' \
+          --data-binary @/definitions/observations.ttl \
+          http://ldes-server:8080/admin/api/v1/eventstreams
+        curl --fail-with-body --silent --show-error \
+          -H 'Content-Type: text/turtle' \
+          --data-binary @/definitions/observations.by-page.ttl \
+          http://ldes-server:8080/admin/api/v1/eventstreams/observations/views

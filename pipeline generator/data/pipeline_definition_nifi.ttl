@@ -107,13 +107,13 @@
     a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:Funnel ;
     p-plan:isStepOfPlan :DemonstratorPipeline ;
-    tcs:readsFrom :nifi_channel_2, :nifi_channel_version_data .
+    tcs:readsFrom :nifi_channel_2 .
 
 :ExecuteGroovyScript
     a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:ExecuteGroovyScript ;
     p-plan:isStepOfPlan :DemonstratorPipeline ;
-    nifi:scheduledState "ENABLED" ;
+    nifi:scheduledState "RUNNING" ;
     nifi:schedulingPeriod "0 sec" ;
     tcs:readsFrom :nifi_channel_split ;
     tcs:writesTo :nifi_channel_groovy_success, :nifi_channel_groovy_failure ;
@@ -319,11 +319,11 @@
         a tcs:PipelineConfig ;
         tcs:embedded [
             nifi:dateObservedValueRdfProperty "https://uri.etsi.org/ngsi-ld/observedAt" ;
-            nifi:generatedAtTimeProperty "http://purl.org/dc/terms/created" ;
+            nifi:generatedAtTimeProperty "dcterms:created" ;
             nifi:dataDestinationFormat "application/ld+json" ;
             nifi:memberRdfSyntaxType "https://data.vlaanderen.be/ns/waterkwaliteit#WaterkwaliteitObservatieVerzameling" ;
             nifi:delimiter "/" ;
-            nifi:versionOfKey "http://purl.org/dc/terms/isVersionOf" ;
+            nifi:versionOfKey "dcterms:isVersionOf" ;
             nifi:dataInputFormat "application/ld+json"
         ]
     ] .
@@ -333,6 +333,35 @@
 
 :nifi_channel_version_failure
     nifi:selectedRelationship "valueNotFound", "unparseable" .
+
+:ldessink
+    a tcs:InstancePipelineComponent ;
+    prov:specializationOf nifi:InvokeHTTP ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    nifi:scheduledState "RUNNING" ;
+    nifi:schedulingPeriod "0 sec" ;
+    tcs:readsFrom :nifi_channel_version_data ;
+    tcs:writesTo :ldes_response ;
+    p-plan:hasInputVar [
+      a tcs:PipelineConfig ;
+      tcs:embedded [
+        nifi:httpMethod "POST" ;
+        nifi:httpUrl "http://host.docker.internal:9003/observations"
+      ]
+    ] .
+
+:httpfunnel
+    a tcs:InstancePipelineComponent ;
+    prov:specializationOf nifi:Funnel ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    tcs:readsFrom
+        :ldes_response .
+
+:ldes_response
+    nifi:selectedRelationship "Failure" ;
+    nifi:selectedRelationship "No Retry" ;
+    nifi:selectedRelationship "Response" ;
+    nifi:selectedRelationship "Retry" .
 
 :AzureStorageCredentials
     a nifi:ControllerService ;
