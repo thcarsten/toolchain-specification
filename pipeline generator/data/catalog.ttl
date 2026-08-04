@@ -148,6 +148,7 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
     nifi:FetchAzureBlobStorage_v12,
     nifi:SplitText,
     nifi:ExecuteGroovyScript,
+    nifi:CreateVersionObjectProcessor,
     nifi:AzureStorageCredentialsControllerService_v12,
     nifi:Funnel,
     nifi:InvokeHTTP,
@@ -788,6 +789,91 @@ nifi:ExecuteGroovyScript
         sh:maxCount 1
     ] .
 
+nifi:CreateVersionObjectProcessor
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Create Version Object Processor" ;
+    nifi:processorType "be.vlaanderen.informatievlaanderen.ldes.ldi.processors.CreateVersionObjectProcessor" ;
+    nifi:bundleGroup "be.vlaanderen.informatievlaanderen.ldes.ldi.nifi" ;
+    nifi:bundleArtifact "create-version-object-processor" ;
+    nifi:bundleVersion "2.12.0" ;
+    nifi:outgoingRelationship "data" ;
+    nifi:autoTerminatedRelationship "data", "valueNotFound", "unparseable" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiCreateVersionObjectConfigShape
+    ] .
+
+:NifiCreateVersionObjectConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes :prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:CreateVersionObjectProcessor ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:dateObservedValueRdfProperty ;
+        sh:name "RDF property to find the timestamp value" ;
+        nifi:propertyName "DATE_OBSERVED_VALUE_RDF_PROPERTY" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:generatedAtTimeProperty ;
+        sh:name "GeneratedAtTime property" ;
+        nifi:propertyName "GENERATED_AT_TIME_PROPERTY" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:dataDestinationFormat ;
+        sh:name "Data destination format" ;
+        nifi:propertyName "DATA_DESTINATION_FORMAT" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:memberRdfSyntaxType ;
+        sh:name "IRIs to member RDF syntax type" ;
+        nifi:propertyName "MEMBER_RDF_SYNTAX_TYPE" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:delimiter ;
+        sh:name "Delimiter" ;
+        nifi:propertyName "DELIMITER" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:versionOfKey ;
+        sh:name "VersionOf Property" ;
+        nifi:propertyName "VERSION_OF_KEY" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:dataInputFormat ;
+        sh:name "Data input format" ;
+        nifi:propertyName "DATA_INPUT_FORMAT" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] .
+
 nifi:AzureStorageCredentialsControllerService_v12
     a tcs:PipelineComponent, dcat:Resource ;
     rdfs:label "Apache NiFi Azure Storage Credentials Controller Service v12" ;
@@ -923,29 +1009,54 @@ nifi:Orchestrator
     a tcs:PipelineComponent, dcat:Resource ;
     rdfs:label "Apache NiFi 2 Orchestrator" ;
     spdx:versionInfo "2.10.0" ;
-    tcs:config :NifiDefaultDockerComposeConfig .
+    tcs:config
+        :NifiDefaultDockerComposeConfig,
+        :NifiDefaultDockerImageConfig .
 
 
 :NifiDefaultDockerComposeConfig
     a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
     dct:format "text/yaml" ;
     tcs:literal """
-nifip:
-    container_name: nifip
-    image: apache/nifi:2.10.0
-    environment:
-        SINGLE_USER_CREDENTIALS_USERNAME: root
-        SINGLE_USER_CREDENTIALS_PASSWORD: rootrootrootroot
-        NIFI_SENSITIVE_PROPS_KEY: dishacled-nifi-dev-key
-    ports:
-        - "8443:8443"
-    volumes:
-        - ./nifi/flow.json:/opt/nifi/bootstrap/flow.json:ro
-    entrypoint:
-        - /bin/bash
-        - "-c"
-        - |
-            set -e
-            gzip -c /opt/nifi/bootstrap/flow.json > /opt/nifi/nifi-current/conf/flow.json.gz
-            exec /opt/nifi/scripts/start.sh
-""" .
+                nifip:
+                    container_name: nifip
+                    image: dishacled/nifi:2.10.0-ldi-2.12.0
+                    build: ./nifi
+                    environment:
+                        SINGLE_USER_CREDENTIALS_USERNAME: root
+                        SINGLE_USER_CREDENTIALS_PASSWORD: rootrootrootroot
+                        NIFI_SENSITIVE_PROPS_KEY: dishacled-nifi-dev-key
+                    ports:
+                        - "8443:8443"
+                    volumes:
+                        - ./nifi/flow.json:/opt/nifi/bootstrap/flow.json:ro
+                    entrypoint:
+                        - /bin/bash
+                        - "-c"
+                        - |
+                            set -e
+                            gzip -c /opt/nifi/bootstrap/flow.json > /opt/nifi/nifi-current/conf/flow.json.gz
+                            exec /opt/nifi/scripts/start.sh
+                """ .
+
+:NifiDefaultDockerImageConfig
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerImageConfig ;
+    dct:format "text/x-dockerfile" ;
+    tcs:literal """
+                FROM maven:3.9-eclipse-temurin-21 AS nifi-extensions
+
+                ARG LDI_NIFI_VERSION=2.12.0
+
+                RUN mvn -B dependency:get \\
+                    -Dartifact=be.vlaanderen.informatievlaanderen.ldes.ldi.nifi:ldi-processors-bundle:${LDI_NIFI_VERSION} \\
+                && mkdir -p /out/nifi-ext \\
+                && find /root/.m2/repository/be/vlaanderen/informatievlaanderen/ldes/ldi/nifi \\
+                    -type f -name '*.nar' \\
+                    -exec cp {} /out/nifi-ext/ \\;
+
+                FROM apache/nifi:2.10.0
+
+                COPY --from=nifi-extensions --chown=nifi:nifi \\
+                    /out/nifi-ext/ \\
+                    /opt/nifi/nifi-current/nar_extensions/
+                """ .

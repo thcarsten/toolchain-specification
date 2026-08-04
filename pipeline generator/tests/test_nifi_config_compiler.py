@@ -50,13 +50,13 @@ class NifiConfigCompilerTest(unittest.TestCase):
         flow = json.loads(str(files.iloc[0]["content"]))
         root = flow["rootGroup"]
 
-        self.assertEqual(5, len(root["processors"]))
+        self.assertEqual(6, len(root["processors"]))
         self.assertEqual(2, len(root["funnels"]))
-        self.assertEqual(8, len(root["connections"]))
+        self.assertEqual(10, len(root["connections"]))
         self.assertEqual(1, len(root["controllerServices"]))
         self.assertCountEqual(
-            [("PROCESSOR", "PROCESSOR")] * 4
-            + [("PROCESSOR", "FUNNEL")] * 4,
+            [("PROCESSOR", "PROCESSOR")] * 5
+            + [("PROCESSOR", "FUNNEL")] * 5,
             [
                 (connection["source"]["type"], connection["destination"]["type"])
                 for connection in root["connections"]
@@ -65,7 +65,12 @@ class NifiConfigCompilerTest(unittest.TestCase):
         self.assertCountEqual(
             [("success",)] * 4
             + [("failure",)] * 2
-            + [("Response",), ("splits",)],
+            + [
+                ("Response",),
+                ("data",),
+                ("splits",),
+                ("unparseable", "valueNotFound"),
+            ],
             [
                 tuple(connection["selectedRelationships"])
                 for connection in root["connections"]
@@ -122,9 +127,27 @@ class NifiConfigCompilerTest(unittest.TestCase):
         )
         self.assertEqual("rollback", execute_groovy["properties"]["Failure Strategy"])
         self.assertEqual([], execute_groovy["autoTerminatedRelationships"])
+        create_version = next(
+            processor
+            for processor in root["processors"]
+            if processor["name"] == "CreateVersionObjectProcessor"
+        )
+        self.assertEqual(
+            "be.vlaanderen.informatievlaanderen.ldes.ldi.processors.CreateVersionObjectProcessor",
+            create_version["type"],
+        )
+        self.assertEqual(
+            "create-version-object-processor",
+            create_version["bundle"]["artifact"],
+        )
+        self.assertEqual(
+            "https://data.vlaanderen.be/ns/waterkwaliteit#WaterkwaliteitObservatieVerzameling",
+            create_version["properties"]["MEMBER_RDF_SYNTAX_TYPE"],
+        )
+        self.assertEqual([], create_version["autoTerminatedRelationships"])
         funnel_ids = {funnel["identifier"] for funnel in root["funnels"]}
         self.assertEqual(
-            [2, 2],
+            [2, 3],
             sorted(
                 sum(
                     connection["destination"]["id"] == funnel_id

@@ -107,13 +107,13 @@
     a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:Funnel ;
     p-plan:isStepOfPlan :DemonstratorPipeline ;
-    tcs:readsFrom :nifi_channel_2, :nifi_channel_groovy_success .
+    tcs:readsFrom :nifi_channel_2, :nifi_channel_version_data .
 
 :ExecuteGroovyScript
     a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:ExecuteGroovyScript ;
     p-plan:isStepOfPlan :DemonstratorPipeline ;
-    nifi:scheduledState "RUNNING" ;
+    nifi:scheduledState "ENABLED" ;
     nifi:schedulingPeriod "0 sec" ;
     tcs:readsFrom :nifi_channel_split ;
     tcs:writesTo :nifi_channel_groovy_success, :nifi_channel_groovy_failure ;
@@ -307,6 +307,33 @@
 :nifi_channel_groovy_failure
     nifi:selectedRelationship "failure" .
 
+:CreateVersionObjectProcessor
+    a tcs:InstancePipelineComponent ;
+    prov:specializationOf nifi:CreateVersionObjectProcessor ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    nifi:scheduledState "RUNNING" ;
+    nifi:schedulingPeriod "0 sec" ;
+    tcs:readsFrom :nifi_channel_groovy_success ;
+    tcs:writesTo :nifi_channel_version_data, :nifi_channel_version_failure ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            nifi:dateObservedValueRdfProperty "https://uri.etsi.org/ngsi-ld/observedAt" ;
+            nifi:generatedAtTimeProperty "http://purl.org/dc/terms/created" ;
+            nifi:dataDestinationFormat "application/ld+json" ;
+            nifi:memberRdfSyntaxType "https://data.vlaanderen.be/ns/waterkwaliteit#WaterkwaliteitObservatieVerzameling" ;
+            nifi:delimiter "/" ;
+            nifi:versionOfKey "http://purl.org/dc/terms/isVersionOf" ;
+            nifi:dataInputFormat "application/ld+json"
+        ]
+    ] .
+
+:nifi_channel_version_data
+    nifi:selectedRelationship "data" .
+
+:nifi_channel_version_failure
+    nifi:selectedRelationship "valueNotFound", "unparseable" .
+
 :AzureStorageCredentials
     a nifi:ControllerService ;
     nifi:instantiatesControllerService nifi:AzureStorageCredentialsControllerService_v12 ;
@@ -327,4 +354,7 @@
     a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:Funnel ;
     p-plan:isStepOfPlan :DemonstratorPipeline ;
-    tcs:readsFrom :nifi_channel_split_failure, :nifi_channel_groovy_failure .
+    tcs:readsFrom
+        :nifi_channel_split_failure,
+        :nifi_channel_groovy_failure,
+        :nifi_channel_version_failure .
