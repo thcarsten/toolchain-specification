@@ -200,7 +200,11 @@ class RdfcDockerFileCompiler(Compiler):
 
         Deduplicates on ``(name, manager)`` so the same package
         showing up on multiple components does not produce duplicate
-        dependency entries.
+        dependency entries — but only when every row agrees on
+        ``version``/``download``. Two components requiring genuinely
+        different versions of the same package is a modelling
+        conflict, not something a "first one wins" dedup should paper
+        over silently.
         """
         df = self.output_reader.select(
             "?name ?version ?download ?manager",
@@ -218,6 +222,24 @@ class RdfcDockerFileCompiler(Compiler):
         )
         if df.empty:
             return df
+
+        df = df.drop_duplicates().reset_index(drop=True)
+        conflicting = (
+            df.groupby(["name", "manager"])[["version", "download"]]
+            .nunique()
+            .gt(1)
+            .any(axis=1)
+        )
+        if conflicting.any():
+            details = "; ".join(
+                f"{name} ({manager})"
+                for name, manager in conflicting[conflicting].index
+            )
+            raise ValueError(
+                "Conflicting spdx:versionInfo/spdx:downloadLocation declared "
+                f"for the same package across components: {details}. Align "
+                "the catalog's spdx:Package declarations before compiling."
+            )
         return df.drop_duplicates(subset=["name", "manager"]).reset_index(drop=True)
 
     def _render_pyproject(self) -> str:

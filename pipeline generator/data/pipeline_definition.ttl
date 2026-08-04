@@ -1,4 +1,5 @@
 @prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
 @prefix demo: <http://example.org/example/demonstrator/> .
 @prefix dct: <http://purl.org/dc/terms/> .
 @prefix ldio: <http://example.org/example/ldio/> .
@@ -6,8 +7,12 @@
 @prefix p-plan: <http://purl.org/net/p-plan#> .
 @prefix proc: <http://dishacled.example.org/processors#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix schema: <https://schema.org/> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix sosa: <http://www.w3.org/ns/sosa/> .
 @prefix sw: <https://semantic.works/services/> .
 @prefix tcs: <https://w3id.org/toolchain#> .
@@ -154,11 +159,18 @@ demo:ApiPoll a tcs:InstancePipelineComponent ;
     tcs:writesTo demo:sourceARaw .
 
 
+
+
 # Uses Ldio:JsonToLdAdapter (not RdfAdapter) because the source-a API
 # advertises `Content-Type: application/json` for JSON-LD bodies.
 demo:JsonLdParse a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation demo:WaterLevelPropertyValueShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -183,6 +195,15 @@ demo:JsonLdParse a tcs:InstancePipelineComponent ;
 demo:SsnSosaMap a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:SparqlConstructTransformer ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:inputShape ;
+        dct:relation demo:WaterLevelPropertyValueShape
+    ] , [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -229,10 +250,18 @@ demo:SsnSosaMap a tcs:InstancePipelineComponent ;
 
 
 # HTTP POST to the RDF-Connect ingest endpoint. Effectively the LDIO→RDFC
-# handoff — see gap #1 in the file header.
+# handoff — see gap #1 in the file header. `ldio:HttpOut` carries a
+# trivial (empty) passthroughShape in `catalog-ldio.ttl`; here we
+# override it with a pipeline-specific shape describing what actually
+# flows across the HTTP bridge.
 demo:LdioForward a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpOut ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -435,3 +464,173 @@ demo:DeliverEmail a tcs:InstancePipelineComponent ;
     # nmo:Email triples are not (yet) linked to the mail folder it polls,
     # so no SMTP is actually sent. This is a deployment gap flagged in
     # AGENTS.md §3, not a pipeline-definition modelling issue.
+
+
+###############################################################################
+# Input / output / passthrough shapes — LDIO segment
+#
+# Attached to the four LDIO instance-components above via
+# `dcat:qualifiedRelation` + `dcat:hadRole tcs:inputShape|tcs:outputShape|tcs:passthroughShape`
+# (see `test suite/README.md`). Shapes are attached at the instance level,
+# not the `PipelineComponent` level, because the shape flowing through each
+# LDIO step depends on how the step is configured in *this* pipeline (the
+# JSON-LD `@context` on `demo:JsonLdParse`, the SPARQL CONSTRUCT on
+# `demo:SsnSosaMap`, the target endpoint on `demo:LdioForward`).
+#
+# Role choice per step:
+#
+#   - `demo:JsonLdParse` — `outputShape` only. `ldio:JsonToLdAdapter` is
+#     conceptually a passthrough (the `@context` fully determines the RDF
+#     graph), but its read channel `demo:sourceARaw` carries JSON bytes,
+#     not RDF, so a `passthroughShape` cannot be validated against the
+#     upstream side. The `outputShape` on `demo:sourceARdf` is the first
+#     meaningful RDF-level constraint in the chain.
+#
+#   - `demo:SsnSosaMap` — `inputShape` + `outputShape`. A real transformer
+#     (SPARQL CONSTRUCT); input and output shapes are distinct.
+#
+#   - `demo:LdioForward` — `passthroughShape`. `ldio:HttpOut` is a
+#     canonical passthrough component (see `catalog-ldio.ttl`); the
+#     pipeline-specific shape here overrides its trivial catalog-level
+#     passthroughShape.
+#
+# Not attached:
+#
+#   - `demo:ApiPoll` — its output channel `demo:sourceARaw` carries raw
+#     JSON bytes, not RDF triples, so an RDF NodeShape does not apply.
+#     Once `demo:JsonLdParse` promotes the bytes into a graph, the shape
+#     below (`demo:WaterLevelPropertyValueShape`) is the first meaningful
+#     constraint. Left implicit; per the validation-strategy convention an
+#     empty shape may be materialized on the channel at validation time.
+#
+#   - `demo:JsonLdParse` inputShape — same reason (upstream is non-RDF).
+###############################################################################
+
+
+# Mirrors the API's public shape at
+# https://dishacled-api.azurewebsites.net/api/v1/shapes/shacl
+# (`urn:shapes:WaterLevelShape` + `urn:shapes:SourceAShape`), collapsed to
+# a single NodeShape describing what `demo:JsonLdParse` writes onto
+# `demo:sourceARdf` and what `demo:SsnSosaMap` expects on its input side.
+demo:WaterLevelPropertyValueShape a sh:NodeShape ;
+    rdfs:label "Water level PropertyValue (source-a)" ;
+    rdfs:comment """Shape of a single water-level measurement as served by
+        the source-a API and as reconstructed into RDF by
+        `demo:JsonLdParse`. Derived from the API's own SHACL shapes plus
+        the source-a specialization (unit `CMT`, value range 1300–2200
+        cm).""" ;
+    sh:closed false ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue schema:PropertyValue ;
+        sh:minCount 1 ;
+    ] , [
+        sh:path schema:name ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:pattern "Water Level.*" ;
+    ] , [
+        sh:path schema:value ;
+        sh:datatype xsd:decimal ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:minInclusive 1300 ;
+        sh:maxInclusive 2200 ;
+    ] , [
+        sh:path schema:unitCode ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:hasValue "CMT" ;
+    ] , [
+        sh:path sosa:resultTime ;
+        sh:datatype xsd:dateTime ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path schema:source ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:hasValue "Source A" ;
+    ] , [
+        sh:path schema:location ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:node demo:PlaceShape ;
+    ] , [
+        sh:path dct:conformsTo ;
+        sh:minCount 1 ;
+    ] .
+
+
+demo:PlaceShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue schema:Place ;
+    ] , [
+        sh:path schema:geo ;
+        sh:minCount 1 ;
+        sh:node [
+            a sh:NodeShape ;
+            sh:property [
+                sh:path schema:latitude ;
+                sh:datatype xsd:decimal ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+            ] , [
+                sh:path schema:longitude ;
+                sh:datatype xsd:decimal ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+            ]
+        ] ;
+    ] .
+
+
+# Mirrors the two star patterns of ?obs and ?result in the SPARQL CONSTRUCT
+# clause of `demo:SsnSosaMap`. Also matches what `demo:LdioForward` POSTs
+# to the RDFC HTTP ingest.
+demo:SosaWaterLevelObservationShape a sh:NodeShape ;
+    rdfs:label "SOSA water-level observation" ;
+    rdfs:comment """Shape of the RDF produced by `demo:SsnSosaMap`, and
+        equivalently the shape POSTed by `demo:LdioForward` onto the
+        LDIO → RDF-Connect HTTP bridge.""" ;
+    sh:closed false ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue sosa:Observation ;
+        sh:minCount 1 ;
+    ] , [
+        sh:path sosa:madeBySensor ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+    ] , [
+        sh:path sosa:observedProperty ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+    ] , [
+        sh:path sosa:hasFeatureOfInterest ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path sosa:resultTime ;
+        sh:datatype xsd:dateTime ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path sosa:hasSimpleResult ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path sosa:hasResult ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:node demo:QuantityValueShape ;
+    ] .
+
+
+demo:QuantityValueShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue qudt:QuantityValue ;
+        sh:minCount 1 ;
+    ] , [
+        sh:path qudt:numericValue ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path qudt:unit ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+    ] .

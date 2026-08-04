@@ -1,5 +1,6 @@
 from rdflib import Graph
 from rdfine import GraphReader, GraphDict, receive_first
+import re
 
 from ..base import Compiler
 from ..utils import attach_file, extract_config, rewrite_compose_volume_host_path
@@ -60,8 +61,15 @@ class RdfcConfigCompiler(Compiler):
         self.describe_channels()
 
         ttl_string = self.rdfc_reader.serialize("ttl")
-        # RDF Connect requires the pipeline to be named ``<>``.
-        ttl_string = ttl_string.replace(self.pipeline_id, "<>")
+        # RDF Connect requires the pipeline to be named ``<>``. A plain
+        # string replace would also corrupt any other IRI that happens
+        # to have the pipeline's compact name as a prefix (e.g. a
+        # channel ``demo:TestArchive`` when the pipeline is
+        # ``demo:Test``) — the lookahead/lookbehind keep the match
+        # anchored to the whole token.
+        ttl_string = re.sub(
+            rf"(?<![\w:]){re.escape(self.pipeline_id)}(?!\w)", "<>", ttl_string
+        )
 
         self.output_reader = attach_file(
             self.output_reader,

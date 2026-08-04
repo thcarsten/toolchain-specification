@@ -323,6 +323,17 @@ def attach_file(
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", f"{filepath}_{filename}").strip("_")
     file_id = f":file_{slug}"
 
+    # Guard against two compilers (or a re-run) targeting the same output
+    # path — without this, a second call would silently add a second
+    # tcs:literal value on the same file node, and downstream readers
+    # picking one via ``receive_first`` would do so arbitrarily.
+    if reader.ask(f"{file_id} tcs:literal ?existing ."):
+        raise ValueError(
+            f"spdx:File {file_id!s} ({filepath}/{filename}) already has a "
+            "tcs:literal body — refusing to silently overwrite it with a "
+            "second compiler's output."
+        )
+
     rows = [
         {
             "sub": build_id,

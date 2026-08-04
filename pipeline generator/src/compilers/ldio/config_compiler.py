@@ -72,21 +72,41 @@ class LdioConfigCompiler(Compiler):
 
     def fetch_steps(self) -> pd.DataFrame:
 
-        # list all LDIO components
+        # One row per LDIO *step instance* — not per catalog component,
+        # so two steps specializing the same component (e.g. two
+        # Ldio:SparqlConstructTransformer entries) each keep their own
+        # config instead of collapsing onto a shared component-level slot.
+        # ``reads_from``/``writes_to`` are pulled in the same query so
+        # execution order can be recovered afterwards — LDIO's YAML has
+        # no other way to express it than list position.
         where_statement = """
         ?container a tcs:DockerContainer .
         ?container tcs:instantiates ldio:LinkedDataInteractionsOrchestrator .
         ?container tcs:instantiates ?pipeline_component .
         ?container tcs:runs ?pipeline_step .
         ?pipeline_step prov:specializationOf ?pipeline_component .
+        OPTIONAL { ?pipeline_step tcs:readsFrom ?reads_from . }
+        OPTIONAL { ?pipeline_step tcs:writesTo ?writes_to . }
         """
 
-        list_components = self.output_reader.select(
-            "?pipeline_component", where_statement
-        )["pipeline_component"].to_list()
+        df_raw = self.output_reader.select(
+            "?pipeline_step ?pipeline_component ?reads_from ?writes_to",
+            where_statement,
+        )
+        # A step's channel predicates are single-valued in the LDIO
+        # segment (a strictly serial chain); collapse any duplicate rows
+        # the OPTIONALs may have introduced down to one row per step.
+        df_raw = df_raw.groupby(
+            ["pipeline_step", "pipeline_component"], as_index=False
+        ).first()
+        step_to_component = dict(
+            zip(df_raw["pipeline_step"], df_raw["pipeline_component"])
+        )
 
         list_records = []
-        for component_id in list_components:
+        for step_id in self._order_by_channel_chain(df_raw):
+            component_id = step_to_component[step_id]
+
             ldio_label = receive_first(
                 self.output_reader.filter(sub=component_id, pred="rdfs:label").df[
                     "obj"
@@ -102,18 +122,60 @@ class LdioConfigCompiler(Compiler):
                 "name": ldio_label,
             }
 
-            # If the component has a config assigned, fetch that too
-            if self.output_reader.ask(f"{component_id} :isAssigned ?config ."):
+            # Each step's own config, read directly off the step instance
+            # (never off the shared catalog component).
+            if self.output_reader.ask(f"{step_id} p-plan:hasInputVar ?config ."):
                 config_id = receive_first(
-                    self.output_reader.filter(sub=component_id, pred=":isAssigned").df[
-                        "obj"
-                    ],
+                    self.output_reader.filter(
+                        sub=step_id, pred="p-plan:hasInputVar"
+                    ).df["obj"],
                 )
                 dict_component.update({"config": config_id})
 
             list_records += [dict_component]
 
         return pd.DataFrame.from_records(list_records)
+
+    @staticmethod
+    def _order_by_channel_chain(df_raw: pd.DataFrame) -> list:
+        """Recover execution order by walking ``tcs:readsFrom``/``tcs:writesTo``.
+
+        Starts from every step with no ``tcs:readsFrom`` (a segment's
+        entry point) and follows ``writes_to`` -> matching ``reads_from``
+        until the chain ends. Steps the walk never reaches (missing or
+        partial channel wiring) are appended afterwards in their
+        original query order, so an LDIO segment that doesn't use
+        channel wiring at all still compiles exactly as before instead
+        of silently losing steps.
+        """
+        channel_to_reader = {
+            row["reads_from"]: row["pipeline_step"]
+            for _, row in df_raw.iterrows()
+            if pd.notna(row["reads_from"])
+        }
+        writes_to = {
+            row["pipeline_step"]: row["writes_to"]
+            for _, row in df_raw.iterrows()
+            if pd.notna(row["writes_to"])
+        }
+        has_reads_from = set(df_raw.loc[df_raw["reads_from"].notna(), "pipeline_step"])
+
+        ordered: list = []
+        visited: set = set()
+        entry_points = [s for s in df_raw["pipeline_step"] if s not in has_reads_from]
+        for start in entry_points:
+            current = start
+            while current is not None and current not in visited:
+                ordered.append(current)
+                visited.add(current)
+                current = channel_to_reader.get(writes_to.get(current))
+
+        for step_id in df_raw["pipeline_step"]:
+            if step_id not in visited:
+                ordered.append(step_id)
+                visited.add(step_id)
+
+        return ordered
 
     def fetch_configs(self) -> dict:
 

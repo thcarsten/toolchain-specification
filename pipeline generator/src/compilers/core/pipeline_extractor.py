@@ -89,9 +89,15 @@ class PipelineExtractor(Compiler):
             )
             type_list.sort()
             first_type = receive_first(type_list)
-            new_name = (
-                ":"
-                + self.output_reader.prefix_store.drop_string(first_type).lower()
-                + f"_{i}"
+            prefix = (
+                ":" + self.output_reader.prefix_store.drop_string(first_type).lower()
             )
+            new_name = f"{prefix}_{i}"
+            # Guard against colliding with a name already in use (e.g. an
+            # author-declared resource in the pipeline definition) — bump
+            # the suffix until the name is free rather than silently
+            # merging two distinct resources under one IRI.
+            while self.output_reader.check_exists(new_name):
+                i += 1
+                new_name = f"{prefix}_{i}"
             self.output_reader = self.output_reader.rename(rename_id, new_name)

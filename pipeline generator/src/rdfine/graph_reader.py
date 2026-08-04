@@ -509,11 +509,8 @@ class GraphReader:
             df_output = self.prefix_store.compact(df_output)
             return df_output
         elif results.type == "CONSTRUCT":
-            if results.graph:  # if results.graph is not falsly (empty)
-                self.prefix_store.bind_to_namespace(results.graph)
-                return type(self)(results.graph)
-            else:  # if results.graph is empty return empty dataframe
-                raise ValueError("Constructed graph returned empty.")
+            self.prefix_store.bind_to_namespace(results.graph)
+            return type(self)(results.graph)
         elif results.type == "ASK":
             return bool(results)
         else:
