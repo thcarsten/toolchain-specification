@@ -147,6 +147,7 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
     nifi:GenerateFlowFile,
     nifi:FetchAzureBlobStorage_v12,
     nifi:SplitText,
+    nifi:ExecuteGroovyScript,
     nifi:AzureStorageCredentialsControllerService_v12,
     nifi:Funnel,
     nifi:InvokeHTTP,
@@ -732,6 +733,58 @@ nifi:SplitText
         nifi:propertyName "Remove Trailing Newlines" ;
         sh:datatype xsd:string ;
         sh:in ("true" "false") ;
+        sh:maxCount 1
+    ] .
+
+nifi:ExecuteGroovyScript
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi ExecuteGroovyScript" ;
+    nifi:processorType "org.apache.nifi.processors.groovyx.ExecuteGroovyScript" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-groovyx-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:outgoingRelationship "success" ;
+    nifi:autoTerminatedRelationship "failure", "success" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiExecuteGroovyScriptConfigShape
+    ] .
+
+:NifiExecuteGroovyScriptConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes :prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:ExecuteGroovyScript ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:scriptBody ;
+        sh:name "Script Body" ;
+        nifi:propertyName "Script Body" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:failureStrategy ;
+        sh:name "Failure Strategy" ;
+        nifi:propertyName "Failure Strategy" ;
+        sh:datatype xsd:string ;
+        sh:in ("rollback" "transfer to failure") ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:additionalClasspath ;
+        sh:name "Additional Classpath" ;
+        nifi:propertyName "Additional Classpath" ;
+        sh:datatype xsd:string ;
         sh:maxCount 1
     ] .
 

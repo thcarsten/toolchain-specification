@@ -50,27 +50,24 @@ class NifiConfigCompilerTest(unittest.TestCase):
         flow = json.loads(str(files.iloc[0]["content"]))
         root = flow["rootGroup"]
 
-        self.assertEqual(4, len(root["processors"]))
-        self.assertEqual(1, len(root["funnels"]))
-        self.assertEqual(5, len(root["connections"]))
+        self.assertEqual(5, len(root["processors"]))
+        self.assertEqual(2, len(root["funnels"]))
+        self.assertEqual(8, len(root["connections"]))
         self.assertEqual(1, len(root["controllerServices"]))
-        self.assertEqual(
-            [
-                ("PROCESSOR", "PROCESSOR"),
-                ("PROCESSOR", "PROCESSOR"),
-                ("PROCESSOR", "FUNNEL"),
-                ("PROCESSOR", "PROCESSOR"),
-                ("PROCESSOR", "FUNNEL"),
-            ],
+        self.assertCountEqual(
+            [("PROCESSOR", "PROCESSOR")] * 4
+            + [("PROCESSOR", "FUNNEL")] * 4,
             [
                 (connection["source"]["type"], connection["destination"]["type"])
                 for connection in root["connections"]
             ],
         )
-        self.assertEqual(
-            [["success"], ["success"], ["Response"], ["splits"], ["failure"]],
+        self.assertCountEqual(
+            [("success",)] * 4
+            + [("failure",)] * 2
+            + [("Response",), ("splits",)],
             [
-                connection["selectedRelationships"]
+                tuple(connection["selectedRelationships"])
                 for connection in root["connections"]
             ],
         )
@@ -118,12 +115,22 @@ class NifiConfigCompilerTest(unittest.TestCase):
         )
         self.assertEqual("1", split_text["properties"]["Line Split Count"])
         self.assertEqual(["original"], split_text["autoTerminatedRelationships"])
-        funnel_id = root["funnels"][0]["identifier"]
+        execute_groovy = next(
+            processor
+            for processor in root["processors"]
+            if processor["name"] == "ExecuteGroovyScript"
+        )
+        self.assertEqual("rollback", execute_groovy["properties"]["Failure Strategy"])
+        self.assertEqual([], execute_groovy["autoTerminatedRelationships"])
+        funnel_ids = {funnel["identifier"] for funnel in root["funnels"]}
         self.assertEqual(
-            2,
-            sum(
-                connection["destination"]["id"] == funnel_id
-                for connection in root["connections"]
+            [2, 2],
+            sorted(
+                sum(
+                    connection["destination"]["id"] == funnel_id
+                    for connection in root["connections"]
+                )
+                for funnel_id in funnel_ids
             ),
         )
         self.assertEqual(
