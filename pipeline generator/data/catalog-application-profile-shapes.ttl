@@ -230,6 +230,33 @@ tcs:AcyclicGraphShape a sh:NodeShape ;
     ] .
 
 
+# A dangling/mistyped prov:specializationOf target still gets entailed
+# as tcs:PipelineComponent (see inference_rules.yaml — correct
+# entailment, since specializationOf only makes sense against a real
+# component) and would otherwise only surface indirectly via the
+# deployability shape, with a misleading "not deployable" message.
+# This shape checks the actual concern directly: is the specialized
+# component listed as a dcat:resource of some tcs:Catalog at all.
+tcs:SpecializedComponentIsCatalogedShape a sh:NodeShape ;
+    rdfs:label "Specialized component is catalogued shape" ;
+    sh:targetClass tcs:InstancePipelineComponent ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Step {?this} specializes {?component}, which is not listed as a dcat:resource of any tcs:Catalog — likely an undefined or mistyped component reference." ;
+        sh:select """
+            SELECT ?this ?component WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?component .
+                FILTER NOT EXISTS {
+                    ?catalog a tcs:Catalog ;
+                             dcat:resource ?component .
+                }
+            }
+        """
+    ] .
+
+
 #################################################################
 # tcs:PipelineDefinition
 #
