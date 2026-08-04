@@ -1,4 +1,5 @@
 import json
+from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from rdflib import Graph
@@ -8,10 +9,8 @@ import pandas as pd
 from .base import Compiler
 from .utils import attach_file
 
-from typing import Any
-
-
-_PROCESSOR_X_SPACING = 400.0
+_PROCESSOR_X_SPACING = 650.0
+_PROCESSOR_Y_SPACING = 250.0
 
 class NifiConfigCompiler(Compiler):
     """
@@ -73,8 +72,6 @@ class NifiConfigCompiler(Compiler):
                 f"NiFi controller services must have at most one configuration: {services}"
             )
 
-        ordered_steps = sorted(expected_steps["step"].astype(str))
-        positions = {step: index for index, step in enumerate(ordered_steps)}
         self.df_steps = self.df_steps.sort_values("step").reset_index(drop=True)
         funnels = funnels.sort_values("step").reset_index(drop=True)
         pipeline_id = receive_first(
@@ -84,24 +81,32 @@ class NifiConfigCompiler(Compiler):
         )
         group_id = nifi_id(f"{pipeline_id}:group")
 
+        component_types = {
+            **{str(step): "PROCESSOR" for step in self.df_steps["step"]},
+            **{str(step): "FUNNEL" for step in funnels["step"]},
+        }
+        connections = self.build_connections(group_id, component_types)
+        positions = self.build_positions(component_types, connections)
+
         processors = [
-             self.build_processor(row, positions[str(row.step)], group_id)
-             for row in self.df_steps.itertuples(index=False)
+            self.build_processor(row, positions[str(row.step)], group_id)
+            for row in sorted(
+                self.df_steps.itertuples(index=False),
+                key=lambda row: positions[str(row.step)],
+            )
         ]
         funnel_objects = [
             self.build_funnel(row.step, positions[str(row.step)], group_id)
-            for row in funnels.itertuples(index=False)
+            for row in sorted(
+                funnels.itertuples(index=False),
+                key=lambda row: positions[str(row.step)],
+            )
         ]
         controller_service_objects = [
             self.build_controller_service(row, group_id)
             for row in controller_services.itertuples(index=False)
         ]
 
-        component_types = {
-            **{str(step): "PROCESSOR" for step in self.df_steps["step"]},
-            **{str(step): "FUNNEL" for step in funnels["step"]},
-        }
-        connections = self.build_connections(group_id, component_types)
         for processor in processors:
             connected_relationships = {
                 relationship
@@ -221,7 +226,9 @@ class NifiConfigCompiler(Compiler):
             """,
         )
 
-    def build_processor(self, row, index: int, group_id: str) -> dict:
+    def build_processor(
+        self, row, position: tuple[float, float], group_id: str
+    ) -> dict:
         properties, property_descriptors = self.fetch_properties(row)
         processor_id = nifi_id(str(row.step))
         scheduled_state = (
@@ -242,8 +249,8 @@ class NifiConfigCompiler(Compiler):
             "name": str(row.step).removeprefix(":"),
             "comments": "",
             "position": {
-                "x": index * _PROCESSOR_X_SPACING,
-                "y": 0.0,
+                "x": position[0],
+                "y": position[1],
             },
             "type": row.processor_type,
             "bundle": {
@@ -316,17 +323,69 @@ class NifiConfigCompiler(Compiler):
             "groupIdentifier": group_id,
         }
 
-    def build_funnel(self, step: Any, index: int, group_id: str) -> dict:
+    def build_funnel(
+        self, step: Any, position: tuple[float, float], group_id: str
+    ) -> dict:
         return {
             "identifier": nifi_id(str(step)),
             "instanceIdentifier": nifi_id(f"{step}:instance"),
             "position": {
-                "x": index * _PROCESSOR_X_SPACING,
-                "y": 0.0,
+                "x": position[0],
+                "y": position[1],
             },
             "componentType": "FUNNEL",
             "groupIdentifier": group_id,
         }
+
+    def build_positions(
+        self,
+        component_types: dict[str, str],
+        connections: list[dict],
+    ) -> dict[str, tuple[float, float]]:
+        """Lay out the acyclic part of the flow in dependency columns."""
+        nodes = sorted(component_types)
+        node_by_id = {nifi_id(node): node for node in nodes}
+        successors = {node: set() for node in nodes}
+        indegree = {node: 0 for node in nodes}
+
+        for connection in connections:
+            source = node_by_id[connection["source"]["id"]]
+            destination = node_by_id[connection["destination"]["id"]]
+            if destination not in successors[source]:
+                successors[source].add(destination)
+                indegree[destination] += 1
+
+        depths = {node: 0 for node in nodes}
+        ready = sorted(node for node in nodes if indegree[node] == 0)
+        processed = set()
+        while ready:
+            source = ready.pop(0)
+            processed.add(source)
+            for destination in sorted(successors[source]):
+                depths[destination] = max(
+                    depths[destination], depths[source] + 1
+                )
+                indegree[destination] -= 1
+                if indegree[destination] == 0:
+                    ready.append(destination)
+                    ready.sort()
+
+        # NiFi permits loops, for which no topological order exists. Keep any
+        # cyclic remainder deterministic instead of rejecting an otherwise valid flow.
+        next_depth = max((depths[node] for node in processed), default=-1) + 1
+        for node in sorted(set(nodes) - processed):
+            depths[node] = next_depth
+            next_depth += 1
+
+        positions = {}
+        for depth in sorted(set(depths.values())):
+            column = sorted(node for node in nodes if depths[node] == depth)
+            for row, node in enumerate(column):
+                positions[node] = (
+                    depth * _PROCESSOR_X_SPACING,
+                    row * _PROCESSOR_Y_SPACING,
+                )
+        return positions
 
     def build_connections(
         self,

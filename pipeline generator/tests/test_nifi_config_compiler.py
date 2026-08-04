@@ -133,6 +133,29 @@ class NifiConfigCompilerTest(unittest.TestCase):
                 for funnel_id in funnel_ids
             ),
         )
+        components_by_id = {
+            component["identifier"]: component
+            for component in root["processors"] + root["funnels"]
+        }
+        for connection in root["connections"]:
+            source = components_by_id[connection["source"]["id"]]
+            destination = components_by_id[connection["destination"]["id"]]
+            self.assertLess(source["position"]["x"], destination["position"]["x"])
+
+        self.assertEqual(
+            fetch_azure["position"]["x"], invoke_http["position"]["x"]
+        )
+        self.assertNotEqual(
+            fetch_azure["position"]["y"], invoke_http["position"]["y"]
+        )
+        self.assertEqual(
+            1,
+            len({funnel["position"]["x"] for funnel in root["funnels"]}),
+        )
+        self.assertEqual(
+            2,
+            len({funnel["position"]["y"] for funnel in root["funnels"]}),
+        )
         self.assertEqual(
             ["Failure", "No Retry", "Original", "Retry"],
             invoke_http["autoTerminatedRelationships"],
