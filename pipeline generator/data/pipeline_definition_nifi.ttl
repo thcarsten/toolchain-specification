@@ -62,7 +62,41 @@
     a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:Funnel ;
     p-plan:isStepOfPlan :DemonstratorPipeline ;
-    tcs:readsFrom :nifi_channel_2 .
+    tcs:readsFrom :nifi_channel_2, :nifi_channel_azure .
 
 :nifi_channel_2
     nifi:selectedRelationship "Response" .
+
+:FetchAzureBlobStorage_v12
+    a tcs:InstancePipelineComponent ;
+    prov:specializationOf nifi:FetchAzureBlobStorage_v12 ;
+    p-plan:isStepOfPlan :DemonstratorPipeline ;
+    nifi:scheduledState "RUNNING" ;
+    nifi:schedulingPeriod "0 sec" ;
+    tcs:readsFrom :nifi_channel_1 ;
+    tcs:writesTo :nifi_channel_azure ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            nifi:containerName "limits" ;
+            nifi:blobName "Waterkwaliteit_Brugge_${now():format('yyyyMM')}02.json" ;
+            nifi:storageCredentials :AzureStorageCredentials ;
+            nifi:clientSideEncryptionKeyType "NONE"
+        ]
+    ] .
+
+:AzureStorageCredentials
+    a nifi:ControllerService ;
+    nifi:instantiatesControllerService nifi:AzureStorageCredentialsControllerService_v12 ;
+    tcs:config :AzureStorageCredentialsConfig .
+
+:AzureStorageCredentialsConfig
+    a tcs:PipelineConfig ;
+    tcs:embedded :AzureStorageCredentialsProperties .
+
+:AzureStorageCredentialsProperties
+    nifi:credentialsType "SAS_TOKEN" ;
+    nifi:endpointSuffix "blob.core.windows.net" .
+
+:nifi_channel_azure
+    nifi:selected_relationship "success" .

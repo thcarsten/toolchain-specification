@@ -145,6 +145,8 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
     sw:triple-store,
     # Nifi 2
     nifi:GenerateFlowFile,
+    nifi:FetchAzureBlobStorage_v12,
+    nifi:AzureStorageCredentialsControllerService_v12,
     nifi:Funnel,
     nifi:InvokeHTTP,
     nifi:Orchestrator .
@@ -587,6 +589,153 @@ nifi:GenerateFlowFile
         sh:path nifi:customText ;
         sh:name "Custom Text" ;
         nifi:propertyName "Custom Text" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] .
+
+nifi:FetchAzureBlobStorage_v12
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi FetchAzureBlobStorage_v12" ;
+    nifi:processorType "org.apache.nifi.processors.azure.storage.FetchAzureBlobStorage_v12" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-azure-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:outgoingRelationship "success" ;
+    nifi:autoTerminatedRelationship "failure", "success" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiFetchAzureBlobStorageConfigShape
+    ] .
+
+:NifiFetchAzureBlobStorageConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes :prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:FetchAzureBlobStorage_v12 ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:containerName ;
+        sh:name "Container Name" ;
+        nifi:propertyName "Container Name" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:blobName ;
+        sh:name "Blob Name" ;
+        nifi:propertyName "Blob Name" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:storageCredentials ;
+        sh:name "Storage Credentials" ;
+        nifi:propertyName "Storage Credentials" ;
+        sh:class nifi:ControllerService ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:clientSideEncryptionKeyType ;
+        sh:name "Client-Side Encryption Key Type" ;
+        nifi:propertyName "Client-Side Encryption Key Type" ;
+        sh:datatype xsd:string ;
+        sh:in ("NONE" "LOCAL") ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:rangeStart ;
+        sh:name "Range Start" ;
+        nifi:propertyName "Range Start" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:rangeLength ;
+        sh:name "Range Length" ;
+        nifi:propertyName "Range Length" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] .
+
+nifi:AzureStorageCredentialsControllerService_v12
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi Azure Storage Credentials Controller Service v12" ;
+    nifi:controllerServiceType "org.apache.nifi.services.azure.storage.AzureStorageCredentialsControllerService_v12" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-azure-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:serviceApiType "org.apache.nifi.services.azure.storage.AzureStorageCredentialsService_v12" ;
+    nifi:serviceApiBundleGroup "org.apache.nifi" ;
+    nifi:serviceApiBundleArtifact "nifi-azure-services-api-nar" ;
+    nifi:serviceApiBundleVersion "2.10.0" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiAzureStorageCredentialsConfigShape
+    ] .
+
+:NifiAzureStorageCredentialsConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes :prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?service
+                    nifi:instantiatesControllerService nifi:AzureStorageCredentialsControllerService_v12 ;
+                    tcs:config/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:credentialsType ;
+        sh:name "Credentials Type" ;
+        nifi:propertyName "Credentials Type" ;
+        sh:datatype xsd:string ;
+        sh:in ("ACCOUNT_KEY" "SAS_TOKEN" "MANAGED_IDENTITY" "SERVICE_PRINCIPAL" "IDENTITY_FEDERATION") ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:endpointSuffix ;
+        sh:name "Endpoint Suffix" ;
+        nifi:propertyName "Endpoint Suffix" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:storageAccountName ;
+        sh:name "Storage Account Name" ;
+        nifi:propertyName "Storage Account Name" ;
+        nifi:sensitive true ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:accountKey ;
+        sh:name "Account Key" ;
+        nifi:propertyName "Account Key" ;
+        nifi:sensitive true ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:sasToken ;
+        sh:name "SAS Token" ;
+        nifi:propertyName "SAS Token" ;
+        nifi:sensitive true ;
         sh:datatype xsd:string ;
         sh:maxCount 1
     ] .

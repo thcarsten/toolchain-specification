@@ -3,7 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from rdflib import Graph
+from rdflib import Graph, Literal, Namespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +24,16 @@ class NifiConfigCompilerTest(unittest.TestCase):
         ]:
             graph.parse(data_dir / filename, format="turtle")
 
+        example = Namespace("http://example.org/example/")
+        nifi = Namespace("http://example.org/example/nifi/")
+        graph.add(
+            (
+                example.AzureStorageCredentialsProperties,
+                nifi.sasToken,
+                Literal("test-sas-token"),
+            )
+        )
+
         reader = GraphReader(graph).infer(data_dir / "inference_rules.yaml")
         report = reader.validate(advanced=True, inference="rdfs")
         self.assertTrue(report.ask("?report sh:conforms true"))
@@ -40,18 +50,23 @@ class NifiConfigCompilerTest(unittest.TestCase):
         flow = json.loads(str(files.iloc[0]["content"]))
         root = flow["rootGroup"]
 
-        self.assertEqual(2, len(root["processors"]))
+        self.assertEqual(3, len(root["processors"]))
         self.assertEqual(1, len(root["funnels"]))
-        self.assertEqual(2, len(root["connections"]))
+        self.assertEqual(3, len(root["connections"]))
+        self.assertEqual(1, len(root["controllerServices"]))
         self.assertEqual(
-            [("PROCESSOR", "PROCESSOR"), ("PROCESSOR", "FUNNEL")],
+            [
+                ("PROCESSOR", "PROCESSOR"),
+                ("PROCESSOR", "PROCESSOR"),
+                ("PROCESSOR", "FUNNEL"),
+            ],
             [
                 (connection["source"]["type"], connection["destination"]["type"])
                 for connection in root["connections"]
             ],
         )
         self.assertEqual(
-            [["success"], ["Response"]],
+            [["success"], ["success"], ["Response"]],
             [
                 connection["selectedRelationships"]
                 for connection in root["connections"]
@@ -71,6 +86,29 @@ class NifiConfigCompilerTest(unittest.TestCase):
         self.assertEqual("10 sec", generate_flow_file["schedulingPeriod"])
         self.assertEqual("RUNNING", invoke_http["scheduledState"])
         self.assertEqual("0 sec", invoke_http["schedulingPeriod"])
+        fetch_azure = next(
+            processor
+            for processor in root["processors"]
+            if processor["name"] == "FetchAzureBlobStorage_v12"
+        )
+        credentials = root["controllerServices"][0]
+        self.assertEqual("DISABLED", credentials["scheduledState"])
+        self.assertTrue(
+            credentials["propertyDescriptors"]["SAS Token"]["sensitive"]
+        )
+        self.assertEqual(
+            "org.apache.nifi.services.azure.storage.AzureStorageCredentialsService_v12",
+            credentials["controllerServiceApis"][0]["type"],
+        )
+        self.assertEqual(
+            credentials["identifier"],
+            fetch_azure["properties"]["Storage Credentials"],
+        )
+        self.assertTrue(
+            fetch_azure["propertyDescriptors"]["Storage Credentials"]
+            ["identifiesControllerService"]
+        )
+        self.assertEqual(["failure"], fetch_azure["autoTerminatedRelationships"])
         self.assertEqual(
             ["Failure", "No Retry", "Original", "Retry"],
             invoke_http["autoTerminatedRelationships"],

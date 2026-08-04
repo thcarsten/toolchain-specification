@@ -37,6 +37,7 @@ class NifiConfigCompiler(Compiler):
         expected_steps = self.fetch_expected_steps()
         self.df_steps = self.fetch_steps()
         funnels = self.fetch_funnels()
+        controller_services = self.fetch_controller_services()
 
         if expected_steps.empty:
             raise ValueError("NiFi container exists but runs no pipeline steps")
@@ -61,6 +62,17 @@ class NifiConfigCompiler(Compiler):
             steps = ", ".join(sorted(set(duplicate_steps["step"].astype(str))))
             raise ValueError(f"NiFi steps must have at most one configuration: {steps}")
 
+        duplicate_services = controller_services.loc[
+            controller_services["service"].duplicated(keep=False)
+        ]
+        if not duplicate_services.empty:
+            services = ", ".join(
+                sorted(set(duplicate_services["service"].astype(str)))
+            )
+            raise ValueError(
+                f"NiFi controller services must have at most one configuration: {services}"
+            )
+
         ordered_steps = sorted(expected_steps["step"].astype(str))
         positions = {step: index for index, step in enumerate(ordered_steps)}
         self.df_steps = self.df_steps.sort_values("step").reset_index(drop=True)
@@ -79,6 +91,10 @@ class NifiConfigCompiler(Compiler):
         funnel_objects = [
             self.build_funnel(row.step, positions[str(row.step)], group_id)
             for row in funnels.itertuples(index=False)
+        ]
+        controller_service_objects = [
+            self.build_controller_service(row, group_id)
+            for row in controller_services.itertuples(index=False)
         ]
 
         component_types = {
@@ -105,6 +121,7 @@ class NifiConfigCompiler(Compiler):
             processors,
             funnel_objects,
             connections,
+            controller_service_objects,
         )
 
         self.output_reader = attach_file(
@@ -175,8 +192,37 @@ class NifiConfigCompiler(Compiler):
             """,
         )
 
+    def fetch_controller_services(self) -> pd.DataFrame:
+        return self.output_reader.select(
+            "DISTINCT ?service ?component ?controller_service_type "
+            "?bundle_group ?bundle_artifact ?bundle_version ?service_api_type "
+            "?service_api_bundle_group ?service_api_bundle_artifact "
+            "?service_api_bundle_version ?config ?scheduled_state",
+            """
+            ?container a tcs:DockerContainer ;
+                tcs:instantiates nifi:Orchestrator ;
+                tcs:runs ?step .
+            ?step p-plan:hasInputVar/tcs:embedded ?embedded .
+            ?embedded ?predicate ?service .
+
+            ?service a nifi:ControllerService ;
+                nifi:instantiatesControllerService ?component .
+            ?component nifi:controllerServiceType ?controller_service_type ;
+                nifi:bundleGroup ?bundle_group ;
+                nifi:bundleArtifact ?bundle_artifact ;
+                nifi:bundleVersion ?bundle_version ;
+                nifi:serviceApiType ?service_api_type ;
+                nifi:serviceApiBundleGroup ?service_api_bundle_group ;
+                nifi:serviceApiBundleArtifact ?service_api_bundle_artifact ;
+                nifi:serviceApiBundleVersion ?service_api_bundle_version .
+
+            OPTIONAL { ?service tcs:config ?config . }
+            OPTIONAL { ?service nifi:scheduledState ?scheduled_state . }
+            """,
+        )
+
     def build_processor(self, row, index: int, group_id: str) -> dict:
-        properties = self.fetch_properties(row)
+        properties, property_descriptors = self.fetch_properties(row)
         processor_id = nifi_id(str(row.step))
         scheduled_state = (
             "ENABLED" if pd.isna(row.scheduled_state) else str(row.scheduled_state)
@@ -206,16 +252,7 @@ class NifiConfigCompiler(Compiler):
                 "version": row.bundle_version,
             },
             "properties": properties,
-            "propertyDescriptors": {
-                name: {
-                    "name": name,
-                    "displayName": name,
-                    "identifiesControllerService": False,
-                    "sensitive": False,
-                    "dynamic": False,
-                }
-                for name in properties
-            },
+            "propertyDescriptors": property_descriptors,
             "style": {},
             "schedulingPeriod": scheduling_period,
             "schedulingStrategy": "TIMER_DRIVEN",
@@ -234,6 +271,48 @@ class NifiConfigCompiler(Compiler):
             "backoffMechanism": "PENALIZE_FLOWFILE",
             "maxBackoffPeriod": "10 mins",
             "componentType": "PROCESSOR",
+            "groupIdentifier": group_id,
+        }
+
+    def build_controller_service(self, row, group_id: str) -> dict:
+        properties, property_descriptors = self.fetch_mapped_properties(
+            row.config, row.component, row.service
+        )
+        scheduled_state = (
+            "DISABLED" if pd.isna(row.scheduled_state) else str(row.scheduled_state)
+        )
+        if scheduled_state not in {"DISABLED", "ENABLED"}:
+            raise ValueError(
+                f"NiFi controller service {row.service} has invalid "
+                f"nifi:scheduledState {scheduled_state!r}"
+            )
+
+        return {
+            "identifier": nifi_id(str(row.service)),
+            "instanceIdentifier": nifi_id(f"{row.service}:instance"),
+            "name": str(row.service).removeprefix(":"),
+            "comments": "",
+            "type": row.controller_service_type,
+            "bundle": {
+                "group": row.bundle_group,
+                "artifact": row.bundle_artifact,
+                "version": row.bundle_version,
+            },
+            "properties": properties,
+            "propertyDescriptors": property_descriptors,
+            "controllerServiceApis": [
+                {
+                    "type": row.service_api_type,
+                    "bundle": {
+                        "group": row.service_api_bundle_group,
+                        "artifact": row.service_api_bundle_artifact,
+                        "version": row.service_api_bundle_version,
+                    },
+                }
+            ],
+            "scheduledState": scheduled_state,
+            "bulletinLevel": "WARN",
+            "componentType": "CONTROLLER_SERVICE",
             "groupIdentifier": group_id,
         }
 
@@ -350,24 +429,39 @@ class NifiConfigCompiler(Compiler):
 
         return connections
 
-    def fetch_properties(self, row) -> dict:
-        if pd.isna(row.config):
-            return {}
+    def fetch_properties(self, row) -> tuple[dict, dict]:
+        return self.fetch_mapped_properties(row.config, row.component, row.step)
+
+    def fetch_mapped_properties(
+        self, config: str, component: str, owner: str
+    ) -> tuple[dict, dict]:
+        if pd.isna(config):
+            return {}, {}
 
         properties = self.output_reader.select(
-            "?predicate ?value ?property_name",
+            "?predicate ?value ?property_name ?sensitive "
+            "?is_controller_service ?controller_service_type",
             f"""
-            {row.config} tcs:embedded ?embedded .
+            {config} tcs:embedded ?embedded .
             ?embedded ?predicate ?value .
 
             OPTIONAL {{
-                {row.component} dcat:qualifiedRelation ?relationship .
+                {component} dcat:qualifiedRelation ?relationship .
                 ?relationship dcat:hadRole "configShape" ;
                     dct:relation ?shape .
 
                 ?shape sh:property ?property_shape .
                 ?property_shape sh:path ?predicate ;
                     nifi:propertyName ?property_name .
+                OPTIONAL {{ ?property_shape nifi:sensitive ?sensitive . }}
+            }}
+            OPTIONAL {{
+                ?value a nifi:ControllerService .
+                BIND (true AS ?is_controller_service)
+            }}
+            OPTIONAL {{
+                ?value nifi:instantiatesControllerService/nifi:controllerServiceType
+                    ?controller_service_type .
             }}
 
             FILTER (?predicate != rdf:type)
@@ -378,8 +472,19 @@ class NifiConfigCompiler(Compiler):
         if not unmapped.empty:
             predicates = ", ".join(unmapped["predicate"].astype(str))
             raise ValueError(
-                f"NiFi component {row.component} has unmapped "
+                f"NiFi component {component} has unmapped "
                 f"configuration properties: {predicates}"
+            )
+
+        unresolved_services = properties.loc[
+            properties["is_controller_service"].notna()
+            & properties["controller_service_type"].isna()
+        ]
+        if not unresolved_services.empty:
+            services = ", ".join(unresolved_services["value"].astype(str))
+            raise ValueError(
+                f"NiFi component {owner} references controller services with "
+                f"incomplete catalog metadata: {services}"
             )
 
         duplicate_properties = properties.loc[
@@ -390,10 +495,32 @@ class NifiConfigCompiler(Compiler):
                 sorted(set(duplicate_properties["property_name"].astype(str)))
             )
             raise ValueError(
-                f"NiFi step {row.step} assigns properties more than once: {names}"
+                f"NiFi component {owner} assigns properties more than once: {names}"
             )
 
-        return dict(zip(properties["property_name"], properties["value"]))
+        values = {
+            str(row.property_name): (
+                nifi_id(str(row.value))
+                if not pd.isna(row.controller_service_type)
+                else row.value
+            )
+            for row in properties.itertuples(index=False)
+        }
+        descriptors = {
+            str(row.property_name): {
+                "name": str(row.property_name),
+                "displayName": str(row.property_name),
+                "identifiesControllerService": not pd.isna(
+                    row.controller_service_type
+                ),
+                "sensitive": (
+                    False if pd.isna(row.sensitive) else str(row.sensitive).lower() == "true"
+                ),
+                "dynamic": False,
+            }
+            for row in properties.itertuples(index=False)
+        }
+        return values, descriptors
 
     def fetch_auto_terminated_relationships(self, component: str) -> list[str]:
         relationships = self.output_reader.filter(
@@ -411,6 +538,7 @@ class NifiConfigCompiler(Compiler):
         processors: list[dict],
         funnels: list[dict],
         connections: list[dict],
+        controller_services: list[dict],
     ) -> dict:
         labels = self.output_reader.filter(sub=pipeline_id, pred="rdfs:label").df
         comments = self.output_reader.filter(sub=pipeline_id, pred="rdfs:comment").df
@@ -437,7 +565,7 @@ class NifiConfigCompiler(Compiler):
                 "connections": connections,
                 "labels": [],
                 "funnels": funnels,
-                "controllerServices": [],
+                "controllerServices": controller_services,
                 "defaultFlowFileExpiration": "0 sec",
                 "defaultBackPressureObjectThreshold": 10000,
                 "defaultBackPressureDataSizeThreshold": "1 GB",
