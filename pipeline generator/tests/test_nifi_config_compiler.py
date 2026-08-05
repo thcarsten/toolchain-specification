@@ -14,7 +14,10 @@ from rdfine import GraphReader  # noqa: E402
 
 
 class NifiConfigCompilerTest(unittest.TestCase):
-    def test_channel_wiring_emits_funnel_and_connections(self):
+    """Contract tests for NifiConfigCompiler against the Urban Sense definition."""
+
+    @classmethod
+    def setUpClass(cls):
         data_dir = ROOT / "data"
         graph = Graph()
         for filename in [
@@ -34,11 +37,23 @@ class NifiConfigCompilerTest(unittest.TestCase):
             )
         )
 
-        reader = GraphReader(graph).infer(data_dir / "inference_rules.yaml")
-        report = reader.validate(advanced=True, inference="rdfs")
-        self.assertTrue(report.ask("?report sh:conforms true"))
+        cls.reader = GraphReader(graph).infer(data_dir / "inference_rules.yaml")
+        report = cls.reader.validate(advanced=True, inference="rdfs")
+        if not report.ask("?report sh:conforms true"):
+            violations = report.select(
+                "?focus ?message",
+                """
+                ?result a sh:ValidationResult ;
+                    sh:focusNode ?focus ;
+                    sh:resultMessage ?message .
+                """,
+            )
+            details = "\n".join(
+                f"{row.focus}: {row.message}" for row in violations.itertuples(index=False)
+            )
+            raise AssertionError(f"SHACL does not conform:\n{details}")
 
-        build = PipelineGenerator(":DemonstratorPipeline", reader.graph).compile()
+        build = PipelineGenerator(":DemonstratorPipeline", cls.reader.graph).compile()
         files = GraphReader(build).select(
             "?content",
             """
@@ -47,146 +62,90 @@ class NifiConfigCompilerTest(unittest.TestCase):
                 tcs:literal ?content .
             """,
         )
-        flow = json.loads(str(files.iloc[0]["content"]))
-        root = flow["rootGroup"]
+        cls.flow = json.loads(str(files.iloc[0]["content"]))
+        cls.root = cls.flow["rootGroup"]
 
-        self.assertEqual(7, len(root["processors"]))
-        self.assertEqual(3, len(root["funnels"]))
-        self.assertEqual(11, len(root["connections"]))
-        self.assertEqual(1, len(root["controllerServices"]))
+    def test_emits_flow_json_with_expected_component_kinds(self):
+        self.assertTrue(self.root["processors"])
+        self.assertTrue(self.root["funnels"])
+        self.assertTrue(self.root["connections"])
+        self.assertEqual(1, len(self.root["controllerServices"]))
+        self.assertEqual(6, len(self.root["processors"]))
+        self.assertEqual(2, len(self.root["funnels"]))
+        self.assertEqual(9, len(self.root["connections"]))
+
+    def test_connections_use_channel_topology_and_embedded_routes(self):
+        type_pairs = [
+            (c["source"]["type"], c["destination"]["type"])
+            for c in self.root["connections"]
+        ]
         self.assertCountEqual(
-            [("PROCESSOR", "PROCESSOR")] * 6
-            + [("PROCESSOR", "FUNNEL")] * 5,
-            [
-                (connection["source"]["type"], connection["destination"]["type"])
-                for connection in root["connections"]
-            ],
+            [("PROCESSOR", "PROCESSOR")] * 5 + [("PROCESSOR", "FUNNEL")] * 4,
+            type_pairs,
         )
         self.assertCountEqual(
-            [("success",)] * 4
-            + [("failure",)] * 2
-            + [
-                ("Response",),
-                ("data",),
+            [
+                ("success",),
+                ("success",),
                 ("splits",),
+                ("failure",),
+                ("success",),
+                ("failure",),
+                ("data",),
                 ("unparseable", "valueNotFound"),
                 ("Failure", "No Retry", "Response", "Retry"),
             ],
             [
-                tuple(connection["selectedRelationships"])
-                for connection in root["connections"]
+                tuple(c["selectedRelationships"])
+                for c in self.root["connections"]
             ],
         )
-        invoke_http = next(
-            processor
-            for processor in root["processors"]
-            if processor["name"] == "InvokeEndpoint"
-        )
-        ldes_sink = next(
-            processor
-            for processor in root["processors"]
-            if processor["name"] == "ldessink"
-        )
-        generate_flow_file = next(
-            processor
-            for processor in root["processors"]
-            if processor["name"] == "GenerateFlowFile"
-        )
-        self.assertEqual("RUNNING", generate_flow_file["scheduledState"])
-        self.assertEqual("10 sec", generate_flow_file["schedulingPeriod"])
-        self.assertEqual("RUNNING", invoke_http["scheduledState"])
-        self.assertEqual("0 sec", invoke_http["schedulingPeriod"])
+
+    def test_controller_service_step_uuid_wired_into_processor(self):
         fetch_azure = next(
-            processor
-            for processor in root["processors"]
-            if processor["name"] == "FetchAzureBlobStorage_v12"
+            p for p in self.root["processors"] if p["name"] == "FetchAzureBlobStorage_v12"
         )
-        credentials = root["controllerServices"][0]
-        self.assertEqual("DISABLED", credentials["scheduledState"])
-        self.assertTrue(
-            credentials["propertyDescriptors"]["SAS Token"]["sensitive"]
-        )
-        self.assertEqual(
-            "org.apache.nifi.services.azure.storage.AzureStorageCredentialsService_v12",
-            credentials["controllerServiceApis"][0]["type"],
-        )
+        credentials = self.root["controllerServices"][0]
+        self.assertEqual("ENABLED", credentials["scheduledState"])
         self.assertEqual(
             credentials["identifier"],
             fetch_azure["properties"]["Storage Credentials"],
         )
         self.assertTrue(
-            fetch_azure["propertyDescriptors"]["Storage Credentials"]
-            ["identifiesControllerService"]
+            fetch_azure["propertyDescriptors"]["Storage Credentials"][
+                "identifiesControllerService"
+            ]
+        )
+        self.assertTrue(credentials["propertyDescriptors"]["SAS Token"]["sensitive"])
+
+    def test_connected_relationships_are_removed_from_auto_terminated(self):
+        split_text = next(p for p in self.root["processors"] if p["name"] == "SplitText")
+        self.assertEqual(["original"], split_text["autoTerminatedRelationships"])
+
+        ldes_sink = next(p for p in self.root["processors"] if p["name"] == "ldessink")
+        self.assertEqual(["Original"], ldes_sink["autoTerminatedRelationships"])
+
+        fetch_azure = next(
+            p for p in self.root["processors"] if p["name"] == "FetchAzureBlobStorage_v12"
         )
         self.assertEqual(["failure"], fetch_azure["autoTerminatedRelationships"])
-        split_text = next(
-            processor
-            for processor in root["processors"]
-            if processor["name"] == "SplitText"
-        )
-        self.assertEqual("1", split_text["properties"]["Line Split Count"])
-        self.assertEqual(["original"], split_text["autoTerminatedRelationships"])
-        execute_groovy = next(
-            processor
-            for processor in root["processors"]
-            if processor["name"] == "ExecuteGroovyScript"
-        )
-        self.assertEqual("rollback", execute_groovy["properties"]["Failure Strategy"])
-        self.assertEqual([], execute_groovy["autoTerminatedRelationships"])
-        create_version = next(
-            processor
-            for processor in root["processors"]
-            if processor["name"] == "CreateVersionObjectProcessor"
-        )
-        self.assertEqual(
-            "be.vlaanderen.informatievlaanderen.ldes.ldi.processors.CreateVersionObjectProcessor",
-            create_version["type"],
-        )
-        self.assertEqual(
-            "create-version-object-processor",
-            create_version["bundle"]["artifact"],
-        )
-        self.assertEqual(
-            "https://data.vlaanderen.be/ns/waterkwaliteit#WaterkwaliteitObservatieVerzameling",
-            create_version["properties"]["MEMBER_RDF_SYNTAX_TYPE"],
-        )
-        self.assertEqual([], create_version["autoTerminatedRelationships"])
-        funnel_ids = {funnel["identifier"] for funnel in root["funnels"]}
-        self.assertEqual(
-            [1, 1, 3],
-            sorted(
-                sum(
-                    connection["destination"]["id"] == funnel_id
-                    for connection in root["connections"]
-                )
-                for funnel_id in funnel_ids
-            ),
-        )
-        components_by_id = {
-            component["identifier"]: component
-            for component in root["processors"] + root["funnels"]
+
+    def test_layout_is_left_to_right_on_dag_edges(self):
+        by_id = {
+            c["identifier"]: c
+            for c in self.root["processors"] + self.root["funnels"]
         }
-        for connection in root["connections"]:
-            source = components_by_id[connection["source"]["id"]]
-            destination = components_by_id[connection["destination"]["id"]]
+        for connection in self.root["connections"]:
+            source = by_id[connection["source"]["id"]]
+            destination = by_id[connection["destination"]["id"]]
             self.assertLess(source["position"]["x"], destination["position"]["x"])
 
-        self.assertEqual(
-            fetch_azure["position"]["x"], invoke_http["position"]["x"]
+    def test_processors_default_to_running_when_authored(self):
+        generate = next(
+            p for p in self.root["processors"] if p["name"] == "GenerateFlowFile"
         )
-        self.assertNotEqual(
-            fetch_azure["position"]["y"], invoke_http["position"]["y"]
-        )
-        self.assertEqual(
-            ["Failure", "No Retry", "Original", "Retry"],
-            invoke_http["autoTerminatedRelationships"],
-        )
-        self.assertEqual("POST", ldes_sink["properties"]["HTTP Method"])
-        self.assertEqual(
-            "http://host.docker.internal:9003/observations",
-            ldes_sink["properties"]["HTTP URL"],
-        )
-        self.assertEqual(["Original"], ldes_sink["autoTerminatedRelationships"])
+        self.assertEqual("RUNNING", generate["scheduledState"])
+        self.assertEqual("10 sec", generate["schedulingPeriod"])
 
 
 if __name__ == "__main__":

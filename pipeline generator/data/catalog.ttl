@@ -644,7 +644,7 @@ nifi:FetchAzureBlobStorage_v12
         sh:path nifi:storageCredentials ;
         sh:name "Storage Credentials" ;
         nifi:propertyName "Storage Credentials" ;
-        sh:class nifi:ControllerService ;
+        sh:class tcs:InstancePipelineComponent ;
         sh:minCount 1 ;
         sh:maxCount 1
     ] ;
@@ -900,8 +900,8 @@ nifi:AzureStorageCredentialsControllerService_v12
         sh:select """
             SELECT ?this WHERE {
                 ?service
-                    nifi:instantiatesControllerService nifi:AzureStorageCredentialsControllerService_v12 ;
-                    tcs:config/tcs:embedded ?this .
+                    prov:specializationOf nifi:AzureStorageCredentialsControllerService_v12 ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
             }
         """
     ] ;
@@ -959,6 +959,7 @@ nifi:InvokeHTTP
     nifi:bundleGroup "org.apache.nifi" ;
     nifi:bundleArtifact "nifi-standard-nar" ;
     nifi:bundleVersion "2.10.0" ;
+    nifi:outgoingRelationship "Response" ;
     nifi:autoTerminatedRelationship
         "Failure",
         "No Retry",

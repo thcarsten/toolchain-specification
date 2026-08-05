@@ -2,6 +2,7 @@
 @prefix dcat: <http://www.w3.org/ns/dcat#> .
 @prefix dct: <http://purl.org/dc/terms/> .
 @prefix ldio: <http://example.org/example/ldio/> .
+@prefix nifi: <http://example.org/example/nifi/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix p-plan: <http://purl.org/net/p-plan#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
@@ -75,6 +76,7 @@ tcs:prefixes
         [ sh:prefix "dcat"   ; sh:namespace "http://www.w3.org/ns/dcat#"^^xsd:anyURI ] ,
         [ sh:prefix "dct"    ; sh:namespace "http://purl.org/dc/terms/"^^xsd:anyURI ] ,
         [ sh:prefix "ldio"   ; sh:namespace "http://example.org/example/ldio/"^^xsd:anyURI ] ,
+        [ sh:prefix "nifi"   ; sh:namespace "http://example.org/example/nifi/"^^xsd:anyURI ] ,
         [ sh:prefix "owl"    ; sh:namespace "http://www.w3.org/2002/07/owl#"^^xsd:anyURI ] ,
         [ sh:prefix "p-plan" ; sh:namespace "http://purl.org/net/p-plan#"^^xsd:anyURI ] ,
         [ sh:prefix "prov"   ; sh:namespace "http://www.w3.org/ns/prov#"^^xsd:anyURI ] ,
@@ -769,4 +771,164 @@ tcs:SwStepEnvValueShape a sh:NodeShape ;
                 FILTER ( ?p != rdf:type && !isLiteral(?v) )
             }
         """
+    ] .
+
+
+#################################################################
+# 2.4  Apache NiFi
+#
+# NifiConfigCompiler emits flow.json from catalog metadata + authored
+# tcs:embedded configs. These shapes enforce the catalog metadata the
+# compiler requires; they do not mirror every NiFi NAR property.
+# Discriminator: dct:requires nifi:Orchestrator.
+#################################################################
+
+# NiFi processors must declare type + bundle coordinates and at least
+# one relationship (outgoing and/or auto-terminated) so connections and
+# auto-termination can be derived.
+tcs:NifiProcessorMetadataShape a sh:NodeShape ;
+    rdfs:label "NiFi processor metadata shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:PipelineComponent ;
+                      dct:requires nifi:Orchestrator ;
+                      nifi:processorType ?type .
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path nifi:processorType ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "NiFi processor {?this} must declare exactly one nifi:processorType."
+    ] ;
+    sh:property [
+        sh:path nifi:bundleGroup ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path nifi:bundleArtifact ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path nifi:bundleVersion ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi processor {?this} must declare at least one nifi:outgoingRelationship or nifi:autoTerminatedRelationship." ;
+        sh:select """
+            SELECT ?this WHERE {
+                FILTER NOT EXISTS {
+                    ?this nifi:outgoingRelationship|nifi:autoTerminatedRelationship ?rel .
+                }
+            }
+        """
+    ] .
+
+
+# NiFi funnels are identified by nifi:componentType "FUNNEL".
+tcs:NifiFunnelMetadataShape a sh:NodeShape ;
+    rdfs:label "NiFi funnel metadata shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:PipelineComponent ;
+                      dct:requires nifi:Orchestrator ;
+                      nifi:componentType "FUNNEL" .
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path nifi:componentType ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:hasValue "FUNNEL" ;
+        sh:message "NiFi funnel {?this} must declare nifi:componentType \"FUNNEL\"."
+    ] .
+
+
+# NiFi controller-service components need type, bundle, and service API
+# coordinates so the compiler can emit controllerServices[].
+tcs:NifiControllerServiceMetadataShape a sh:NodeShape ;
+    rdfs:label "NiFi controller-service metadata shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:PipelineComponent ;
+                      dct:requires nifi:Orchestrator ;
+                      nifi:controllerServiceType ?type .
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path nifi:controllerServiceType ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path nifi:bundleGroup ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path nifi:bundleArtifact ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path nifi:bundleVersion ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path nifi:serviceApiType ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path nifi:serviceApiBundleGroup ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path nifi:serviceApiBundleArtifact ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] ;
+    sh:property [
+        sh:path nifi:serviceApiBundleVersion ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:datatype xsd:string
+    ] .
+
+
+# Optional instance scheduledState must be a known NiFi enum value.
+tcs:NifiStepScheduledStateShape a sh:NodeShape ;
+    rdfs:label "NiFi step scheduledState shape" ;
+
+    sh:targetSubjectsOf nifi:scheduledState ;
+
+    sh:property [
+        sh:path nifi:scheduledState ;
+        sh:datatype xsd:string ;
+        sh:in ("DISABLED" "ENABLED" "RUNNING") ;
+        sh:maxCount 1 ;
+        sh:message "nifi:scheduledState on {?this} must be one of DISABLED, ENABLED, RUNNING."
     ] .

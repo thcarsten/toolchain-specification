@@ -12,17 +12,27 @@ from .utils import attach_file
 _PROCESSOR_X_SPACING = 650.0
 _PROCESSOR_Y_SPACING = 250.0
 
+
 class NifiConfigCompiler(Compiler):
-    """
-    Class to generate config file for Nifi
+    """Compile a NiFi ``flow.json`` from the pipeline-build graph.
+
+    Property emission looks up ``nifi:propertyName`` on each component's
+    ``configShape`` ``sh:property`` (same place that validates the
+    authored Turtle). Only predicates present in ``tcs:embedded`` are
+    emitted — NiFi fills remaining processor defaults from the NAR at
+    load time, so the catalog does not mirror every NiFi property.
+
+    Framework wiring for outbound relationships lives in the writer
+    step's ``tcs:embedded`` as ``nifi:route`` blocks (not on
+    ``tcs:Channel``). Topology still comes from ``tcs:writesTo`` /
+    ``tcs:readsFrom``.
     """
 
     def __init__(self, graph: Graph) -> None:
-            super().__init__(graph)
-            # Intermediate state — populated in ``compile``.
-            self.df_steps: pd.DataFrame = pd.DataFrame()
-            self.dict_configs: dict = {}
-            self.output: dict = {}
+        super().__init__(graph)
+        # Intermediate state — populated in ``compile``.
+        self.df_steps: pd.DataFrame = pd.DataFrame()
+        self.output: dict = {}
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
@@ -42,7 +52,12 @@ class NifiConfigCompiler(Compiler):
             raise ValueError("NiFi container exists but runs no pipeline steps")
 
         implemented_steps = pd.concat(
-            [self.df_steps[["step"]], funnels[["step"]]], ignore_index=True
+            [
+                self.df_steps[["step"]],
+                funnels[["step"]],
+                controller_services[["step"]],
+            ],
+            ignore_index=True,
         )
         missing_steps = expected_steps.loc[
             ~expected_steps["step"].isin(implemented_steps["step"])
@@ -62,11 +77,11 @@ class NifiConfigCompiler(Compiler):
             raise ValueError(f"NiFi steps must have at most one configuration: {steps}")
 
         duplicate_services = controller_services.loc[
-            controller_services["service"].duplicated(keep=False)
+            controller_services["step"].duplicated(keep=False)
         ]
         if not duplicate_services.empty:
             services = ", ".join(
-                sorted(set(duplicate_services["service"].astype(str)))
+                sorted(set(duplicate_services["step"].astype(str)))
             )
             raise ValueError(
                 f"NiFi controller services must have at most one configuration: {services}"
@@ -130,10 +145,10 @@ class NifiConfigCompiler(Compiler):
         )
 
         self.output_reader = attach_file(
-             self.output_reader,
-             filename="flow.json",
-             filepath="nifi",
-             content=json.dumps(self.output, indent=4),
+            self.output_reader,
+            filename="flow.json",
+            filepath="nifi",
+            content=json.dumps(self.output, indent=4),
         )
 
         return self.output_reader.graph
@@ -182,7 +197,7 @@ class NifiConfigCompiler(Compiler):
                 ?step nifi:schedulingPeriod ?scheduling_period .
             }
             """,
-        )    
+        )
 
     def fetch_funnels(self) -> pd.DataFrame:
         return self.output_reader.select(
@@ -198,8 +213,9 @@ class NifiConfigCompiler(Compiler):
         )
 
     def fetch_controller_services(self) -> pd.DataFrame:
+        """Return controller-service steps assigned to the NiFi container."""
         return self.output_reader.select(
-            "DISTINCT ?service ?component ?controller_service_type "
+            "DISTINCT ?step ?component ?controller_service_type "
             "?bundle_group ?bundle_artifact ?bundle_version ?service_api_type "
             "?service_api_bundle_group ?service_api_bundle_artifact "
             "?service_api_bundle_version ?config ?scheduled_state",
@@ -207,11 +223,8 @@ class NifiConfigCompiler(Compiler):
             ?container a tcs:DockerContainer ;
                 tcs:instantiates nifi:Orchestrator ;
                 tcs:runs ?step .
-            ?step p-plan:hasInputVar/tcs:embedded ?embedded .
-            ?embedded ?predicate ?service .
 
-            ?service a nifi:ControllerService ;
-                nifi:instantiatesControllerService ?component .
+            ?step prov:specializationOf ?component .
             ?component nifi:controllerServiceType ?controller_service_type ;
                 nifi:bundleGroup ?bundle_group ;
                 nifi:bundleArtifact ?bundle_artifact ;
@@ -221,8 +234,8 @@ class NifiConfigCompiler(Compiler):
                 nifi:serviceApiBundleArtifact ?service_api_bundle_artifact ;
                 nifi:serviceApiBundleVersion ?service_api_bundle_version .
 
-            OPTIONAL { ?service tcs:config ?config . }
-            OPTIONAL { ?service nifi:scheduledState ?scheduled_state . }
+            OPTIONAL { ?step p-plan:hasInputVar ?config . }
+            OPTIONAL { ?step nifi:scheduledState ?scheduled_state . }
             """,
         )
 
@@ -232,7 +245,7 @@ class NifiConfigCompiler(Compiler):
         properties, property_descriptors = self.fetch_properties(row)
         processor_id = nifi_id(str(row.step))
         scheduled_state = (
-            "ENABLED" if pd.isna(row.scheduled_state) else str(row.scheduled_state)
+            "RUNNING" if pd.isna(row.scheduled_state) else str(row.scheduled_state)
         )
         if scheduled_state not in {"DISABLED", "ENABLED", "RUNNING"}:
             raise ValueError(
@@ -283,21 +296,21 @@ class NifiConfigCompiler(Compiler):
 
     def build_controller_service(self, row, group_id: str) -> dict:
         properties, property_descriptors = self.fetch_mapped_properties(
-            row.config, row.component, row.service
+            row.config, row.component, row.step
         )
         scheduled_state = (
-            "DISABLED" if pd.isna(row.scheduled_state) else str(row.scheduled_state)
+            "ENABLED" if pd.isna(row.scheduled_state) else str(row.scheduled_state)
         )
         if scheduled_state not in {"DISABLED", "ENABLED"}:
             raise ValueError(
-                f"NiFi controller service {row.service} has invalid "
+                f"NiFi controller service {row.step} has invalid "
                 f"nifi:scheduledState {scheduled_state!r}"
             )
 
         return {
-            "identifier": nifi_id(str(row.service)),
-            "instanceIdentifier": nifi_id(f"{row.service}:instance"),
-            "name": str(row.service).removeprefix(":"),
+            "identifier": nifi_id(str(row.step)),
+            "instanceIdentifier": nifi_id(f"{row.step}:instance"),
+            "name": str(row.step).removeprefix(":"),
             "comments": "",
             "type": row.controller_service_type,
             "bundle": {
@@ -408,7 +421,9 @@ class NifiConfigCompiler(Compiler):
                 ?source_component nifi:outgoingRelationship ?default_relationship .
             }
             OPTIONAL {
-                ?channel nifi:selectedRelationship ?selected_relationship .
+                ?source p-plan:hasInputVar/tcs:embedded/nifi:route ?route .
+                ?route nifi:channel ?channel ;
+                    nifi:selectedRelationship ?selected_relationship .
             }
             OPTIONAL {
                 ?source_component
@@ -440,8 +455,9 @@ class NifiConfigCompiler(Compiler):
             if unknown_relationships:
                 unknown = ", ".join(sorted(unknown_relationships))
                 raise ValueError(
-                    f"NiFi channel {channel} selects relationships not declared "
-                    f"by {group.iloc[0]['source_component']}: {unknown}"
+                    f"NiFi route on {source} for channel {channel} selects "
+                    f"relationships not declared by "
+                    f"{group.iloc[0]['source_component']}: {unknown}"
                 )
 
             relationships = sorted(
@@ -450,8 +466,9 @@ class NifiConfigCompiler(Compiler):
             )
             if source_type == "PROCESSOR" and not relationships:
                 raise ValueError(
-                    f"NiFi processor {source} writes to {channel} but its "
-                    "catalog component has no nifi:outgoingRelationship"
+                    f"NiFi processor {source} writes to {channel} but has no "
+                    "nifi:route selectedRelationship and its catalog component "
+                    "has no nifi:outgoingRelationship"
                 )
 
             connection_key = f"{source}:{channel}:{destination}"
@@ -515,15 +532,12 @@ class NifiConfigCompiler(Compiler):
                 OPTIONAL {{ ?property_shape nifi:sensitive ?sensitive . }}
             }}
             OPTIONAL {{
-                ?value a nifi:ControllerService .
+                ?value prov:specializationOf ?cs_component .
+                ?cs_component nifi:controllerServiceType ?controller_service_type .
                 BIND (true AS ?is_controller_service)
             }}
-            OPTIONAL {{
-                ?value nifi:instantiatesControllerService/nifi:controllerServiceType
-                    ?controller_service_type .
-            }}
 
-            FILTER (?predicate != rdf:type)
+            FILTER (?predicate != rdf:type && ?predicate != nifi:route)
             """,
         )
 
@@ -642,6 +656,7 @@ class NifiConfigCompiler(Compiler):
             "parameterProviders": [],
             "latest": False,
         }
+
 
 def nifi_id(value: str) -> str:
     return str(uuid5(NAMESPACE_URL, value))
