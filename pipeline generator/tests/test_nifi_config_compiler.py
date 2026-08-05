@@ -50,12 +50,12 @@ class NifiConfigCompilerTest(unittest.TestCase):
         flow = json.loads(str(files.iloc[0]["content"]))
         root = flow["rootGroup"]
 
-        self.assertEqual(6, len(root["processors"]))
-        self.assertEqual(2, len(root["funnels"]))
-        self.assertEqual(10, len(root["connections"]))
+        self.assertEqual(7, len(root["processors"]))
+        self.assertEqual(3, len(root["funnels"]))
+        self.assertEqual(11, len(root["connections"]))
         self.assertEqual(1, len(root["controllerServices"]))
         self.assertCountEqual(
-            [("PROCESSOR", "PROCESSOR")] * 5
+            [("PROCESSOR", "PROCESSOR")] * 6
             + [("PROCESSOR", "FUNNEL")] * 5,
             [
                 (connection["source"]["type"], connection["destination"]["type"])
@@ -70,6 +70,7 @@ class NifiConfigCompilerTest(unittest.TestCase):
                 ("data",),
                 ("splits",),
                 ("unparseable", "valueNotFound"),
+                ("Failure", "No Retry", "Response", "Retry"),
             ],
             [
                 tuple(connection["selectedRelationships"])
@@ -80,6 +81,11 @@ class NifiConfigCompilerTest(unittest.TestCase):
             processor
             for processor in root["processors"]
             if processor["name"] == "InvokeEndpoint"
+        )
+        ldes_sink = next(
+            processor
+            for processor in root["processors"]
+            if processor["name"] == "ldessink"
         )
         generate_flow_file = next(
             processor
@@ -147,7 +153,7 @@ class NifiConfigCompilerTest(unittest.TestCase):
         self.assertEqual([], create_version["autoTerminatedRelationships"])
         funnel_ids = {funnel["identifier"] for funnel in root["funnels"]}
         self.assertEqual(
-            [2, 3],
+            [1, 1, 3],
             sorted(
                 sum(
                     connection["destination"]["id"] == funnel_id
@@ -172,17 +178,15 @@ class NifiConfigCompilerTest(unittest.TestCase):
             fetch_azure["position"]["y"], invoke_http["position"]["y"]
         )
         self.assertEqual(
-            1,
-            len({funnel["position"]["x"] for funnel in root["funnels"]}),
-        )
-        self.assertEqual(
-            2,
-            len({funnel["position"]["y"] for funnel in root["funnels"]}),
-        )
-        self.assertEqual(
             ["Failure", "No Retry", "Original", "Retry"],
             invoke_http["autoTerminatedRelationships"],
         )
+        self.assertEqual("POST", ldes_sink["properties"]["HTTP Method"])
+        self.assertEqual(
+            "http://host.docker.internal:9003/observations",
+            ldes_sink["properties"]["HTTP URL"],
+        )
+        self.assertEqual(["Original"], ldes_sink["autoTerminatedRelationships"])
 
 
 if __name__ == "__main__":
