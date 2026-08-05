@@ -1,3 +1,23 @@
+"""NiFi configuration compiler.
+
+Translates the NiFi slice of a ``tcs:PipelineBuild`` graph into a persisted
+NiFi 2 ``flow.json``, attached as an ``spdx:File`` under ``nifi/``.
+
+Authoring model (Turtle → NiFi)
+-------------------------------
+* **Topology** — ``tcs:writesTo`` / ``tcs:readsFrom`` on steps name the
+  channels that become NiFi connections.
+* **Relationships** — which NiFi relationship feeds a channel is authored
+  on the *writer* step as ``tcs:embedded`` / ``nifi:route`` (not on the
+  Channel resource). Readers only declare ``tcs:readsFrom``.
+* **Properties** — predicates in ``tcs:embedded`` are renamed via
+  ``nifi:propertyName`` on the component's ``configShape``. Only authored
+  keys are emitted; NiFi fills the rest from the NAR at load time.
+* **Controller services** — plan steps like processors/funnels
+  (``tcs:InstancePipelineComponent`` + ``tcs:runs``), referenced from
+  processor configs by step IRI.
+"""
+
 import json
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
@@ -12,20 +32,21 @@ from .utils import attach_file
 _PROCESSOR_X_SPACING = 650.0
 _PROCESSOR_Y_SPACING = 250.0
 
+# Shared by every NiFi step fetch (processors, funnels, controller services).
+_NIFI_RUNS_STEP = """
+?container a tcs:DockerContainer ;
+    tcs:instantiates nifi:Orchestrator ;
+    tcs:runs ?step .
+?step prov:specializationOf ?component .
+"""
+
 
 class NifiConfigCompiler(Compiler):
-    """Compile a NiFi ``flow.json`` from the pipeline-build graph.
+    """Compile a NiFi ``nifi/flow.json`` from the pipeline-build graph.
 
-    Property emission looks up ``nifi:propertyName`` on each component's
-    ``configShape`` ``sh:property`` (same place that validates the
-    authored Turtle). Only predicates present in ``tcs:embedded`` are
-    emitted — NiFi fills remaining processor defaults from the NAR at
-    load time, so the catalog does not mirror every NiFi property.
-
-    Framework wiring for outbound relationships lives in the writer
-    step's ``tcs:embedded`` as ``nifi:route`` blocks (not on
-    ``tcs:Channel``). Topology still comes from ``tcs:writesTo`` /
-    ``tcs:readsFrom``.
+    Intermediate state on the instance (filled during :meth:`compile`):
+    * ``df_steps`` — processor rows (type, bundle, config, scheduling).
+    * ``output`` — the assembled flow.json dict before attach.
     """
 
     def __init__(self, graph: Graph) -> None:
@@ -36,13 +57,14 @@ class NifiConfigCompiler(Compiler):
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Triggered when a container instantiates the Nifi orchestrator."""
+        """True when a container instantiates ``nifi:Orchestrator``."""
         return not graph_reader.filter(
             pred="tcs:instantiates",
             obj="nifi:Orchestrator",
         ).df.empty
 
     def compile(self) -> Graph:
+        """Fetch > plan edges > layout > emit JSON > attach ``flow.json``."""
         expected_steps = self.fetch_expected_steps()
         self.df_steps = self.fetch_steps()
         funnels = self.fetch_funnels()
@@ -51,6 +73,7 @@ class NifiConfigCompiler(Compiler):
         if expected_steps.empty:
             raise ValueError("NiFi container exists but runs no pipeline steps")
 
+        # Every tcs:runs step must resolve as processor, funnel, or CS.
         implemented_steps = pd.concat(
             [
                 self.df_steps[["step"]],
@@ -65,7 +88,7 @@ class NifiConfigCompiler(Compiler):
         if not missing_steps.empty:
             components = ", ".join(missing_steps["component"].astype(str))
             raise ValueError(
-                "NiFi steps have incomplete processor metadata in the catalog: "
+                "NiFi steps have incomplete NiFi catalog metadata: "
                 f"{components}"
             )
 
@@ -96,15 +119,30 @@ class NifiConfigCompiler(Compiler):
         )
         group_id = nifi_id(f"{pipeline_id}:group")
 
+        # Connection endpoints are processors and funnels only (not CS).
         component_types = {
             **{str(step): "PROCESSOR" for step in self.df_steps["step"]},
             **{str(step): "FUNNEL" for step in funnels["step"]},
         }
-        connections = self.build_connections(group_id, component_types)
-        positions = self.build_positions(component_types, connections)
+        connection_plans = self.plan_connections(component_types)
+        positions = self.build_positions(
+            component_types,
+            [(plan["source"], plan["destination"]) for plan in connection_plans],
+        )
+        # Relationships already wired as connections must not stay auto-terminated.
+        connected_by_source = {
+            plan["source"]: set() for plan in connection_plans
+        }
+        for plan in connection_plans:
+            connected_by_source[plan["source"]].update(plan["selectedRelationships"])
 
         processors = [
-            self.build_processor(row, positions[str(row.step)], group_id)
+            self.build_processor(
+                row,
+                positions[str(row.step)],
+                group_id,
+                connected_by_source.get(str(row.step), set()),
+            )
             for row in sorted(
                 self.df_steps.itertuples(index=False),
                 key=lambda row: positions[str(row.step)],
@@ -121,19 +159,10 @@ class NifiConfigCompiler(Compiler):
             self.build_controller_service(row, group_id)
             for row in controller_services.itertuples(index=False)
         ]
-
-        for processor in processors:
-            connected_relationships = {
-                relationship
-                for connection in connections
-                if connection["source"]["id"] == processor["identifier"]
-                for relationship in connection["selectedRelationships"]
-            }
-            processor["autoTerminatedRelationships"] = [
-                relationship
-                for relationship in processor["autoTerminatedRelationships"]
-                if relationship not in connected_relationships
-            ]
+        connections = [
+            self.materialize_connection(plan, group_id, component_types)
+            for plan in connection_plans
+        ]
 
         self.output = self.build_flow(
             pipeline_id,
@@ -162,52 +191,41 @@ class NifiConfigCompiler(Compiler):
         """
         return self.output_reader.select(
             "DISTINCT ?step ?component",
-            """
-            ?container a tcs:DockerContainer ;
-                tcs:instantiates nifi:Orchestrator ;
-                tcs:runs ?step .
-            ?step prov:specializationOf ?component .
-            """,
+            _NIFI_RUNS_STEP,
         )
 
-    def fetch_steps(self):
+    def fetch_steps(self) -> pd.DataFrame:
+        """Processor steps: catalog type/bundle + optional config and scheduling."""
         return self.output_reader.select(
             "?step ?component ?processor_type ?bundle_group "
             "?bundle_artifact ?bundle_version ?config "
             "?scheduled_state ?scheduling_period",
-            """
-            ?container a tcs:DockerContainer ;
-                tcs:instantiates nifi:Orchestrator ;
-                tcs:runs ?step .
-
-            ?step prov:specializationOf ?component .
+            f"""
+            {_NIFI_RUNS_STEP}
 
             ?component nifi:processorType ?processor_type ;
                 nifi:bundleGroup ?bundle_group ;
                 nifi:bundleArtifact ?bundle_artifact ;
                 nifi:bundleVersion ?bundle_version .
 
-            OPTIONAL {
+            OPTIONAL {{
                 ?step p-plan:hasInputVar ?config .
-            }
-            OPTIONAL {
+            }}
+            OPTIONAL {{
                 ?step nifi:scheduledState ?scheduled_state .
-            }
-            OPTIONAL {
+            }}
+            OPTIONAL {{
                 ?step nifi:schedulingPeriod ?scheduling_period .
-            }
+            }}
             """,
         )
 
     def fetch_funnels(self) -> pd.DataFrame:
+        """Funnel steps (catalog ``nifi:componentType "FUNNEL"``)."""
         return self.output_reader.select(
             "?step ?component",
-            """
-            ?container a tcs:DockerContainer ;
-                tcs:instantiates nifi:Orchestrator ;
-                tcs:runs ?step .
-
-            ?step prov:specializationOf ?component .
+            f"""
+            {_NIFI_RUNS_STEP}
             ?component nifi:componentType "FUNNEL" .
             """,
         )
@@ -219,12 +237,9 @@ class NifiConfigCompiler(Compiler):
             "?bundle_group ?bundle_artifact ?bundle_version ?service_api_type "
             "?service_api_bundle_group ?service_api_bundle_artifact "
             "?service_api_bundle_version ?config ?scheduled_state",
-            """
-            ?container a tcs:DockerContainer ;
-                tcs:instantiates nifi:Orchestrator ;
-                tcs:runs ?step .
+            f"""
+            {_NIFI_RUNS_STEP}
 
-            ?step prov:specializationOf ?component .
             ?component nifi:controllerServiceType ?controller_service_type ;
                 nifi:bundleGroup ?bundle_group ;
                 nifi:bundleArtifact ?bundle_artifact ;
@@ -234,15 +249,26 @@ class NifiConfigCompiler(Compiler):
                 nifi:serviceApiBundleArtifact ?service_api_bundle_artifact ;
                 nifi:serviceApiBundleVersion ?service_api_bundle_version .
 
-            OPTIONAL { ?step p-plan:hasInputVar ?config . }
-            OPTIONAL { ?step nifi:scheduledState ?scheduled_state . }
+            OPTIONAL {{ ?step p-plan:hasInputVar ?config . }}
+            OPTIONAL {{ ?step nifi:scheduledState ?scheduled_state . }}
             """,
         )
 
     def build_processor(
-        self, row, position: tuple[float, float], group_id: str
+        self,
+        row,
+        position: tuple[float, float],
+        group_id: str,
+        connected_relationships: set[str],
     ) -> dict:
-        properties, property_descriptors = self.fetch_properties(row)
+        """One NiFi processor object;
+
+        Defaults: ``scheduledState`` → ``RUNNING``, ``schedulingPeriod`` →
+        ``60 sec``. Remaining scheduling/backoff fields are fixed POC defaults.
+        """
+        properties, property_descriptors = self.fetch_mapped_properties(
+            row.config, row.component, row.step
+        )
         processor_id = nifi_id(str(row.step))
         scheduled_state = (
             "RUNNING" if pd.isna(row.scheduled_state) else str(row.scheduled_state)
@@ -255,6 +281,11 @@ class NifiConfigCompiler(Compiler):
         scheduling_period = (
             "60 sec" if pd.isna(row.scheduling_period) else str(row.scheduling_period)
         )
+        auto_terminated = [
+            relationship
+            for relationship in self.fetch_auto_terminated_relationships(row.component)
+            if relationship not in connected_relationships
+        ]
 
         return {
             "identifier": processor_id,
@@ -282,9 +313,7 @@ class NifiConfigCompiler(Compiler):
             "bulletinLevel": "WARN",
             "runDurationMillis": 0,
             "concurrentlySchedulableTaskCount": 1,
-            "autoTerminatedRelationships": self.fetch_auto_terminated_relationships(
-                row.component
-            ),
+            "autoTerminatedRelationships": auto_terminated,
             "scheduledState": scheduled_state,
             "retryCount": 10,
             "retriedRelationships": [],
@@ -353,17 +382,19 @@ class NifiConfigCompiler(Compiler):
     def build_positions(
         self,
         component_types: dict[str, str],
-        connections: list[dict],
+        edges: list[tuple[str, str]],
     ) -> dict[str, tuple[float, float]]:
-        """Lay out the acyclic part of the flow in dependency columns."""
+        """Column layout from channel DAG depth (IRI keys, no UUIDs).
+
+        Horizontal position = topological depth; parallel nodes at the same
+        depth get distinct vertical slots. Cyclic leftovers get a deterministic
+        fallback column (NiFi allows loops; we still need stable coordinates).
+        """
         nodes = sorted(component_types)
-        node_by_id = {nifi_id(node): node for node in nodes}
         successors = {node: set() for node in nodes}
         indegree = {node: 0 for node in nodes}
 
-        for connection in connections:
-            source = node_by_id[connection["source"]["id"]]
-            destination = node_by_id[connection["destination"]["id"]]
+        for source, destination in edges:
             if destination not in successors[source]:
                 successors[source].add(destination)
                 indegree[destination] += 1
@@ -400,11 +431,22 @@ class NifiConfigCompiler(Compiler):
                 )
         return positions
 
-    def build_connections(
+    def plan_connections(
         self,
-        group_id: str,
         component_types: dict[str, str],
     ) -> list[dict]:
+        """IRI-keyed connection plans from channels + writer ``nifi:route``s.
+
+        Each plan has ``source``, ``destination``, ``channel``, and
+        ``selectedRelationships``. Relationship resolution:
+
+        1. ``nifi:route`` on the writer matching this channel, else
+        2. catalog ``nifi:outgoingRelationship`` default.
+
+        Selected relationships must appear in the catalog's outgoing or
+        auto-terminated lists. UUIDs are minted later in
+        :meth:`materialize_connection`.
+        """
         rows = self.output_reader.select(
             "?source ?destination ?channel ?source_component "
             "?default_relationship ?selected_relationship ?available_relationship",
@@ -437,7 +479,7 @@ class NifiConfigCompiler(Compiler):
         if rows.empty:
             return []
 
-        connections = []
+        plans = []
         for (source, destination, channel), group in rows.groupby(
             ["source", "destination", "channel"], sort=True, dropna=False
         ):
@@ -471,46 +513,67 @@ class NifiConfigCompiler(Compiler):
                     "has no nifi:outgoingRelationship"
                 )
 
-            connection_key = f"{source}:{channel}:{destination}"
-            connections.append(
+            plans.append(
                 {
-                    "identifier": nifi_id(connection_key),
-                    "instanceIdentifier": nifi_id(f"{connection_key}:instance"),
-                    "name": channel.removeprefix(":"),
-                    "source": {
-                        "id": nifi_id(source),
-                        "type": source_type,
-                        "groupId": group_id,
-                    },
-                    "destination": {
-                        "id": nifi_id(destination),
-                        "type": component_types[destination],
-                        "groupId": group_id,
-                    },
-                    "labelIndex": 1,
-                    "zIndex": 0,
+                    "source": source,
+                    "destination": destination,
+                    "channel": channel,
                     "selectedRelationships": relationships,
-                    "backPressureObjectThreshold": 10000,
-                    "backPressureDataSizeThreshold": "1 GB",
-                    "flowFileExpiration": "0 sec",
-                    "prioritizers": [],
-                    "bends": [],
-                    "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
-                    "partitioningAttribute": "",
-                    "loadBalanceCompression": "DO_NOT_COMPRESS",
-                    "componentType": "CONNECTION",
-                    "groupIdentifier": group_id,
                 }
             )
 
-        return connections
+        return plans
 
-    def fetch_properties(self, row) -> tuple[dict, dict]:
-        return self.fetch_mapped_properties(row.config, row.component, row.step)
+    def materialize_connection(
+        self,
+        plan: dict,
+        group_id: str,
+        component_types: dict[str, str],
+    ) -> dict:
+        """Turn an IRI connection plan into a NiFi CONNECTION JSON object."""
+        source = plan["source"]
+        destination = plan["destination"]
+        channel = plan["channel"]
+        connection_key = f"{source}:{channel}:{destination}"
+        return {
+            "identifier": nifi_id(connection_key),
+            "instanceIdentifier": nifi_id(f"{connection_key}:instance"),
+            "name": channel.removeprefix(":"),
+            "source": {
+                "id": nifi_id(source),
+                "type": component_types[source],
+                "groupId": group_id,
+            },
+            "destination": {
+                "id": nifi_id(destination),
+                "type": component_types[destination],
+                "groupId": group_id,
+            },
+            "labelIndex": 1,
+            "zIndex": 0,
+            "selectedRelationships": plan["selectedRelationships"],
+            "backPressureObjectThreshold": 10000,
+            "backPressureDataSizeThreshold": "1 GB",
+            "flowFileExpiration": "0 sec",
+            "prioritizers": [],
+            "bends": [],
+            "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+            "partitioningAttribute": "",
+            "loadBalanceCompression": "DO_NOT_COMPRESS",
+            "componentType": "CONNECTION",
+            "groupIdentifier": group_id,
+        }
 
     def fetch_mapped_properties(
         self, config: str, component: str, owner: str
     ) -> tuple[dict, dict]:
+        """Map ``tcs:embedded`` predicates to NiFi property name/value pairs.
+
+        Lookup uses ``nifi:propertyName`` (and optional ``nifi:sensitive``) on
+        the component ``configShape``. ``nifi:route`` blocks are skipped.
+        Values that specialize a controller-service component become that
+        service's deterministic UUID, with ``identifiesControllerService``.
+        """
         if pd.isna(config):
             return {}, {}
 
@@ -596,6 +659,7 @@ class NifiConfigCompiler(Compiler):
         return values, descriptors
 
     def fetch_auto_terminated_relationships(self, component: str) -> list[str]:
+        """Catalog ``nifi:autoTerminatedRelationship`` list for a component."""
         relationships = self.output_reader.filter(
             sub=component,
             pred="nifi:autoTerminatedRelationship",
