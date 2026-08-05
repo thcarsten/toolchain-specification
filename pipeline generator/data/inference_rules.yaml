@@ -41,24 +41,6 @@ rules:
       ?sub a tcs:InstancePipelineComponent .
   - 
     construct: | 
-      ?sub a tcs:InstancePipelineComponent .
-      ?obj a tcs:PipelineComponent .
-    where: |
-      ?sub prov:specializationOf ?obj .
-  - 
-    construct: | 
-      ?obj a tcs:PipelineComponent .
-    where: |
-      ?sub dct:requires ?obj .
-      ?sub a tcs:PipelineComponent .
-  - 
-    construct: | 
-      ?sub a tcs:PipelineComponent .
-    where: |
-      ?sub dct:requires ?obj .
-      ?obj a tcs:PipelineComponent .
-  - 
-    construct: | 
       ?obj a tcs:Config .
     where: |
       ?sub tcs:config ?obj .

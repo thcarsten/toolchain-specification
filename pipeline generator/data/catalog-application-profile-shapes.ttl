@@ -112,21 +112,12 @@ tcs:PipelineComponentShape a sh:NodeShape ;
     # tcs:DockerComposeConfig. dct:requires* (zero-or-more) also
     # matches ``?this = ?deployable`` so components that are
     # themselves microservices trivially satisfy the rule.
-    #
-    # The FILTER excludes spdx:Package-typed nodes: the current
-    # inference rule (?sub dct:requires ?obj ; ?sub a tcs:PipelineComponent
-    # => ?obj a tcs:PipelineComponent) over-types dependency packages
-    # as components. Packages are not deployable and should not be
-    # subjected to this check. A cleaner fix would tighten that
-    # inference rule; the FILTER is the defensive counterpart until
-    # then.
     sh:sparql [
         sh:prefixes tcs:prefixes ;
         sh:message "PipelineComponent {?this} is not deployable: neither it nor any component reachable via dct:requires+ carries a tcs:DockerComposeConfig." ;
         sh:select """
             SELECT ?this WHERE {
                 ?this a tcs:PipelineComponent .
-                FILTER NOT EXISTS { ?this a spdx:Package . }
                 FILTER NOT EXISTS {
                     ?this dct:requires* ?deployable .
                     ?deployable tcs:config ?cfg .
@@ -230,13 +221,16 @@ tcs:AcyclicGraphShape a sh:NodeShape ;
     ] .
 
 
-# A dangling/mistyped prov:specializationOf target still gets entailed
-# as tcs:PipelineComponent (see inference_rules.yaml — correct
-# entailment, since specializationOf only makes sense against a real
-# component) and would otherwise only surface indirectly via the
-# deployability shape, with a misleading "not deployable" message.
-# This shape checks the actual concern directly: is the specialized
-# component listed as a dcat:resource of some tcs:Catalog at all.
+# A dangling/mistyped prov:specializationOf target is also caught by
+# InstancePipelineComponentShape's own sh:class check on that property
+# (inference_rules.yaml no longer entails tcs:PipelineComponent from
+# specializationOf usage alone — see the 2026-08-04 inference-scoping
+# pass). This shape exists alongside that generic check because it
+# names the actual, more specific concern: is the specialized
+# component listed as a dcat:resource of some tcs:Catalog at all,
+# rather than merely typed correctly (e.g. a component that exists but
+# was never added to the catalog would pass the class check but still
+# be undeployable through any catalog-driven tooling).
 tcs:SpecializedComponentIsCatalogedShape a sh:NodeShape ;
     rdfs:label "Specialized component is catalogued shape" ;
     sh:targetClass tcs:InstancePipelineComponent ;

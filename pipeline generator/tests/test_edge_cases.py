@@ -3,7 +3,9 @@ checklist and the suite never drift apart."""
 
 import pytest
 
-from conftest import (
+from testing_helpers import (
+    DATA_DIR,
+    SHAPES_FILE,
     assert_compile_raises,
     assert_shacl_violation,
     compile_pipeline,
@@ -21,6 +23,7 @@ PREFIXES = """
 @prefix sw: <https://semantic.works/services/> .
 @prefix tcs: <https://w3id.org/toolchain#> .
 @prefix dct: <http://purl.org/dc/terms/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 """
 
 
@@ -409,4 +412,474 @@ def test_dangling_specialization_target_triggers_cataloged_shape(catalog_with_sh
             p-plan:isStepOfPlan demo:Test .
     """,
     )
-    assert_shacl_violation(catalog_with_shapes, message_contains="not listed as a dcat:resource")
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="not listed as a dcat:resource"
+    )
+
+
+# --- Structural application-profile shapes (Section 1 of the profile) ----
+
+
+def test_pipeline_component_non_deployable_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Leaf a tcs:PipelineComponent .
+        demo:CompA a tcs:PipelineComponent ; dct:requires demo:Leaf .
+    """,
+    )
+    assert_shacl_violation(catalog_with_shapes, message_contains="not deployable")
+
+
+def test_pipeline_component_duplicate_default_config_per_subtype_triggers_shape(
+    catalog_with_shapes,
+):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:CompA a tcs:PipelineComponent ; tcs:config demo:Def1, demo:Def2 .
+        demo:Def1 a tcs:DefaultConfig, tcs:DockerComposeConfig ; tcs:literal "svc1: {}" ; dct:format "text/yaml" .
+        demo:Def2 a tcs:DefaultConfig, tcs:DockerComposeConfig ; tcs:literal "svc2: {}" ; dct:format "text/yaml" .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="more than one tcs:DefaultConfig"
+    )
+
+
+def test_pipeline_component_requires_wrong_class_triggers_shape(catalog_with_shapes):
+    # Only reachable now that inference_rules.yaml no longer entails
+    # tcs:PipelineComponent from bare dct:requires usage (2026-08-04
+    # inference-scoping pass) — previously any dct:requires target got
+    # auto-typed, making this sh:or check unconditionally satisfied.
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:CompA a tcs:PipelineComponent ; dct:requires demo:NotAComponentOrPackage .
+        demo:NotAComponentOrPackage a tcs:Config .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes,
+        message_contains="must point at a tcs:PipelineComponent or spdx:Package",
+    )
+
+
+def test_instance_component_specialization_wrong_class_triggers_shape(
+    catalog_with_shapes,
+):
+    # Only reachable now that inference_rules.yaml no longer entails
+    # tcs:PipelineComponent from bare prov:specializationOf usage —
+    # distinct from test_dangling_specialization_target_triggers_cataloged_shape,
+    # where the target doesn't exist at all; here it exists but has the
+    # wrong type.
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:A a tcs:InstancePipelineComponent ; p-plan:isStepOfPlan demo:Test ;
+            prov:specializationOf demo:NotAComponent .
+        demo:NotAComponent a tcs:Config .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must specialize exactly one"
+    )
+
+
+def test_instance_component_missing_specialization_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:A a tcs:InstancePipelineComponent ; p-plan:isStepOfPlan demo:Test .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must specialize exactly one"
+    )
+
+
+def test_instance_component_two_specializations_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:CompA a tcs:PipelineComponent .
+        demo:CompB a tcs:PipelineComponent .
+        demo:A a tcs:InstancePipelineComponent ; p-plan:isStepOfPlan demo:Test ;
+            prov:specializationOf demo:CompA, demo:CompB .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must specialize exactly one"
+    )
+
+
+def test_instance_component_missing_plan_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must belong to exactly one"
+    )
+
+
+def test_pipeline_definition_zero_steps_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+    """,
+    )
+    assert_shacl_violation(catalog_with_shapes, message_contains="has no steps")
+
+
+def test_config_neither_embedded_nor_literal_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:BadConfig a tcs:Config .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must conform to exactly one shape"
+    )
+
+
+def test_config_both_embedded_and_literal_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:BadConfig a tcs:Config ;
+            tcs:embedded [ rdfc:reader demo:ch1 ] ;
+            tcs:literal "x" ; dct:format "text/plain" .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must conform to exactly one shape"
+    )
+
+
+def test_config_literal_without_format_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:BadConfig a tcs:Config ; tcs:literal "x" .
+    """,
+    )
+    assert_shacl_violation(catalog_with_shapes, message_contains="no dct:format")
+
+
+def test_catalog_resource_not_pipeline_component_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        @prefix dcat: <http://www.w3.org/ns/dcat#> .
+        demo:TestCatalog a tcs:Catalog ; dcat:resource demo:GhostyResource .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes,
+        message_contains="dcat:resource entries must be tcs:PipelineComponent",
+    )
+
+
+def test_pipeline_build_missing_hadplan_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Build a tcs:PipelineBuild .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="exactly one PipelineDefinition"
+    )
+
+
+def test_pipeline_build_haspart_wrong_class_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Plan a tcs:PipelineDefinition .
+        demo:Build a tcs:PipelineBuild ; prov:hadPlan demo:Plan ; dct:hasPart demo:NotAContainer .
+        demo:NotAContainer a tcs:Config .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must point at a tcs:DockerContainer"
+    )
+
+
+def test_pipeline_build_compiledfile_wrong_class_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Plan a tcs:PipelineDefinition .
+        demo:Build a tcs:PipelineBuild ; prov:hadPlan demo:Plan ; tcs:compiledFile demo:NotAFile .
+        demo:NotAFile a tcs:Config .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must point at an spdx:File"
+    )
+
+
+def test_docker_container_missing_instantiates_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Container a tcs:DockerContainer .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must instantiate at least one"
+    )
+
+
+def test_docker_container_instantiates_wrong_class_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Container a tcs:DockerContainer ; tcs:instantiates demo:NotAComponent .
+        demo:NotAComponent a tcs:Config .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must instantiate at least one"
+    )
+
+
+def test_docker_container_runs_wrong_class_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:CompX a tcs:PipelineComponent .
+        demo:Container a tcs:DockerContainer ; tcs:instantiates demo:CompX ; tcs:runs demo:NotAStep .
+        demo:NotAStep a tcs:Config .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="tcs:runs must point at"
+    )
+
+
+def test_spdx_package_missing_name_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        @prefix spdx: <http://spdx.org/rdf/terms#> .
+        demo:Pkg a spdx:Package ; spdx:suppliedBy demo:SomeSupplier .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must declare spdx:name"
+    )
+
+
+def test_spdx_package_missing_suppliedby_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        @prefix spdx: <http://spdx.org/rdf/terms#> .
+        demo:Pkg a spdx:Package ; spdx:name "some-pkg" .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must declare spdx:suppliedBy"
+    )
+
+
+# --- Structural application-profile shapes (Section 2 — framework-specific)
+
+
+def test_rdfc_processor_missing_imports_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:BadProcessor a tcs:PipelineComponent ; dct:requires rdfc:NodeRunner .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must declare owl:imports"
+    )
+
+
+def test_rdfc_runner_missing_orchestrator_requirement_triggers_shape(
+    catalog_with_shapes,
+):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:BadRunner a tcs:PipelineComponent, rdfc:Runner ; rdfs:label "Bad Runner" .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must dct:requires rdfc:Orchestrator"
+    )
+
+
+def test_rdfc_orchestrator_missing_dockercompose_config_triggers_shape():
+    # Isolated graph (shapes file only) — sh:targetNode rdfc:Orchestrator
+    # fires even with no catalog loaded, letting us see the violation the
+    # real catalog's tcs:config triples normally satisfy.
+    from rdflib import Graph
+
+    g = Graph()
+    g.parse(str(DATA_DIR / SHAPES_FILE), publicID="file:///workspace/pipeline/")
+    assert_shacl_violation(
+        g, message_contains="must carry at least one tcs:DockerComposeConfig"
+    )
+
+
+def test_rdfc_orchestrator_missing_dockerimage_config_triggers_shape():
+    from rdflib import Graph
+
+    g = Graph()
+    g.parse(str(DATA_DIR / SHAPES_FILE), publicID="file:///workspace/pipeline/")
+    assert_shacl_violation(
+        g, message_contains="must carry at least one tcs:DockerImageConfig"
+    )
+
+
+def test_rdfc_package_manager_invalid_supplier_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        @prefix spdx: <http://spdx.org/rdf/terms#> .
+        demo:MyComp a tcs:PipelineComponent ; dct:requires rdfc:Orchestrator, demo:BadPkg .
+        demo:BadPkg a spdx:Package ; spdx:name "weird-lib" ; spdx:suppliedBy demo:SomeWeirdManager .
+    """,
+    )
+    assert_shacl_violation(catalog_with_shapes, message_contains="must be :pip or :npm")
+
+
+def test_ldio_component_type_missing_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:BadLdioComp a tcs:PipelineComponent ;
+            dct:requires ldio:LinkedDataInteractionsOrchestrator ; rdfs:label "Bad" .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must declare exactly one ldio:type"
+    )
+
+
+def test_ldio_component_type_invalid_value_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:BadLdioComp a tcs:PipelineComponent ;
+            dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+            rdfs:label "Bad" ; ldio:type "Bogus" .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must declare exactly one ldio:type"
+    )
+
+
+def test_ldio_component_type_missing_label_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:BadLdioComp a tcs:PipelineComponent ;
+            dct:requires ldio:LinkedDataInteractionsOrchestrator ; ldio:type "Input" .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="must declare rdfs:label"
+    )
+
+
+def test_ldio_step_seriality_two_reads_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
+            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch1, demo:ch2 .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="reads from more than one channel"
+    )
+
+
+def test_ldio_step_seriality_two_writes_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
+            p-plan:isStepOfPlan demo:Test ; tcs:writesTo demo:ch1, demo:ch2 .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="writes to more than one channel"
+    )
+
+
+def test_ldio_step_ordering_output_not_terminal_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:Out a tcs:InstancePipelineComponent ; prov:specializationOf ldio:HttpOut ;
+            p-plan:isStepOfPlan demo:Test ; tcs:writesTo demo:ch1 .
+        demo:Next a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
+            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch1 .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="Output must be terminal"
+    )
+
+
+def test_ldio_step_ordering_input_not_initial_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:Prev a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
+            p-plan:isStepOfPlan demo:Test ; tcs:writesTo demo:ch2 .
+        demo:In a tcs:InstancePipelineComponent ; prov:specializationOf ldio:HttpInPoller ;
+            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch2 .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="Input must be initial"
+    )
+
+
+def test_sw_component_missing_docker_config_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        sw:TestService a tcs:PipelineComponent .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes,
+        message_contains="must directly carry a tcs:DockerComposeConfig",
+    )
+
+
+def test_sw_step_env_value_non_literal_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf sw:mu-dispatcher ;
+            p-plan:isStepOfPlan demo:Test ;
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ demo:someVar demo:SomeIri ] ] .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="non-literal value at predicate"
+    )
