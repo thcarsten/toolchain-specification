@@ -334,7 +334,8 @@
       a tcs:PipelineConfig ;
       tcs:embedded [
         nifi:httpMethod "POST" ;
-        nifi:httpUrl "http://host.docker.internal:9003/observations" ;
+        # nifi:httpUrl "http://host.docker.internal:9003/observations" ;
+        nifi:httpUrl "http://ldes.urban-sense-acc.marathon.mesos:8081/waterkwaliteit-test" ;
         nifi:route [
             nifi:channel :ldes_response ;
             nifi:selectedRelationship "Failure", "No Retry", "Response", "Retry"

@@ -1010,9 +1010,64 @@ nifi:Orchestrator
     a tcs:PipelineComponent, dcat:Resource ;
     rdfs:label "Apache NiFi 2 Orchestrator" ;
     spdx:versionInfo "2.10.0" ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiRemoteDeploymentConfigShape
+    ] ;
     tcs:config
         :NifiDefaultDockerComposeConfig,
         :NifiDefaultDockerImageConfig .
+
+:NifiRemoteDeploymentConfigShape
+    a sh:NodeShape ;
+    rdfs:label "Existing NiFi deployment configuration" ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes :prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?pipeline nifi:deploymentMode "remote" ;
+                    nifi:deploymentConfig/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:dshUsername ;
+        sh:name "DSH username" ;
+        sh:datatype xsd:string ;
+        sh:minLength 1 ;
+        sh:minCount 1 ; sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:dshPassword ;
+        sh:name "DSH password" ;
+        nifi:sensitive true ;
+        sh:datatype xsd:string ;
+        sh:minLength 1 ;
+        sh:minCount 1 ; sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:dshGatewayUrl ;
+        sh:name "DSH gateway URL" ;
+        sh:datatype xsd:string ;
+        sh:minLength 1 ;
+        sh:minCount 1 ; sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:baseUrl ;
+        sh:name "NiFi base URL" ;
+        sh:datatype xsd:string ;
+        sh:minLength 1 ;
+        sh:minCount 1 ; sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:parentProcessGroupId ;
+        sh:name "Parent process group ID" ;
+        sh:description "When empty, the flow is deployed on the root canvas." ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] .
 
 
 :NifiDefaultDockerComposeConfig

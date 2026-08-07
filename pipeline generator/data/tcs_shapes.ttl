@@ -783,6 +783,33 @@ tcs:SwStepEnvValueShape a sh:NodeShape ;
 # Discriminator: dct:requires nifi:Orchestrator.
 #################################################################
 
+tcs:NifiDeploymentModeShape a sh:NodeShape ;
+    rdfs:label "NiFi deployment mode shape" ;
+    sh:targetClass tcs:PipelineDefinition ;
+    sh:property [
+        sh:path nifi:deploymentMode ;
+        sh:maxCount 1 ;
+        sh:in ("local" "remote") ;
+        sh:message "nifi:deploymentMode must be either local or remote. Omit it to use local Docker."
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Remote NiFi deployment requires exactly one nifi:deploymentConfig." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this nifi:deploymentMode "remote" .
+                {
+                    FILTER NOT EXISTS { ?this nifi:deploymentConfig ?config . }
+                }
+                UNION
+                {
+                    ?this nifi:deploymentConfig ?left, ?right .
+                    FILTER (?left != ?right)
+                }
+            }
+        """
+    ] .
+
 # NiFi processors must declare type + bundle coordinates and at least
 # one relationship (outgoing and/or auto-terminated) so connections and
 # auto-termination can be derived.

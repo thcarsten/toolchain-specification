@@ -10,6 +10,7 @@ from .pipeline_generator import PipelineGenerator
 from .project_builder import ProjectBuilder
 from .nifi_config_compiler import NifiConfigCompiler
 from .nifi_dockerfile_compiler import NifiDockerfileCompiler
+from .nifi_remote_compiler import NifiRemoteCompiler
 
 __all__ = [
     "Compiler",
@@ -23,5 +24,6 @@ __all__ = [
     "PipelineGenerator",
     "ProjectBuilder",
     "NifiConfigCompiler",
-    "NifiDockerfileCompiler"
+    "NifiDockerfileCompiler",
+    "NifiRemoteCompiler",
 ]

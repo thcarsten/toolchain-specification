@@ -715,9 +715,9 @@ class NifiConfigCompiler(Compiler):
                 "componentType": "PROCESS_GROUP",
             },
             "externalControllerServices": {},
-            "parameterContexts": [],
+            "parameterContexts": {},
             "flowEncodingVersion": "1.0",
-            "parameterProviders": [],
+            "parameterProviders": {},
             "latest": False,
         }
 

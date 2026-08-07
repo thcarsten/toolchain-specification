@@ -10,6 +10,10 @@ from .utils import attach_file, extract_config
 class NifiDockerfileCompiler(Compiler):
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
+        if graph_reader.ask(
+            '?pipeline a tcs:PipelineDefinition ; nifi:deploymentMode "remote" .'
+        ):
+            return False
         return not graph_reader.select(
             "?container ?config",
             """
