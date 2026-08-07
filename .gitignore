@@ -3,6 +3,7 @@ pipeline generator/resources/rdfc-docker/
 .vscode/
 .venv/
 __pycache__/
+.env
 
 pipeline generator/data/*.secrets.ttl
 pipeline generator/out/nifi_testing/

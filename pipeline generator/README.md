@@ -252,7 +252,42 @@ A useful side effect: because provenance is attached *while the loop is running*
 | `LdioConfigCompiler` | a container instantiates `ldio:LinkedDataInteractionsOrchestrator` | LDIO components and their configs | `spdx:File` named `ldio/config.yml` |
 | `RdfcConfigCompiler` | a container instantiates `rdfc:Orchestrator` | RDF-Connect components, runners and step graph | `spdx:File` named `rdfc/pipeline.ttl` |
 | `RdfcDockerFileCompiler` | a container instantiates `rdfc:Orchestrator` and a `tcs:DockerImageConfig` is present | the Dockerfile literal + every `spdx:Package` reachable via `dct:requires` from components in the container | `spdx:File`s named `rdfc/Dockerfile`, `rdfc/pyproject.toml`, `rdfc/package.json` |
+| `NifiConfigCompiler` | a container instantiates `nifi:Orchestrator` | NiFi steps, component metadata, configs and channels | persisted `spdx:File` named `nifi/flow.json`; for local builds, secret references also produce a one-shot `nifi-configure` service and `nifi/configure_local.py` |
+| `NifiDockerfileCompiler` | local NiFi deployment and a NiFi `tcs:DockerImageConfig` is present | the NiFi Dockerfile literal | `spdx:File` named `nifi/Dockerfile` |
+| `NifiRemoteCompiler` | `nifi:deploymentMode "remote"` and `nifi/flow.json` is present | the persisted flow, deployment config, secret references and NiFi compose config | upload-format `nifi/flow_definition.json`, stdlib-only `nifi/deploy_flow.py`, and a one-shot deployer using native Compose secret mounts |
 | `DockerComposeCompiler` | `<build> tcs:isFinishing true` is set (i.e. the loop has settled) and any `tcs:DockerComposeConfig` node exists | every `tcs:DockerComposeConfig` | `spdx:File` named `./docker-compose.yml` |
+
+### 4.8. NiFi deployment target
+
+NiFi runs locally in the generated Docker stack by default. To deploy the generated process group into an existing NiFi instance instead, add this opt-in triple to the pipeline definition or its separate deployment overlay:
+
+For a local build, catalog-marked sensitive properties remain absent from `flow.json`. When their authored values are `tcs:SecretReference` nodes, the compiler adds a one-shot `nifi-configure` Compose service. It waits for NiFi, mounts the referenced host variables as Compose secrets, temporarily stops or disables each affected component, updates it through the local NiFi API, and restores the state authored in the pipeline definition. The generated `.env.example` lists the required variables; copy it to `.env`, fill the values, and use the normal `docker compose up` command.
+
+```turtle
+:DemonstratorPipeline
+    nifi:deploymentMode "remote" ;
+    nifi:deploymentConfig :NifiRemoteDeployment .
+
+:NifiRemoteDeployment
+    a tcs:PipelineConfig ;
+    tcs:embedded [
+        nifi:dshUsername [
+            a tcs:SecretReference ;
+            tcs:secretName "DSH_USERNAME"
+        ] ;
+        nifi:dshPassword [
+            a tcs:SecretReference ;
+            tcs:secretName "DSH_PASSWORD"
+        ] ;
+        nifi:dshGatewayUrl "https://gateway.az.kpn-dsh.com/token" ;
+        nifi:baseUrl "https://nifi.urban-sense-acc.az.kpn-dsh.com" ;
+        nifi:parentProcessGroupId "..."
+    ] .
+```
+
+The remote build replaces the local NiFi service with a one-shot `nifi-deploy` service. A `tcs:SecretReference` contains only the logical name of a host environment variable; its value is never read by the generator or written into the build graph, flow JSON, notebook, or Compose YAML. Compose resolves each value at deployment and mounts it under `/run/secrets/` for the deployer. `nifi:parentProcessGroupId` is optional and root is used when it is absent or empty.
+
+Populate every referenced variable from the current shell, `.env`, or a CI secret store, then run `docker compose up nifi-deploy`. For the example overlay these are `DSH_USERNAME`, `DSH_PASSWORD`, `AZURE_STORAGE_ACCOUNT_NAME`, and `AZURE_SAS_TOKEN`. Compose automatically loads `.env` beside the generated `docker-compose.yml`; the generated `.env.example` lists every required name and can be copied as a starting point. See [`data/pipeline_definition_nifi.deployment.ttl`](data/pipeline_definition_nifi.deployment.ttl) for the reference-only deployment overlay.
 
 ## 5. Future directions
 The pipeline generator is not fully implemented yet, it is a work in progress. We have the following goals for the year 2026:
@@ -265,7 +300,7 @@ The pipeline generator is not fully implemented yet, it is a work in progress. W
 - [x] CompilerAssigner: It may be necessary at some point to provide a lookup which compilers need to be called depending on information contained in the graph. So that compilers can be called dynamically based on need. Implemented as a registry on `Compiler._registry` (auto-populated via `__init_subclass__`) combined with a per-compiler `applies_to(graph_reader) -> bool` classmethod that declares the triggering pattern.
 - [ ] SemanticModelVersionMapper: Can map from one version of the semantic model to the internal model that is used by the pipeline generator. Allows decoupling versioning of the official semantic model and the internal model used for implementation.
 - [x] RdfcDockerFileCompiler: Creates an adhoc Dockerfile for RDF-Connect. This allows to include only those dependencies in a docker container which are actually used in the pipeline.
-- [ ] NifiCompiler: Compiler for [Nifi 2](https://nifi.apache.org/). 
+- [ ] NifiCompiler: Compiler for [Nifi 2](https://nifi.apache.org/). Persisted-flow generation and local/remote deployment selection are implemented; live production verification remains.
 - [x] PipelineGenerator: Uses all previously described compilers to route the compilation flow for generating a pipeline project folder based on a Pipeline Definition. Routing is done via the registry + `applies_to` mechanism described above; producing the project folder on disk is handled by `ProjectBuilder`.
 
 

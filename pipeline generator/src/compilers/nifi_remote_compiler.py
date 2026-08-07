@@ -42,11 +42,16 @@ class NifiRemoteCompiler(Compiler):
             )
         )
         flow["flowContents"] = flow.pop("rootGroup")
+        # Persisted local flows use arrays; the upload API's flow-definition DTO
+        # uses maps for these currently-empty collections.
+        flow["parameterContexts"] = {}
+        flow["parameterProviders"] = {}
         flow.pop("maxTimerDrivenThreadCount", None)
         for processor in flow["flowContents"].get("processors", []):
             if processor.get("scheduledState") == "RUNNING":
                 processor["scheduledState"] = "ENABLED"
         self.remove_sensitive_properties(flow["flowContents"])
+        environment, secrets = self.fetch_deployment_config()
 
         self.output_reader = attach_file(
             self.output_reader,
@@ -60,20 +65,29 @@ class NifiRemoteCompiler(Compiler):
             filepath="nifi",
             content=_DEPLOY_SCRIPT.lstrip(),
         )
-        self.replace_local_compose(
-            flow["flowContents"]["name"], self.fetch_deployment_config()
+        self.output_reader = attach_file(
+            self.output_reader,
+            filename=".env.example",
+            filepath=".",
+            content=(
+                "# Copy this file to .env and fill in the values.\n"
+                "# Docker Compose loads .env automatically from this directory.\n"
+                "# Never commit .env.\n"
+                + "".join(f"{name}=\n" for name in sorted(set(secrets.values())))
+            ),
         )
+        self.replace_local_compose(flow["flowContents"]["name"], environment, secrets)
         return self.output_reader.graph
 
-    def fetch_deployment_config(self) -> dict[str, str]:
+    def fetch_deployment_config(self) -> tuple[dict[str, str], dict[str, str]]:
         rows = self.output_reader.select(
-            "?username ?password ?gateway_url ?nifi_url ?parent_id",
+            "?username_secret ?password_secret ?gateway_url ?nifi_url ?parent_id",
             """
             ?pipeline a tcs:PipelineDefinition ;
                 nifi:deploymentMode "remote" ;
                 nifi:deploymentConfig/tcs:embedded ?config .
-            ?config nifi:dshUsername ?username ;
-                nifi:dshPassword ?password ;
+            ?config nifi:dshUsername/tcs:secretName ?username_secret ;
+                nifi:dshPassword/tcs:secretName ?password_secret ;
                 nifi:dshGatewayUrl ?gateway_url ;
                 nifi:baseUrl ?nifi_url .
             OPTIONAL { ?config nifi:parentProcessGroupId ?parent_id . }
@@ -84,32 +98,41 @@ class NifiRemoteCompiler(Compiler):
                 'Remote NiFi deployment requires exactly one nifi:deploymentConfig'
             )
         row = rows.iloc[0]
-        config = {
-            "DSH_USERNAME": str(row.username),
-            "DSH_PASSWORD": str(row.password),
+        environment = {
             "DSH_GATEWAY_URL": str(row.gateway_url),
             "NIFI_BASE_URL": str(row.nifi_url),
         }
+        secrets = {
+            "DSH_USERNAME": str(row.username_secret),
+            "DSH_PASSWORD": str(row.password_secret),
+        }
         if not pd.isna(row.parent_id) and str(row.parent_id):
-            config["NIFI_PARENT_PG_ID"] = str(row.parent_id)
+            environment["NIFI_PARENT_PG_ID"] = str(row.parent_id)
 
         azure = self.output_reader.select(
-            "?account_name ?sas_token",
+            "?account_name_secret ?sas_token_secret",
             """
             ?step prov:specializationOf
                     nifi:AzureStorageCredentialsControllerService_v12 ;
                 p-plan:hasInputVar/tcs:embedded ?properties .
-            OPTIONAL { ?properties nifi:storageAccountName ?account_name . }
-            OPTIONAL { ?properties nifi:sasToken ?sas_token . }
+            OPTIONAL {
+                ?properties nifi:storageAccountName/tcs:secretName
+                    ?account_name_secret .
+            }
+            OPTIONAL {
+                ?properties nifi:sasToken/tcs:secretName ?sas_token_secret .
+            }
             """,
         )
         if not azure.empty:
             values = azure.iloc[0]
-            if not pd.isna(values.account_name):
-                config["AZURE_STORAGE_ACCOUNT_NAME"] = str(values.account_name)
-            if not pd.isna(values.sas_token):
-                config["AZURE_SAS_TOKEN"] = str(values.sas_token)
-        return config
+            if not pd.isna(values.account_name_secret):
+                secrets["AZURE_STORAGE_ACCOUNT_NAME"] = str(
+                    values.account_name_secret
+                )
+            if not pd.isna(values.sas_token_secret):
+                secrets["AZURE_SAS_TOKEN"] = str(values.sas_token_secret)
+        return environment, secrets
 
     @staticmethod
     def remove_sensitive_properties(flow_contents: dict) -> None:
@@ -125,7 +148,10 @@ class NifiRemoteCompiler(Compiler):
                     properties.pop(name, None)
 
     def replace_local_compose(
-        self, group_name: str, deployment_config: dict[str, str]
+        self,
+        group_name: str,
+        environment: dict[str, str],
+        secrets: dict[str, str],
     ) -> None:
         config_id = receive_first(
             self.output_reader.select(
@@ -147,7 +173,8 @@ class NifiRemoteCompiler(Compiler):
                     "image": "python:3.12-slim",
                     "working_dir": "/deployment",
                     "volumes": ["./nifi:/deployment:ro"],
-                    "environment": deployment_config,
+                    "environment": environment,
+                    "secrets": sorted(secrets),
                     "command": [
                         "python",
                         "/deployment/deploy_flow.py",
@@ -156,7 +183,11 @@ class NifiRemoteCompiler(Compiler):
                     ],
                     "restart": "no",
                 }
-            }
+            },
+            "secrets": {
+                target: {"environment": source}
+                for target, source in secrets.items()
+            },
         }
         rows = [
             {
@@ -239,16 +270,25 @@ def json_request(url, token, *, method="GET", body=None):
     )
 
 
+def secret(name, *, required=False):
+    path = Path("/run/secrets") / name
+    if not path.exists():
+        if required:
+            raise RuntimeError(f"Missing deployment secret: {name}")
+        return None
+    return path.read_text().rstrip("\r\n")
+
+
 def main(flow_path, group_name):
-    required = ["DSH_USERNAME", "DSH_PASSWORD", "DSH_GATEWAY_URL", "NIFI_BASE_URL"]
+    required = ["DSH_GATEWAY_URL", "NIFI_BASE_URL"]
     missing = [name for name in required if not os.environ.get(name)]
     if missing:
         raise RuntimeError(f"Missing deployment properties: {', '.join(missing)}")
 
     token_data = urllib.parse.urlencode(
         {
-            "username": os.environ["DSH_USERNAME"],
-            "password": os.environ["DSH_PASSWORD"],
+            "username": secret("DSH_USERNAME", required=True),
+            "password": secret("DSH_PASSWORD", required=True),
         }
     ).encode()
     token = request(
@@ -288,8 +328,8 @@ def main(flow_path, group_name):
     group_id = created["id"]
     print(f"Created process group {created['component']['name']!r} with id {group_id}")
 
-    account = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME")
-    sas_token = os.environ.get("AZURE_SAS_TOKEN")
+    account = secret("AZURE_STORAGE_ACCOUNT_NAME")
+    sas_token = secret("AZURE_SAS_TOKEN")
     if account or sas_token:
         services = json_request(
             f"{base}/nifi-api/flow/process-groups/{group_id}/controller-services",

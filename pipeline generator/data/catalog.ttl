@@ -926,7 +926,7 @@ nifi:AzureStorageCredentialsControllerService_v12
         sh:name "Storage Account Name" ;
         nifi:propertyName "Storage Account Name" ;
         nifi:sensitive true ;
-        sh:datatype xsd:string ;
+        sh:class tcs:SecretReference ;
         sh:maxCount 1
     ] ;
     sh:property [
@@ -934,7 +934,7 @@ nifi:AzureStorageCredentialsControllerService_v12
         sh:name "Account Key" ;
         nifi:propertyName "Account Key" ;
         nifi:sensitive true ;
-        sh:datatype xsd:string ;
+        sh:class tcs:SecretReference ;
         sh:maxCount 1
     ] ;
     sh:property [
@@ -942,7 +942,7 @@ nifi:AzureStorageCredentialsControllerService_v12
         sh:name "SAS Token" ;
         nifi:propertyName "SAS Token" ;
         nifi:sensitive true ;
-        sh:datatype xsd:string ;
+        sh:class tcs:SecretReference ;
         sh:maxCount 1
     ] .
 
@@ -1035,16 +1035,15 @@ nifi:Orchestrator
     sh:property [
         sh:path nifi:dshUsername ;
         sh:name "DSH username" ;
-        sh:datatype xsd:string ;
-        sh:minLength 1 ;
+        nifi:sensitive true ;
+        sh:class tcs:SecretReference ;
         sh:minCount 1 ; sh:maxCount 1
     ] ;
     sh:property [
         sh:path nifi:dshPassword ;
         sh:name "DSH password" ;
         nifi:sensitive true ;
-        sh:datatype xsd:string ;
-        sh:minLength 1 ;
+        sh:class tcs:SecretReference ;
         sh:minCount 1 ; sh:maxCount 1
     ] ;
     sh:property [

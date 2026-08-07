@@ -275,6 +275,27 @@ tcs:ConfigShape a sh:NodeShape ;
 
 
 #################################################################
+# tcs:SecretReference
+#
+# Pipeline definitions carry only a logical secret name. The deployment
+# platform resolves the value after compilation, so build graphs and emitted
+# files never contain the credential itself.
+#################################################################
+
+tcs:SecretReferenceShape a sh:NodeShape ;
+    rdfs:label "Secret reference application-profile shape" ;
+    sh:targetClass tcs:SecretReference ;
+    sh:property [
+        sh:path tcs:secretName ;
+        sh:name "secret name" ;
+        sh:datatype xsd:string ;
+        sh:minLength 1 ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] .
+
+
+#################################################################
 # tcs:Catalog
 #################################################################
 

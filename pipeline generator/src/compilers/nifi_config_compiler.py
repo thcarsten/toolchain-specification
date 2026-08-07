@@ -19,15 +19,16 @@ Authoring model (Turtle → NiFi)
 """
 
 import json
+import re
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
-from rdflib import Graph
+from rdflib import Graph, Literal, URIRef
 from rdfine import GraphReader, receive_first
 import pandas as pd
 
 from .base import Compiler
-from .utils import attach_file
+from .utils import attach_file, parse_docker_compose_config
 
 _PROCESSOR_X_SPACING = 650.0
 _PROCESSOR_Y_SPACING = 250.0
@@ -179,8 +180,146 @@ class NifiConfigCompiler(Compiler):
             filepath="nifi",
             content=json.dumps(self.output, indent=4),
         )
+        if not self.output_reader.ask(
+            '?pipeline a tcs:PipelineDefinition ; nifi:deploymentMode "remote" .'
+        ):
+            bindings = self.fetch_secret_bindings()
+            if bindings:
+                self.add_local_configurator(bindings)
 
         return self.output_reader.graph
+
+    def fetch_secret_bindings(self) -> list[dict[str, str]]:
+        """Map sensitive component properties to late-bound Docker secrets."""
+        rows = self.output_reader.select(
+            "?step ?property_name ?secret_name ?processor_type "
+            "?controller_service_type ?scheduled_state",
+            f"""
+            {_NIFI_RUNS_STEP}
+            ?step p-plan:hasInputVar/tcs:embedded ?properties .
+            ?component dcat:qualifiedRelation [
+                    dcat:hadRole "configShape" ;
+                    dct:relation ?shape
+                ] .
+            ?shape sh:property ?property_shape .
+            ?property_shape sh:path ?predicate ;
+                nifi:propertyName ?property_name ;
+                nifi:sensitive true .
+            ?properties ?predicate ?secret .
+            ?secret a tcs:SecretReference ;
+                tcs:secretName ?secret_name .
+            OPTIONAL {{ ?component nifi:processorType ?processor_type . }}
+            OPTIONAL {{
+                ?component nifi:controllerServiceType ?controller_service_type .
+            }}
+            OPTIONAL {{ ?step nifi:scheduledState ?scheduled_state . }}
+            """,
+        )
+        bindings = []
+        for row in rows.itertuples(index=False):
+            secret_name = str(row.secret_name)
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", secret_name):
+                raise ValueError(
+                    f"NiFi secretName must be an environment variable name: "
+                    f"{secret_name}"
+                )
+            endpoint = (
+                "controller-services"
+                if not pd.isna(row.controller_service_type)
+                else "processors"
+            )
+            desired_state = (
+                "ENABLED" if endpoint == "controller-services" else "RUNNING"
+            )
+            if not pd.isna(row.scheduled_state):
+                desired_state = str(row.scheduled_state)
+                if endpoint == "processors" and desired_state == "ENABLED":
+                    desired_state = "RUNNING"
+            bindings.append(
+                {
+                    "endpoint": endpoint,
+                    "id": nifi_id(f"{row.step}:instance"),
+                    "property": str(row.property_name),
+                    "secret": secret_name,
+                    "state": desired_state,
+                }
+            )
+        return bindings
+
+    def add_local_configurator(self, bindings: list[dict[str, str]]) -> None:
+        """Add a one-shot service that applies secrets after local NiFi starts."""
+        config_id = receive_first(
+            self.output_reader.select(
+                "?config",
+                """
+                nifi:Orchestrator tcs:config ?config .
+                ?config a tcs:DockerComposeConfig .
+                """,
+            )["config"]
+        )
+        compose = parse_docker_compose_config(self.output_reader, config_id)
+        nifi_environment = compose["services"]["nifip"]["environment"]
+        secret_names = sorted({binding["secret"] for binding in bindings})
+        compose["services"]["nifi-configure"] = {
+            "image": "python:3.12-slim",
+            "depends_on": ["nifip"],
+            "working_dir": "/deployment",
+            "volumes": ["./nifi/configure_local.py:/deployment/configure_local.py:ro"],
+            "environment": {
+                "NIFI_BASE_URL": "https://nifip:8443",
+                "NIFI_USERNAME": nifi_environment[
+                    "SINGLE_USER_CREDENTIALS_USERNAME"
+                ],
+                "NIFI_PASSWORD": nifi_environment[
+                    "SINGLE_USER_CREDENTIALS_PASSWORD"
+                ],
+            },
+            "secrets": secret_names,
+            "command": ["python", "/deployment/configure_local.py"],
+            "restart": "on-failure",
+        }
+        compose["secrets"] = {
+            name: {"environment": name} for name in secret_names
+        }
+
+        old_body = self.output_reader.filter(
+            sub=config_id, pred=["tcs:literal", "tcs:embedded"]
+        ).graph
+        self.output_reader = self.output_reader.remove(old_body)
+        body = GraphReader(
+            pd.DataFrame.from_records(
+                [
+                    {
+                        "sub": config_id,
+                        "pred": "tcs:literal",
+                        "obj": json.dumps(compose),
+                        "sub_type": URIRef,
+                        "obj_type": Literal,
+                    }
+                ]
+            ),
+            prefix_store=self.output_reader.prefix_store,
+        ).graph
+        self.output_reader = self.output_reader.add(body)
+        self.output_reader = attach_file(
+            self.output_reader,
+            filename="configure_local.py",
+            filepath="nifi",
+            content=_LOCAL_CONFIGURATOR_SCRIPT.replace(
+                "__SECRET_BINDINGS__", json.dumps(bindings, indent=4)
+            ).lstrip(),
+        )
+        self.output_reader = attach_file(
+            self.output_reader,
+            filename=".env.example",
+            filepath=".",
+            content=(
+                "# Copy this file to .env and fill in the values.\n"
+                "# Docker Compose loads .env automatically from this directory.\n"
+                "# Never commit .env.\n"
+                + "".join(f"{name}=\n" for name in secret_names)
+            ),
+        )
 
     def fetch_expected_steps(self) -> pd.DataFrame:
         """Return every step assigned to a NiFi container.
@@ -578,7 +717,7 @@ class NifiConfigCompiler(Compiler):
             return {}, {}
 
         properties = self.output_reader.select(
-            "?predicate ?value ?property_name ?sensitive "
+            "?predicate ?value ?property_name ?sensitive ?secret_name "
             "?is_controller_service ?controller_service_type",
             f"""
             {config} tcs:embedded ?embedded .
@@ -593,6 +732,10 @@ class NifiConfigCompiler(Compiler):
                 ?property_shape sh:path ?predicate ;
                     nifi:propertyName ?property_name .
                 OPTIONAL {{ ?property_shape nifi:sensitive ?sensitive . }}
+            }}
+            OPTIONAL {{
+                ?value a tcs:SecretReference ;
+                    tcs:secretName ?secret_name .
             }}
             OPTIONAL {{
                 ?value prov:specializationOf ?cs_component .
@@ -634,13 +777,22 @@ class NifiConfigCompiler(Compiler):
                 f"NiFi component {owner} assigns properties more than once: {names}"
             )
 
+        sensitive = properties["sensitive"].astype(str).str.lower() == "true"
+        invalid_secrets = properties.loc[sensitive & properties["secret_name"].isna()]
+        if not invalid_secrets.empty:
+            names = ", ".join(invalid_secrets["property_name"].astype(str))
+            raise ValueError(
+                f"Sensitive NiFi properties on {owner} must use "
+                f"tcs:SecretReference: {names}"
+            )
+
         values = {
             str(row.property_name): (
                 nifi_id(str(row.value))
                 if not pd.isna(row.controller_service_type)
                 else row.value
             )
-            for row in properties.itertuples(index=False)
+            for row in properties.loc[~sensitive].itertuples(index=False)
         }
         descriptors = {
             str(row.property_name): {
@@ -715,11 +867,147 @@ class NifiConfigCompiler(Compiler):
                 "componentType": "PROCESS_GROUP",
             },
             "externalControllerServices": {},
-            "parameterContexts": {},
+            "parameterContexts": [],
             "flowEncodingVersion": "1.0",
-            "parameterProviders": {},
+            "parameterProviders": [],
             "latest": False,
         }
+
+
+_LOCAL_CONFIGURATOR_SCRIPT = r'''
+"""Apply late-bound secrets to a generated local NiFi flow using stdlib only."""
+
+import json
+import os
+import ssl
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+
+BINDINGS = __SECRET_BINDINGS__
+TLS_CONTEXT = ssl._create_unverified_context()
+
+
+def request(path, *, token=None, body=None, method=None):
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Accept": "application/json", "Host": "localhost:8443"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(
+        f"{os.environ['NIFI_BASE_URL'].rstrip('/')}{path}",
+        data=data,
+        headers=headers,
+        method=method,
+    )
+    with urllib.request.urlopen(req, context=TLS_CONTEXT) as response:
+        payload = response.read()
+    return json.loads(payload) if payload else None
+
+
+def token_request(credentials):
+    req = urllib.request.Request(
+        f"{os.environ['NIFI_BASE_URL'].rstrip('/')}/nifi-api/access/token",
+        data=credentials,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Host": "localhost:8443",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, context=TLS_CONTEXT) as response:
+            return response.read().decode()
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode(errors="replace")
+        raise RuntimeError(
+            f"POST /nifi-api/access/token failed: {error.code} {detail}"
+        ) from error
+
+
+def authenticate():
+    credentials = urllib.parse.urlencode(
+        {
+            "username": os.environ["NIFI_USERNAME"],
+            "password": os.environ["NIFI_PASSWORD"],
+        }
+    ).encode()
+    for attempt in range(90):
+        try:
+            return token_request(credentials)
+        except (urllib.error.URLError, RuntimeError):
+            if attempt == 89:
+                raise
+            time.sleep(2)
+
+
+def wait_for_state(endpoint, component_id, token, state):
+    for attempt in range(60):
+        entity = request(f"/nifi-api/{endpoint}/{component_id}", token=token)
+        if entity["component"]["state"] == state:
+            return entity
+        if attempt == 59:
+            raise RuntimeError(f"NiFi component {component_id} did not reach {state}")
+        time.sleep(1)
+
+
+def set_state(endpoint, component_id, token, entity, state):
+    request(
+        f"/nifi-api/{endpoint}/{component_id}/run-status",
+        token=token,
+        method="PUT",
+        body={
+            "revision": entity["revision"],
+            "state": state,
+            "disconnectedNodeAcknowledged": False,
+        },
+    )
+    return wait_for_state(endpoint, component_id, token, state)
+
+
+def main():
+    token = authenticate()
+    grouped = {}
+    for binding in BINDINGS:
+        key = (binding["endpoint"], binding["id"])
+        config = grouped.setdefault(
+            key, {"properties": {}, "state": binding["state"]}
+        )
+        config["properties"][binding["property"]] = (
+            Path("/run/secrets") / binding["secret"]
+        ).read_text().rstrip("\r\n")
+
+    for (endpoint, component_id), config in grouped.items():
+        entity = request(f"/nifi-api/{endpoint}/{component_id}", token=token)
+        inactive_state = "DISABLED" if endpoint == "controller-services" else "STOPPED"
+        if entity["component"]["state"] != inactive_state:
+            entity = set_state(
+                endpoint, component_id, token, entity, inactive_state
+            )
+        entity = request(
+            f"/nifi-api/{endpoint}/{component_id}",
+            token=token,
+            method="PUT",
+            body={
+                "revision": entity["revision"],
+                "component": {
+                    "id": component_id,
+                    "properties": config["properties"],
+                },
+            },
+        )
+        if config["state"] != inactive_state:
+            set_state(endpoint, component_id, token, entity, config["state"])
+    print(f"Configured {len(BINDINGS)} local NiFi secret-backed properties.")
+
+
+if __name__ == "__main__":
+    main()
+'''
 
 
 def nifi_id(value: str) -> str:
