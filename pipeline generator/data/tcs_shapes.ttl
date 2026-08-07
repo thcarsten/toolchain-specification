@@ -289,9 +289,11 @@ tcs:SecretReferenceShape a sh:NodeShape ;
         sh:path tcs:secretName ;
         sh:name "secret name" ;
         sh:datatype xsd:string ;
+        sh:pattern "^[A-Za-z_][A-Za-z0-9_]*$" ;
         sh:minLength 1 ;
         sh:minCount 1 ;
-        sh:maxCount 1
+        sh:maxCount 1 ;
+        sh:message "tcs:secretName must be a non-empty environment-variable name using letters, digits, and underscores."
     ] .
 
 
@@ -831,139 +833,289 @@ tcs:NifiDeploymentModeShape a sh:NodeShape ;
         """
     ] .
 
-# NiFi processors must declare type + bundle coordinates and at least
-# one relationship (outgoing and/or auto-terminated) so connections and
-# auto-termination can be derived.
-tcs:NifiProcessorMetadataShape a sh:NodeShape ;
-    rdfs:label "NiFi processor metadata shape" ;
-
+# Every catalog component assigned to NiFi must describe exactly one kind and
+# provide the metadata needed to emit that kind into flow.json.
+tcs:NifiCatalogMetadataShape a sh:NodeShape ;
+    rdfs:label "NiFi catalog metadata shape" ;
     sh:target [
         a sh:SPARQLTarget ;
         sh:prefixes tcs:prefixes ;
         sh:select """
             SELECT ?this WHERE {
                 ?this a tcs:PipelineComponent ;
-                      dct:requires nifi:Orchestrator ;
-                      nifi:processorType ?type .
+                    dct:requires nifi:Orchestrator .
             }
         """
     ] ;
-
-    sh:property [
-        sh:path nifi:processorType ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string ;
-        sh:message "NiFi processor {?this} must declare exactly one nifi:processorType."
-    ] ;
-    sh:property [
-        sh:path nifi:bundleGroup ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string
-    ] ;
-    sh:property [
-        sh:path nifi:bundleArtifact ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string
-    ] ;
-    sh:property [
-        sh:path nifi:bundleVersion ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string
-    ] ;
-
     sh:sparql [
         sh:prefixes tcs:prefixes ;
-        sh:message "NiFi processor {?this} must declare at least one nifi:outgoingRelationship or nifi:autoTerminatedRelationship." ;
+        sh:message "NiFi component {?this} must describe exactly one kind: processor, controller service, or funnel." ;
         sh:select """
             SELECT ?this WHERE {
+                ?this dct:requires nifi:Orchestrator .
+                OPTIONAL {
+                    {
+                        ?this nifi:processorType ?processorType .
+                        BIND ("processor" AS ?kind)
+                    }
+                    UNION
+                    {
+                        ?this nifi:controllerServiceType ?serviceType .
+                        BIND ("controller-service" AS ?kind)
+                    }
+                    UNION
+                    {
+                        ?this nifi:componentType "FUNNEL" .
+                        BIND ("funnel" AS ?kind)
+                    }
+                }
+            }
+            GROUP BY ?this
+            HAVING (COUNT(DISTINCT ?kind) != 1)
+        """
+    ] ;
+    sh:or (
+        [
+            sh:property [
+                sh:path nifi:processorType ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleGroup ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleArtifact ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleVersion ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:or (
+                [ sh:property [ sh:path nifi:outgoingRelationship ; sh:minCount 1 ] ]
+                [ sh:property [ sh:path nifi:autoTerminatedRelationship ; sh:minCount 1 ] ]
+            )
+        ]
+        [
+            sh:property [
+                sh:path nifi:componentType ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:hasValue "FUNNEL"
+            ]
+        ]
+        [
+            sh:property [
+                sh:path nifi:controllerServiceType ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleGroup ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleArtifact ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleVersion ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:serviceApiType ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:serviceApiBundleGroup ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:serviceApiBundleArtifact ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:serviceApiBundleVersion ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ]
+        ]
+    ) ;
+    sh:message "NiFi component {?this} must provide complete metadata for its processor, funnel, or controller-service kind." .
+
+
+# InstancePipelineComponent-valued NiFi properties currently represent
+# controller-service references. They must resolve to a controller service in
+# the same plan as the processor that consumes them.
+tcs:NifiControllerServiceReferenceShape a sh:NodeShape ;
+    rdfs:label "NiFi controller service reference shape" ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                    prov:specializationOf ?component ;
+                    p-plan:hasInputVar/tcs:embedded ?config .
+                ?component dcat:qualifiedRelation/dct:relation/sh:property ?propertyShape .
+                ?propertyShape sh:path ?predicate ;
+                    sh:class tcs:InstancePipelineComponent .
+                ?config ?predicate ?referencedStep .
+            }
+        """
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi step {?this} references {?referencedStep}, which is not a valid controller-service step." ;
+        sh:select """
+            SELECT DISTINCT ?this ?referencedStep WHERE {
+                ?this prov:specializationOf ?component ;
+                    p-plan:hasInputVar/tcs:embedded ?config .
+                ?component dcat:qualifiedRelation/dct:relation/sh:property ?propertyShape .
+                ?propertyShape sh:path ?predicate ;
+                    sh:class tcs:InstancePipelineComponent .
+                ?config ?predicate ?referencedStep .
                 FILTER NOT EXISTS {
-                    ?this nifi:outgoingRelationship|nifi:autoTerminatedRelationship ?rel .
+                    ?referencedStep a tcs:InstancePipelineComponent ;
+                        prov:specializationOf ?serviceComponent .
+                    ?serviceComponent nifi:controllerServiceType ?serviceType .
+                }
+            }
+        """
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi step {?this} and referenced controller service {?referencedStep} must belong to the same pipeline definition." ;
+        sh:select """
+            SELECT DISTINCT ?this ?referencedStep WHERE {
+                ?this p-plan:isStepOfPlan ?plan ;
+                    prov:specializationOf ?component ;
+                    p-plan:hasInputVar/tcs:embedded ?config .
+                ?component dcat:qualifiedRelation/dct:relation/sh:property ?propertyShape .
+                ?propertyShape sh:path ?predicate ;
+                    sh:class tcs:InstancePipelineComponent .
+                ?config ?predicate ?referencedStep .
+                FILTER NOT EXISTS { ?referencedStep p-plan:isStepOfPlan ?plan . }
+            }
+        """
+    ] .
+
+
+# Route blocks select which NiFi relationships feed an authored channel.
+tcs:NifiRouteShape a sh:NodeShape ;
+    rdfs:label "NiFi route shape" ;
+    sh:targetObjectsOf nifi:route ;
+    sh:property [
+        sh:path nifi:channel ;
+        sh:class tcs:Channel ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "A NiFi route must reference exactly one nifi:channel."
+    ] ;
+    sh:property [
+        sh:path nifi:selectedRelationship ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "A NiFi route must select at least one relationship."
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi route {?this} references channel {?channel}, but its owner step does not write to that channel." ;
+        sh:select """
+            SELECT DISTINCT ?this ?channel WHERE {
+                ?step p-plan:hasInputVar/tcs:embedded ?config .
+                ?config nifi:route ?this .
+                ?this nifi:channel ?channel .
+                FILTER NOT EXISTS { ?step tcs:writesTo ?channel . }
+            }
+        """
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi route {?this} selects relationship {?relationship}, which is not declared by its PipelineComponent." ;
+        sh:select """
+            SELECT DISTINCT ?this ?relationship WHERE {
+                ?step prov:specializationOf ?component ;
+                    p-plan:hasInputVar/tcs:embedded ?config .
+                ?config nifi:route ?this .
+                ?this nifi:selectedRelationship ?relationship .
+                FILTER NOT EXISTS {
+                    ?component
+                        (nifi:outgoingRelationship|nifi:autoTerminatedRelationship)
+                        ?relationship .
                 }
             }
         """
     ] .
 
 
-# NiFi funnels are identified by nifi:componentType "FUNNEL".
-tcs:NifiFunnelMetadataShape a sh:NodeShape ;
-    rdfs:label "NiFi funnel metadata shape" ;
-
+# Multiple NiFi writers/readers on the same semantic channel make the current
+# compiler create an implicit Cartesian product of Connections. Keep such
+# fan-in/fan-out explicit until the model has a dedicated channel mode.
+tcs:NifiChannelTopologyShape a sh:NodeShape ;
+    rdfs:label "NiFi channel topology shape" ;
     sh:target [
         a sh:SPARQLTarget ;
         sh:prefixes tcs:prefixes ;
         sh:select """
-            SELECT ?this WHERE {
-                ?this a tcs:PipelineComponent ;
-                      dct:requires nifi:Orchestrator ;
-                      nifi:componentType "FUNNEL" .
+            SELECT DISTINCT ?this WHERE {
+                ?step (tcs:readsFrom|tcs:writesTo) ?this ;
+                    prov:specializationOf ?component .
+                ?component dct:requires nifi:Orchestrator .
             }
         """
     ] ;
-
-    sh:property [
-        sh:path nifi:componentType ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:hasValue "FUNNEL" ;
-        sh:message "NiFi funnel {?this} must declare nifi:componentType \"FUNNEL\"."
-    ] .
-
-
-# NiFi controller-service components need type, bundle, and service API
-# coordinates so the compiler can emit controllerServices[].
-tcs:NifiControllerServiceMetadataShape a sh:NodeShape ;
-    rdfs:label "NiFi controller-service metadata shape" ;
-
-    sh:target [
-        a sh:SPARQLTarget ;
+    sh:sparql [
         sh:prefixes tcs:prefixes ;
+        sh:message "NiFi channel {?this} has more than one NiFi writer; explicit fan-in is not supported yet." ;
         sh:select """
-            SELECT ?this WHERE {
-                ?this a tcs:PipelineComponent ;
-                      dct:requires nifi:Orchestrator ;
-                      nifi:controllerServiceType ?type .
+            SELECT DISTINCT ?this WHERE {
+                ?left tcs:writesTo ?this ;
+                    prov:specializationOf ?leftComponent .
+                ?right tcs:writesTo ?this ;
+                    prov:specializationOf ?rightComponent .
+                ?leftComponent dct:requires nifi:Orchestrator .
+                ?rightComponent dct:requires nifi:Orchestrator .
+                FILTER (?left != ?right)
             }
         """
     ] ;
-
-    sh:property [
-        sh:path nifi:controllerServiceType ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi channel {?this} has more than one NiFi reader; explicit fan-out is not supported yet." ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?left tcs:readsFrom ?this ;
+                    prov:specializationOf ?leftComponent .
+                ?right tcs:readsFrom ?this ;
+                    prov:specializationOf ?rightComponent .
+                ?leftComponent dct:requires nifi:Orchestrator .
+                ?rightComponent dct:requires nifi:Orchestrator .
+                FILTER (?left != ?right)
+            }
+        """
     ] ;
-    sh:property [
-        sh:path nifi:bundleGroup ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string
-    ] ;
-    sh:property [
-        sh:path nifi:bundleArtifact ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string
-    ] ;
-    sh:property [
-        sh:path nifi:bundleVersion ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string
-    ] ;
-    sh:property [
-        sh:path nifi:serviceApiType ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string
-    ] ;
-    sh:property [
-        sh:path nifi:serviceApiBundleGroup ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string
-    ] ;
-    sh:property [
-        sh:path nifi:serviceApiBundleArtifact ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string
-    ] ;
-    sh:property [
-        sh:path nifi:serviceApiBundleVersion ;
-        sh:minCount 1 ; sh:maxCount 1 ;
-        sh:datatype xsd:string
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi step {?step} reads from and writes to channel {?this}; self-loop channels are not supported by the compiler." ;
+        sh:select """
+            SELECT DISTINCT ?this ?step WHERE {
+                ?step tcs:readsFrom ?this ;
+                    tcs:writesTo ?this ;
+                    prov:specializationOf ?component .
+                ?component dct:requires nifi:Orchestrator .
+            }
+        """
     ] .
 
 
@@ -979,4 +1131,42 @@ tcs:NifiStepScheduledStateShape a sh:NodeShape ;
         sh:in ("DISABLED" "ENABLED" "RUNNING") ;
         sh:maxCount 1 ;
         sh:message "nifi:scheduledState on {?this} must be one of DISABLED, ENABLED, RUNNING."
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi processor {?this} must use scheduled state RUNNING or DISABLED." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this prov:specializationOf ?component ;
+                    nifi:scheduledState ?state .
+                ?component nifi:processorType ?processorType .
+                FILTER (?state NOT IN ("RUNNING", "DISABLED"))
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi controller-service step {?this} must use scheduled state ENABLED or DISABLED." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this prov:specializationOf ?component ;
+                    nifi:scheduledState ?state .
+                ?component nifi:controllerServiceType ?serviceType .
+                FILTER (?state NOT IN ("ENABLED", "DISABLED"))
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi funnel step {?this} must not declare nifi:scheduledState." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this prov:specializationOf ?component ;
+                    nifi:scheduledState ?state .
+                ?component nifi:componentType "FUNNEL" .
+            }
+        """
     ] .
