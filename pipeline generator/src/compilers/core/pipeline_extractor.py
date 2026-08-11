@@ -49,6 +49,22 @@ class PipelineExtractor(Compiler):
         self.output_reader = self.output_reader.add(new_triples)
 
     def extract_pipeline(self) -> None:
+        # SHACL shapes float independently of the pipeline (reached by no
+        # graph edge from it), so the traversal below would otherwise drop
+        # them; collect each shape's own subgraph up front and re-add it
+        # after extraction.
+        shape_ids = (
+            self.output_reader.filter(pred="rdf:type", obj="sh:NodeShape")
+            .df["sub"]
+            .to_list()
+        )
+        # ``bind_namespaces="none"`` avoids rdflib's default core bindings
+        # (e.g. ``dcterms``), which collide with the catalog's own ``dct``
+        # prefix for the same URI and can silently evict it once merged.
+        shape_graph = Graph(bind_namespaces="none")
+        for shape_id in shape_ids:
+            shape_graph += self.output_reader.traverse(shape_id).graph
+
         # ``p-plan:isStepOfPlan`` points from step to plan; traversing it
         # in the "against" direction reaches every step (and everything
         # below it) without needing to materialize an inverse ``:hasStep``
@@ -57,6 +73,7 @@ class PipelineExtractor(Compiler):
         self.output_reader = self.output_reader.traverse(
             self.pipeline_id, against="p-plan:isStepOfPlan"
         )
+        self.output_reader = self.output_reader.add(shape_graph)
 
     def name_blind_nodes(self) -> None:
         """

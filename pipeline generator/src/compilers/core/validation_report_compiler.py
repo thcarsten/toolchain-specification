@@ -16,9 +16,6 @@ from rdfine import GraphReader
 from ..base import Compiler
 from ..utils import attach_file
 
-_REPORT_FILENAME = "validation-report.ttl"
-_REPORT_FILEPATH = "validation"
-
 
 class ValidationReportCompiler(Compiler):
     """
@@ -44,26 +41,24 @@ class ValidationReportCompiler(Compiler):
     triples, nothing this compiler inspects), but worth a second look if
     that ordering ever needs to be tightened back up.
 
-    Known limitation: :class:`PipelineExtractor` shrinks the graph down
-    to only what is reachable from the one pipeline being compiled.
-    Component-attached configShapes survive that traversal (the
-    component itself is reachable via ``prov:specializationOf``), but
-    the generic application-profile shapes in
-    ``catalog-application-profile-shapes.ttl`` (e.g.
-    ``tcs:RdfcProcessorShape``, ``tcs:PipelineComponentShape``) do not
-    - they float independently via ``sh:targetClass``/``sh:target``
-    with no graph edge from the pipeline to reach them, so
-    ``PipelineExtractor``'s traversal drops them. Verified empirically:
-    after ``PipelineExtractor`` + ``PipelineEnricher``,
-    ``tcs:RdfcProcessorShape`` and ``tcs:PipelineComponentShape`` are
-    both absent from the build graph, while ``rdfc:Sdsify``'s
-    component-attached configShape survives. ``validate_normal_shapes``
-    therefore currently only ever validates configShapes - the
-    application profile's own shapes need a separate fix (extending
-    ``PipelineExtractor``'s traversal, or feeding the validator a
-    second, unshrunk reference to the shapes) before they'll be seen
-    here too.
+    Known limitation (resolved): :class:`PipelineExtractor` used to
+    shrink the graph down to only what is reachable from the one
+    pipeline being compiled, dropping the generic application-profile
+    shapes in ``catalog-application-profile-shapes.ttl`` (e.g.
+    ``tcs:RdfcProcessorShape``, ``tcs:PipelineComponentShape``) since
+    they float independently via ``sh:targetClass``/``sh:target`` with
+    no graph edge from the pipeline to reach them. Fixed by having
+    ``PipelineExtractor`` separately collect the forward-reachable
+    subgraph of every ``sh:NodeShape`` in the source graph and re-add
+    it after the pipeline traversal. Verified empirically:
+    ``tcs:RdfcProcessorShape`` and ``tcs:PipelineComponentShape`` both
+    now survive into the build graph alongside component-attached
+    configShapes, so ``validate_normal_shapes`` sees both kinds.
     """
+
+    #: Override on a subclass to change where the report is attached.
+    filename = "validation-report.ttl"
+    filepath = "validation"
 
     def __init__(self, graph: Graph) -> None:
         super().__init__(graph)
@@ -164,7 +159,7 @@ class ValidationReportCompiler(Compiler):
 
         self.output_reader = attach_file(
             self.output_reader,
-            filename=_REPORT_FILENAME,
-            filepath=_REPORT_FILEPATH,
+            filename=self.filename,
+            filepath=self.filepath,
             content=report.serialize("ttl"),
         )
