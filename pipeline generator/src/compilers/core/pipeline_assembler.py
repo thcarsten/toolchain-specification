@@ -8,7 +8,6 @@ from ..base import Compiler
 class PipelineAssembler(Compiler):
     """
     Compiler Class to assign components, steps and configs to the microservices responsible for executing the pipeline.
-    Also assigns configs to the components they belong to.
     """
 
     def __init__(self, graph: Graph) -> None:
@@ -21,8 +20,9 @@ class PipelineAssembler(Compiler):
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
         """Runs once there is exactly one ``tcs:PipelineDefinition`` with at
-        least one ``:hasStep`` — i.e. once ``PipelineExtractor`` has narrowed
-        the graph down to a single pipeline and populated its steps.
+        least one step (a ``p-plan:isStepOfPlan`` edge pointing at it) —
+        i.e. once ``PipelineExtractor`` has narrowed the graph down to a
+        single pipeline and populated its steps.
         """
         pipelines = (
             graph_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition")
@@ -31,7 +31,9 @@ class PipelineAssembler(Compiler):
         )
         if len(pipelines) != 1:
             return False
-        return not graph_reader.filter(sub=pipelines[0], pred=":hasStep").df.empty
+        return not graph_reader.filter(
+            pred="p-plan:isStepOfPlan", obj=pipelines[0]
+        ).df.empty
 
     def compile(self) -> Graph:
         self.pipeline_id = receive_first(

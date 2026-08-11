@@ -463,6 +463,80 @@ tcs:RdfcProcessorShape a sh:NodeShape ;
     ] .
 
 
+# If a step's component declares a *mandatory* (sh:minCount >= 1)
+# configShape property typed sh:class rdfc:Reader, the step cannot run
+# without a reader regardless of how its config key ends up filled in
+# — so it must have at least one tcs:readsFrom. Currently bites on
+# nothing in the demonstrator catalog (every Reader path today is
+# optional), but will start firing the moment a component's configShape
+# marks one mandatory, without needing a new shape written for it.
+#
+# Discriminator: instance components whose specialized component's
+# configShape (the same dcat:qualifiedRelation / dcat:hadRole
+# tcs:configShape attachment used throughout catalog-rdfc.ttl) has a
+# sh:property with both sh:class rdfc:Reader and sh:minCount >= 1.
+tcs:RdfcMandatoryReaderWiringShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect mandatory reader wiring shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?component .
+                ?component dcat:qualifiedRelation ?rel .
+                ?rel dcat:hadRole tcs:configShape ;
+                     dct:relation ?shape .
+                ?shape sh:property ?prop .
+                ?prop sh:class rdfc:Reader ;
+                      sh:minCount ?minCount .
+                FILTER (?minCount >= 1)
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path tcs:readsFrom ;
+        sh:minCount 1 ;
+        sh:name "readsFrom" ;
+        sh:message "{?this}'s component declares a mandatory rdfc:Reader config path but the step has no tcs:readsFrom wiring — it cannot run without one."
+    ] .
+
+
+# Mirror of RdfcMandatoryReaderWiringShape for sh:class rdfc:Writer /
+# tcs:writesTo. Currently the only components this fires against a
+# missing wiring for are Sdsify's rdfc:output / rdfc:metadataOutput —
+# both marked sh:minCount 1 in catalog-rdfc.ttl.
+tcs:RdfcMandatoryWriterWiringShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect mandatory writer wiring shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?component .
+                ?component dcat:qualifiedRelation ?rel .
+                ?rel dcat:hadRole tcs:configShape ;
+                     dct:relation ?shape .
+                ?shape sh:property ?prop .
+                ?prop sh:class rdfc:Writer ;
+                      sh:minCount ?minCount .
+                FILTER (?minCount >= 1)
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path tcs:writesTo ;
+        sh:minCount 1 ;
+        sh:name "writesTo" ;
+        sh:message "{?this}'s component declares a mandatory rdfc:Writer config path but the step has no tcs:writesTo wiring — it cannot run without one."
+    ] .
+
+
 # Every rdfc:Runner must declare an orchestrator dependency. The
 # RdfcConfigCompiler emits one `rdfc:consistsOf :env_N` per runner
 # and needs the runner-to-orchestrator link to identify which
@@ -797,31 +871,6 @@ tcs:SwComponentDockerConfigShape a sh:NodeShape ;
     ] .
 
 
-# Semantic.works steps may declare at most one `p-plan:hasInputVar`.
-# With multiple, `SemanticWorksCompiler.update_docker_config` selects
-# only the first via `receive_first` — SPARQL result order is
-# non-deterministic, so the remaining configs are dropped silently.
-tcs:SwStepInputVarShape a sh:NodeShape ;
-    rdfs:label "Semantic.works step InputVar cardinality shape" ;
-
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?this a tcs:InstancePipelineComponent ;
-                      prov:specializationOf ?comp .
-                FILTER ( STRSTARTS(STR(?comp), "https://semantic.works/services/") )
-            }
-        """
-    ] ;
-
-    sh:property [
-        sh:path p-plan:hasInputVar ;
-        sh:maxCount 1 ;
-        sh:name "hasInputVar" ;
-        sh:message "Semantic.works step {?this} has more than one p-plan:hasInputVar — the compiler folds only one into the compose environment, silently dropping the rest."
-    ] .
 
 
 # Semantic.works step-config values must be RDF literals. The

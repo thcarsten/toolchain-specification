@@ -56,13 +56,16 @@
 #################################################################
 # Aspects the current toolchain specification does **not yet** cover
 #
-#  1. Cross-framework transport-as-channel. `demo:ldioToRdfcBridge` is an
-#     HTTP hop between the LDIO `HttpOut` step and the RDF-Connect
-#     `HttpServer` step. Both sides configure the transport independently
-#     (`endpoint: http://rdfc:9000/source-a` on one side, `port: 9000` +
-#     `path: /source-a` on the other). `tcs:Channel` currently has no way
-#     to declare its transport type — the model treats every channel as
-#     opaque. The two ends could drift without any error.
+#  1. Cross-framework transport-as-channel. `demo:HttpIngest
+#     p-plan:isPrecededBy demo:LdioForward` is an HTTP hop between the LDIO
+#     `HttpOut` step and the RDF-Connect `HttpServer` step, expanded by
+#     `PipelineEnricher` into an auto-named `tcs:Channel` (formerly
+#     the hand-named `demo:ldioToRdfcBridge`). Both sides still configure
+#     the transport independently (`endpoint: http://rdfc:9000/source-a` on
+#     one side, `port: 9000` + `path: /source-a` on the other).
+#     `tcs:Channel` currently has no way to declare its transport type —
+#     the model treats every channel as opaque. The two ends could drift
+#     without any error.
 #
 #  2. Branching output. `rdfc:Sdsify` writes to *two* channels: the main
 #     data stream (`rdfc:output`) and a metadata sidestream
@@ -146,6 +149,7 @@ demo:DishacledPipeline a tcs:PipelineDefinition ;
 # 1. LDIO segment — poll, parse, enrich, forward
 #################################################################
 
+
 demo:ApiPoll a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpInPoller ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
@@ -155,9 +159,7 @@ demo:ApiPoll a tcs:InstancePipelineComponent ;
             ldio:url "https://dishacled-api.azurewebsites.net/api/v1/source-a/current" ;
             ldio:cron "*/10 * * * * *"
         ]
-    ] ;
-    tcs:writesTo demo:sourceARaw .
-
+    ] .
 
 
 
@@ -166,9 +168,11 @@ demo:ApiPoll a tcs:InstancePipelineComponent ;
 demo:JsonLdParse a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:ApiPoll ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:outputShape ;
+        # Only after adding the json-ld context can be make statements about the expected rdf data
         dct:relation demo:WaterLevelPropertyValueShape
     ] ;
     p-plan:hasInputVar [
@@ -186,15 +190,14 @@ demo:JsonLdParse a tcs:InstancePipelineComponent ;
               }
             }"""
         ]
-    ] ;
-    tcs:readsFrom demo:sourceARaw ;
-    tcs:writesTo demo:sourceARdf .
+    ] .
 
 
 # schema:PropertyValue → sosa:Observation + qudt:QuantityValue.
 demo:SsnSosaMap a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:SparqlConstructTransformer ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:JsonLdParse ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:inputShape ;
@@ -244,9 +247,7 @@ demo:SsnSosaMap a tcs:InstancePipelineComponent ;
                 }
             """
         ]
-    ] ;
-    tcs:readsFrom demo:sourceARdf ;
-    tcs:writesTo demo:sourceAObservations .
+    ] .
 
 
 # HTTP POST to the RDF-Connect ingest endpoint. Effectively the LDIO→RDFC
@@ -257,6 +258,7 @@ demo:SsnSosaMap a tcs:InstancePipelineComponent ;
 demo:LdioForward a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpOut ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:SsnSosaMap ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -268,56 +270,74 @@ demo:LdioForward a tcs:InstancePipelineComponent ;
             ldio:endpoint "http://rdfc:9000/source-a" ;
             ldio:rdf-writer [ ldio:content-type "application/ld+json" ]
         ]
-    ] ;
-    tcs:readsFrom demo:sourceAObservations ;
-    tcs:writesTo demo:ldioToRdfcBridge .
+    ] .
 
 
 #################################################################
 # 2. RDF-Connect segment — accept POST, SDS, threshold, ingest
 #################################################################
 
+# rdfc:Reader/rdfc:Writer typing is explicit-author responsibility for
+# now (no inference rule yet) — every channel named here is written by
+# one step's Writer-role configShape path and read by another's
+# Reader-role path, so both types apply. Compiler-minted channels
+# (the anonymous :channel_N wiring synthesized by PipelineEnricher for
+# isPrecededBy edges, e.g. HttpIngest -> JsonLdToRdf) have no stable
+# author-facing name to type against and are left untyped.
+demo:sdsMeasurements a rdfc:Reader, rdfc:Writer .
+demo:sdsMeasurementsMeta a rdfc:Reader, rdfc:Writer .
+demo:sdsViolations a rdfc:Reader, rdfc:Writer .
+demo:sdsViolationsMeta a rdfc:Reader, rdfc:Writer .
+
 demo:HttpIngest a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:HttpServer ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:LdioForward ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
             rdfc:port 9000 ;
-            rdfc:writer demo:rawJson ;
             rdfc:options [
                 rdfc:method "POST" ;
                 rdfc:path "/source-a" ;
                 rdfc:successStatusCode 202
             ]
         ]
-    ] ;
-    tcs:readsFrom demo:ldioToRdfcBridge ;
-    tcs:writesTo demo:rawJson .
+    ] .
 
 
 demo:JsonLdToRdf a tcs:InstancePipelineComponent ;
     prov:specializationOf proc:JsonLdToNQuads ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
-    p-plan:hasInputVar [
-        a tcs:PipelineConfig ;
-        tcs:embedded [
-            rdfc:reader demo:rawJson ;
-            rdfc:writer demo:rdf
-        ]
-    ] ;
-    tcs:readsFrom demo:rawJson ;
-    tcs:writesTo demo:rdf .
+    p-plan:isPrecededBy demo:HttpIngest ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] .
 
 
-# Branching writer — see gap #2 in the file header.
+# Branching writer — see gap #2 in the file header. Read side is a plain
+# 1:1 edge (isPrecededBy); write side stays fully explicit because the
+# two outputs are genuinely ambiguous (nothing can disambiguate which
+# downstream consumer wants which branch).
 demo:SdsifyMeasurements a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:Sdsify ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:JsonLdToRdf ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:inputShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:input demo:rdf ;
             rdfc:output demo:sdsMeasurements ;
             rdfc:metadataOutput demo:sdsMeasurementsMeta ;
             rdfc:metadataConfig [
@@ -327,18 +347,22 @@ demo:SdsifyMeasurements a tcs:InstancePipelineComponent ;
             rdfc:typeFilter sosa:Observation
         ]
     ] ;
-    tcs:readsFrom demo:rdf ;
     tcs:writesTo demo:sdsMeasurements , demo:sdsMeasurementsMeta .
 
 
+# Reader side stays explicit — the upstream producer (SdsifyMeasurements)
+# branches, so isPrecededBy alone couldn't tell which output this reads.
 demo:ThresholdMonitor a tcs:InstancePipelineComponent ;
     prov:specializationOf tm:ThresholdMonitorJs ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:inputShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:reader demo:sdsMeasurements ;
-            rdfc:writer demo:violations ;
             tm:path sosa:hasSimpleResult ;
             tm:min "0.0"^^xsd:double ;
             tm:max "300.0"^^xsd:double ;
@@ -346,32 +370,30 @@ demo:ThresholdMonitor a tcs:InstancePipelineComponent ;
             tm:creator demo:thresholdMonitorAgent
         ]
     ] ;
-    tcs:readsFrom demo:sdsMeasurements ;
-    tcs:writesTo demo:violations .
+    tcs:readsFrom demo:sdsMeasurements .
 
 
 demo:SkolemizeViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:SkolemizationProcessor ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:ThresholdMonitor ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:incoming demo:violations ;
-            rdfc:outgoing demo:violationsSkolemized ;
             rdfc:mime "text/turtle"
         ]
-    ] ;
-    tcs:readsFrom demo:violations ;
-    tcs:writesTo demo:violationsSkolemized .
+    ] .
 
 
+# Read side is a plain 1:1 edge (isPrecededBy); write side stays fully
+# explicit for the same branching reason as SdsifyMeasurements above.
 demo:SdsifyViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:Sdsify ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:SkolemizeViolations ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:input demo:violationsSkolemized ;
             rdfc:output demo:sdsViolations ;
             rdfc:metadataOutput demo:sdsViolationsMeta ;
             rdfc:metadataConfig [
@@ -381,7 +403,6 @@ demo:SdsifyViolations a tcs:InstancePipelineComponent ;
             rdfc:typeFilter <http://open-services.net/ns/core#Error>
         ]
     ] ;
-    tcs:readsFrom demo:violationsSkolemized ;
     tcs:writesTo demo:sdsViolations , demo:sdsViolationsMeta .
 
 
@@ -392,7 +413,6 @@ demo:LogMeasurementsMeta a tcs:InstancePipelineComponent ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:reader demo:sdsMeasurementsMeta ;
             rdfc:level "debug" ;
             rdfc:label "sds-measurements-metadata"
         ]
@@ -406,7 +426,6 @@ demo:LogViolationsMeta a tcs:InstancePipelineComponent ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:reader demo:sdsViolationsMeta ;
             rdfc:level "debug" ;
             rdfc:label "sds-violations-metadata"
         ]
@@ -423,7 +442,6 @@ demo:SparqlIngest a tcs:InstancePipelineComponent ;
     p-plan:hasInputVar [
         a tcs:Config ;
         tcs:embedded [
-            rdfc:memberStream demo:sdsViolations ;
             rdfc:ingestConfig [
                 rdfc:operationMode "Sync" ;
                 rdfc:memberBatchSize 1 ;

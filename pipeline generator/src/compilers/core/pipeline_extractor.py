@@ -49,15 +49,13 @@ class PipelineExtractor(Compiler):
         self.output_reader = self.output_reader.add(new_triples)
 
     def extract_pipeline(self) -> None:
-        # Extracting the pipeline
-        graph_inverse_steps = (
-            self.output_reader.filter(pred="p-plan:isStepOfPlan", obj=self.pipeline_id)
-            .construct("?o :hasStep ?s", "?s ?p ?o.")
-            .graph
-        )
-        # Filtering down to triples concerning the pipeline
-        self.output_reader = self.output_reader.add(graph_inverse_steps).traverse(
-            self.pipeline_id
+        # ``p-plan:isStepOfPlan`` points from step to plan; traversing it
+        # in the "against" direction reaches every step (and everything
+        # below it) without needing to materialize an inverse ``:hasStep``
+        # triple first — this also scopes the extraction to just the one
+        # pipeline's triples.
+        self.output_reader = self.output_reader.traverse(
+            self.pipeline_id, against="p-plan:isStepOfPlan"
         )
 
     def name_blind_nodes(self) -> None:

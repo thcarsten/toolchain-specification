@@ -57,6 +57,7 @@ class RdfcConfigCompiler(Compiler):
 
         self.describe_pipeline()
         self.describe_processors()
+        self.describe_channel_wiring()
         self.describe_configs()
         self.describe_channels()
 
@@ -150,23 +151,151 @@ class RdfcConfigCompiler(Compiler):
         """
 
         step_list = self.rdfc_reader.filter(pred="rdfc:processor").df["obj"].to_list()
-        config_df = self.input_reader.filter(
+        config_df = self.output_reader.filter(
             sub=step_list, pred="p-plan:hasInputVar"
         ).df
         config_list = config_df["obj"].to_list()
 
         for config_id in config_list:
             step_id = receive_first(
-                self.input_reader.filter(
+                self.output_reader.filter(
                     sub=step_list, pred="p-plan:hasInputVar", obj=config_id
                 ).df["sub"],
             )
-            config_dict = extract_config(self.input_reader, config_id)
+            config_dict = extract_config(self.output_reader, config_id)
             config_dict["@id"] = step_id
             config_graph = GraphDict(
                 config_dict, prefix_store=self.input_reader.prefix_store
             ).graph
             self.rdfc_reader = self.rdfc_reader.add(config_graph)
+
+    def describe_channel_wiring(self) -> None:
+        """Fill in a step's reader/writer config key when it's unambiguous.
+
+        For each RDF-Connect step with exactly one ``tcs:readsFrom`` (or
+        ``tcs:writesTo``) channel, looks up its component's configShape
+        (the same ``dcat:qualifiedRelation`` / ``dcat:hadRole
+        tcs:configShape`` attachment used by ``rdfc:SPARQLIngest``) for
+        ``sh:property`` entries typed ``sh:class rdfc:Reader`` /
+        ``rdfc:Writer``. If exactly one candidate ``sh:path`` exists,
+        injects ``<path> <channel>`` into the step's config.
+        ``PipelineEnricher`` guarantees every step already has exactly
+        one config to write into by this point, so this compiler never
+        mints one itself.
+
+        Deliberately conservative: 0 or >1 candidate paths (e.g.
+        ``rdfc:Sdsify``'s two writer paths), or 0 or >1 channels on the
+        step (a branching producer/consumer), leave the step untouched
+        so it must stay explicitly authored — this compiler never
+        guesses which branch a step means.
+        """
+        steps = self.output_reader.select(
+            "?step ?component",
+            """
+            ?step prov:specializationOf ?component .
+            ?container tcs:instantiates ?component .
+            ?container tcs:instantiates rdfc:Orchestrator .
+            ?container tcs:runs ?step .
+            """,
+        )
+
+        for _, row in steps.iterrows():
+            step_id = row["step"]
+            component_id = row["component"]
+
+            self._inject_wiring_key(
+                step_id,
+                component_id,
+                channel_pred="tcs:readsFrom",
+                shape_class="rdfc:Reader",
+            )
+            self._inject_wiring_key(
+                step_id,
+                component_id,
+                channel_pred="tcs:writesTo",
+                shape_class="rdfc:Writer",
+            )
+
+    def _inject_wiring_key(
+        self,
+        step_id: str,
+        component_id: str,
+        channel_pred: str,
+        shape_class: str,
+    ) -> None:
+        channels = (
+            self.output_reader.filter(sub=step_id, pred=channel_pred)
+            .df["obj"]
+            .to_list()
+        )
+        if len(channels) != 1:
+            # No channel, or an ambiguous branch (>1) — stays explicit.
+            return
+        channel_id = channels[0]
+
+        path = self._lookup_channel_predicate(component_id, shape_class)
+        if path is None:
+            # No declared wiring slot, or ambiguous (>1 candidate) —
+            # leave to manual authoring.
+            return
+
+        configs = (
+            self.output_reader.filter(sub=step_id, pred="p-plan:hasInputVar")
+            .df["obj"]
+            .to_list()
+        )
+        if len(configs) != 1:
+            # PipelineEnricher guarantees at least one; more than one is
+            # a modelling error the generic cardinality shape already
+            # flags — don't guess which one to use.
+            return
+        config_id = configs[0]
+
+        # Anchored through config_id (always a named IRI post
+        # PipelineExtractor.name_blind_nodes) rather than holding the
+        # tcs:embedded blank node directly — a blank node's label isn't
+        # stable across separate SPARQL query executions, so it can
+        # never be safely stringified into a query.
+        if self.output_reader.ask(f"{config_id} tcs:embedded/{path} ?x ."):
+            # Already explicit — never overwrite.
+            return
+
+        new_triples = self.output_reader.construct(
+            f"?embedded {path} {channel_id} .",
+            f"{config_id} tcs:embedded ?embedded .",
+        ).graph
+        self.output_reader = self.output_reader.add(new_triples)
+
+    def _lookup_channel_predicate(
+        self, component_id: str, shape_class: str
+    ) -> str | None:
+        """Return the component's single reader/writer predicate, or ``None``.
+
+        Looks up ``component_id``'s configShape (the same
+        ``dcat:qualifiedRelation`` / ``dcat:hadRole tcs:configShape``
+        attachment used by ``rdfc:SPARQLIngest``) for ``sh:property``
+        entries typed ``sh:class {shape_class}`` (``rdfc:Reader`` or
+        ``rdfc:Writer``) and returns the single candidate ``sh:path``.
+
+        Returns ``None`` if the component declares zero such paths (no
+        wiring slot for that role) or more than one (ambiguous — e.g.
+        ``rdfc:Sdsify``'s two writer paths) — either way the caller must
+        leave the step to manual authoring rather than guess.
+        """
+        paths = self.output_reader.select(
+            "?path",
+            f"""
+            {component_id} dcat:qualifiedRelation ?rel .
+            ?rel dcat:hadRole tcs:configShape .
+            ?rel dct:relation ?shape .
+            ?shape sh:property ?prop .
+            ?prop sh:path ?path ;
+                  sh:class {shape_class} .
+            """,
+        )["path"].to_list()
+        if len(paths) != 1:
+            return None
+        return paths[0]
 
     def describe_channels(self) -> None:
         """Emit the ``?channel a rdfc:Reader, rdfc:Writer`` boilerplate.

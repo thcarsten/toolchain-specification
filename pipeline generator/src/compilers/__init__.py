@@ -1,5 +1,7 @@
 from .base import Compiler
 from .core.pipeline_extractor import PipelineExtractor
+from .core.pipeline_enricher import PipelineEnricher
+from .core.validation_report_compiler import ValidationReportCompiler
 from .core.pipeline_assembler import PipelineAssembler
 from .core.docker_compose_compiler import DockerComposeCompiler
 from .ldio.config_compiler import LdioConfigCompiler
@@ -18,6 +20,8 @@ from .project_builder import ProjectBuilder
 __all__ = [
     "Compiler",
     "PipelineExtractor",
+    "PipelineEnricher",
+    "ValidationReportCompiler",
     "PipelineAssembler",
     "LdioConfigCompiler",
     "RdfcConfigCompiler",
