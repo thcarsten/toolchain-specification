@@ -156,6 +156,18 @@ def test_bind_to_namespace_registers_prefixes_on_graph(store):
     assert dict(g.namespaces())["ex"] == URIRef(EX)
 
 
+def test_bind_to_namespace_wins_over_conflicting_default_prefix():
+    """Regression test: a bare Graph() auto-binds rdflib's own "core"
+    defaults, including dcterms for the same URL our catalogs bind as
+    dct. bind_to_namespace must still make the store's own prefix win."""
+    dct_url = "http://purl.org/dc/terms/"
+    g = Graph()
+    assert dict(g.namespaces())["dcterms"] == URIRef(dct_url)
+
+    PrefixStore({"dct": dct_url}).bind_to_namespace(g)
+    assert dict(g.namespaces()).get("dct") == URIRef(dct_url)
+
+
 def test_include_in_query_prepends_missing_prefixes(store):
     query = "SELECT * WHERE { ?s ex:knows ?o }"
     augmented = store.include_in_query(query)

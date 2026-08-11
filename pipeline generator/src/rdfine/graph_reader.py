@@ -93,9 +93,10 @@ class GraphReader:
 
         new_graph = self.graph + graph
 
-        # ensure prefixes are applied to new graph
-        self.prefix_store.bind_to_namespace(new_graph)
+        # ensure prefixes are applied to new graph — self.prefix_store
+        # applies last so it always wins over graph's own bindings
         PrefixStore(graph).bind_to_namespace(new_graph)
+        self.prefix_store.bind_to_namespace(new_graph)
 
         return type(self)(new_graph)
 
@@ -391,9 +392,10 @@ class GraphReader:
         Return a new GraphReader with triples from 'graph' removed.
         """
         new_graph = self.graph - graph
-        # ensure prefixes are applied to new graph
-        self.prefix_store.bind_to_namespace(new_graph)
+        # ensure prefixes are applied to new graph — self.prefix_store
+        # applies last so it always wins over graph's own bindings
         PrefixStore(graph).bind_to_namespace(new_graph)
+        self.prefix_store.bind_to_namespace(new_graph)
         return type(self)(new_graph)
 
     def rename(self, old: str, new: str) -> Self:

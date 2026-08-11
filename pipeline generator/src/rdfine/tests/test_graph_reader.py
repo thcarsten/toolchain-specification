@@ -176,6 +176,22 @@ def test_remove_drops_matching_triples(sample_graph):
     assert not result.ask("ex:a ex:knows ex:b .")
 
 
+def test_add_reader_prefix_wins_over_operand_default_prefix():
+    """Regression test: merging in a bare Graph() (which auto-binds
+    rdflib's own dcterms default for the same URL our catalogs bind as
+    dct) must not evict the reader's own dct binding."""
+    dct_url = "http://purl.org/dc/terms/"
+    base = Graph()
+    base.bind("dct", dct_url, override=True)
+    reader = GraphReader(base, prefix_store=PrefixStore({"dct": dct_url}))
+
+    bare = Graph()
+    assert dict(bare.namespaces())["dcterms"] == URIRef(dct_url)
+
+    result = reader.add(bare)
+    assert dict(result.graph.namespaces()).get("dct") == URIRef(dct_url)
+
+
 # --- rename ------------------------------------------------------------
 
 
