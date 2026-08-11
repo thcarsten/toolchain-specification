@@ -313,7 +313,17 @@ def test_typo_pipeline_id_raises_nameerror(catalog_graph):
 def test_zero_step_pipeline_compiles_to_minimal_build(catalog_graph):
     parse_extra(catalog_graph, PREFIXES + "demo:Empty a tcs:PipelineDefinition .")
     gen, _ = compile_pipeline(catalog_graph, "demo:Empty")
-    assert [c.__name__ for c in gen.compilers] == ["PipelineExtractor"]
+    # PipelineEnricher triggers on tcs:PipelineBuild existing (seeded
+    # unconditionally by PipelineExtractor), so it still runs here as a
+    # no-op enrichment pass — there are no steps to synthesize channels
+    # or configs for, but the compiler is still eligible and does run.
+    # ValidationReportCompiler triggers on PipelineEnricher's dct:creator
+    # provenance, so it follows for the same reason.
+    assert [c.__name__ for c in gen.compilers] == [
+        "PipelineExtractor",
+        "PipelineEnricher",
+        "ValidationReportCompiler",
+    ]
 
 
 def test_non_deployable_pipeline_compiles_with_zero_containers(catalog_graph):
@@ -755,6 +765,44 @@ def test_rdfc_package_manager_invalid_supplier_triggers_shape(catalog_with_shape
     """,
     )
     assert_shacl_violation(catalog_with_shapes, message_contains="must be :pip or :npm")
+
+
+def test_rdfc_mandatory_writer_wiring_missing_triggers_shape(catalog_with_shapes):
+    # rdfc:Sdsify's configShape marks rdfc:output/rdfc:metadataOutput
+    # sh:minCount 1 (both sh:class rdfc:Writer) — a step with neither
+    # explicit nor synthesized tcs:writesTo cannot actually run.
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:BadSdsify a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:Sdsify ;
+            p-plan:isStepOfPlan demo:Test .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes, message_contains="mandatory rdfc:Writer"
+    )
+
+
+def test_rdfc_mandatory_writer_wiring_present_conforms(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:GoodSdsify a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:Sdsify ;
+            p-plan:isStepOfPlan demo:Test ; tcs:writesTo demo:ch1 , demo:ch2 .
+    """,
+    )
+    report = load_reader(catalog_with_shapes).validate(advanced=True, inference="rdfs")
+    violations = report.select(
+        "?message",
+        "?r a sh:ValidationResult ; sh:resultMessage ?message .",
+    )
+    assert (
+        not violations["message"]
+        .str.contains("mandatory rdfc:Writer", case=False, na=False)
+        .any()
+    )
 
 
 def test_ldio_component_type_missing_triggers_shape(catalog_with_shapes):
