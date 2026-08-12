@@ -97,6 +97,24 @@ def test_generate_validation_report_attaches_exactly_one_file(demonstrator_graph
     assert len(compiler.throughput_matches) == len(_channels(build))
 
 
+def test_report_marks_which_shapes_were_actually_evaluated(demonstrator_graph):
+    # SpecializedComponentIsCatalogedShape carries a sh:target (via
+    # sh:sparql), so it must show up as validated; a nested sub-shape
+    # only ever reached via sh:node (e.g. demo:PlaceShape, reached from
+    # demo:WaterLevelPropertyValueShape's schema:location property) has
+    # no target of its own and must show up as untargeted instead.
+    gen, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+    compiler = gen.compilers[ValidationReportCompiler]
+
+    assert "tcs:SpecializedComponentIsCatalogedShape" in compiler.validated_shapes
+    assert "demo:PlaceShape" in compiler.untargeted_shapes
+    assert "demo:PlaceShape" not in compiler.validated_shapes
+
+    content = _report_content(build)
+    assert "tcs:ValidatedShape" in content
+    assert "tcs:UntargetedShape" in content
+
+
 def test_real_pipeline_components_are_not_flagged_as_dangling(demonstrator_graph):
     # PipelineExtractor's narrowing must preserve the catalog's own
     # dcat:resource membership assertion for every component this

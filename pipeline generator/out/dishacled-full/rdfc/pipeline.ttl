@@ -23,11 +23,11 @@ demo:HttpIngest a rdfc:HttpServer ;
             rdfc:path "/source-a" ;
             rdfc:successStatusCode 202 ] ;
     rdfc:port 9000 ;
-    rdfc:writer :channel_13 .
+    rdfc:writer :channel_5 .
 
 demo:JsonLdToRdf a proc:JsonLdToNQuads ;
-    rdfc:reader :channel_13 ;
-    rdfc:writer :channel_68 .
+    rdfc:reader :channel_5 ;
+    rdfc:writer :channel_44 .
 
 demo:LogMeasurementsMeta a rdfc:LogProcessorJs ;
     rdfc:label "sds-measurements-metadata" ;
@@ -40,7 +40,7 @@ demo:LogViolationsMeta a rdfc:LogProcessorJs ;
     rdfc:reader demo:sdsViolationsMeta .
 
 demo:SdsifyMeasurements a rdfc:Sdsify ;
-    rdfc:input :channel_68 ;
+    rdfc:input :channel_44 ;
     rdfc:metadataConfig [ rdfc:description "SDS stream of sosa:Observation water level measurements from source-a" ;
             rdfc:streamId demo:measurementsStream ] ;
     rdfc:metadataOutput demo:sdsMeasurementsMeta ;
@@ -48,7 +48,7 @@ demo:SdsifyMeasurements a rdfc:Sdsify ;
     rdfc:typeFilter sosa:Observation .
 
 demo:SdsifyViolations a rdfc:Sdsify ;
-    rdfc:input :channel_57 ;
+    rdfc:input :channel_38 ;
     rdfc:metadataConfig [ rdfc:description "SDS stream of threshold-violation alerts for source-a" ;
             rdfc:streamId demo:violationsStream ] ;
     rdfc:metadataOutput demo:sdsViolationsMeta ;
@@ -56,9 +56,9 @@ demo:SdsifyViolations a rdfc:Sdsify ;
     rdfc:typeFilter <http://open-services.net/ns/core#Error> .
 
 demo:SkolemizeViolations a rdfc:SkolemizationProcessor ;
-    rdfc:incoming :channel_32 ;
+    rdfc:incoming :channel_12 ;
     rdfc:mime "text/turtle" ;
-    rdfc:outgoing :channel_57 .
+    rdfc:outgoing :channel_38 .
 
 demo:SparqlIngest a rdfc:SPARQLIngest ;
     rdfc:ingestConfig [ rdfc:forVirtuoso true ;
@@ -70,7 +70,7 @@ demo:SparqlIngest a rdfc:SPARQLIngest ;
 
 demo:ThresholdMonitor a tm:ThresholdMonitorJs ;
     rdfc:reader demo:sdsMeasurements ;
-    rdfc:writer :channel_32 ;
+    rdfc:writer :channel_12 ;
     tm:creator demo:thresholdMonitorAgent ;
     tm:max 3e+02 ;
     tm:min 0e+00 ;

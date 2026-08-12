@@ -175,10 +175,42 @@ class ValidationReportCompiler(Compiler):
         boolean so ``gen.compilers[ValidationReportCompiler].conforms``
         can be audited directly after a compile, without re-parsing the
         attached report.
+
+        Also records, on :attr:`validated_shapes` /
+        :attr:`untargeted_shapes`, which ``sh:NodeShape``s in the build
+        graph did or didn't end up with a target — an absence of
+        violations only means something if the shape was actually
+        evaluated, and a ``sh:NodeShape`` with no target at all is
+        silently never checked by pySHACL. Note that a legitimately
+        untargeted shape isn't necessarily a bug: nested sub-shapes
+        reached only via ``sh:node``/``sh:property`` (e.g.
+        ``ldio:quantityValueShape``) are evaluated in the context of
+        their parent shape's target and never need one of their own.
+        :meth:`generate_validation_report` surfaces both lists in the
+        attached report so this is visible without re-deriving it from
+        the shapes graph by hand.
         """
         report = self.output_reader.validate(advanced=True, inference="rdfs")
         self.conforms = report.ask("?r sh:conforms true")
         self._shacl_report = report
+
+        targeted = self.output_reader.select(
+            "?shape",
+            """
+            ?shape a sh:NodeShape .
+            { ?shape sh:target ?t }
+            UNION { ?shape sh:targetClass ?t }
+            UNION { ?shape sh:targetNode ?t }
+            UNION { ?shape sh:targetObjectsOf ?t }
+            UNION { ?shape sh:targetSubjectsOf ?t }
+            """,
+        )["shape"].drop_duplicates()
+        all_shapes = self.output_reader.select("?shape", "?shape a sh:NodeShape .")[
+            "shape"
+        ].drop_duplicates()
+
+        self.validated_shapes = sorted(targeted)
+        self.untargeted_shapes = sorted(set(all_shapes) - set(targeted))
 
     def gather_throughput_shapes(self) -> None:
         """Resolve an ``inputShape``/``outputShape`` for every ``tcs:Channel``,
@@ -495,10 +527,18 @@ class ValidationReportCompiler(Compiler):
         into the one file attached to the build, per architecture step
         8 in ``test suite/README.md``.
 
-        The throughput-matching vocabulary used here
-        (``tcs:ThroughputMatchResult``, ``tcs:forChannel``,
-        ``tcs:inputShape``, ``tcs:outputShape``, ``tcs:matches``) is
-        provisional — it isn't part of the public semantic model yet,
+        Also marks every shape from :meth:`validate_normal_shapes`'
+        ``validated_shapes``/``untargeted_shapes`` lists as
+        ``tcs:ValidatedShape``/``tcs:UntargetedShape``, so a reader of
+        the report can tell "this shape conforms" apart from "this
+        shape was never actually evaluated" — pySHACL silently skips
+        any ``sh:NodeShape`` without a target, and an absence of
+        violations for it doesn't mean what it looks like it means.
+
+        The extra vocabulary used here (``tcs:ThroughputMatchResult``,
+        ``tcs:forChannel``, ``tcs:inputShape``, ``tcs:outputShape``,
+        ``tcs:matches``, ``tcs:ValidatedShape``, ``tcs:UntargetedShape``)
+        is provisional — it isn't part of the public semantic model yet,
         since the shape-matching bridge's own contract (see
         :meth:`match_shapes`) is still undecided. ``tcs:matches`` is a
         string literal (``"true"`` / ``"false"`` / ``"unknown"``)
@@ -508,6 +548,28 @@ class ValidationReportCompiler(Compiler):
         """
         report = self._shacl_report
         assert report is not None, "validate_normal_shapes() must run first"
+
+        prefix_store = report.prefix_store
+        shape_type_triples = Graph()
+        prefix_store.bind_to_namespace(shape_type_triples)
+        type_pred = URIRef(prefix_store.expand_string("rdf:type"))
+        for shape_id in self.validated_shapes:
+            shape_type_triples.add(
+                (
+                    URIRef(prefix_store.expand_string(shape_id)),
+                    type_pred,
+                    URIRef(prefix_store.expand_string("tcs:ValidatedShape")),
+                )
+            )
+        for shape_id in self.untargeted_shapes:
+            shape_type_triples.add(
+                (
+                    URIRef(prefix_store.expand_string(shape_id)),
+                    type_pred,
+                    URIRef(prefix_store.expand_string("tcs:UntargetedShape")),
+                )
+            )
+        report = report.add(shape_type_triples)
 
         next_index = 0
         for _, row in self.throughput_matches.iterrows():
