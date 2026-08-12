@@ -28,3 +28,15 @@ def catalog_with_shapes(catalog_graph: Graph) -> Graph:
         str(DATA_DIR / SHAPES_FILE), publicID="file:///workspace/pipeline/"
     )
     return catalog_graph
+
+
+@pytest.fixture
+def demonstrator_graph(catalog_with_shapes: Graph) -> Graph:
+    """Catalog + shapes + the real ``demo:DishacledPipeline`` definition —
+    for tests that exercise the actual demonstrator pipeline rather than
+    a synthetic snippet."""
+    catalog_with_shapes.parse(
+        str(DATA_DIR / "pipeline_definition.ttl"),
+        publicID="file:///workspace/pipeline/",
+    )
+    return catalog_with_shapes

@@ -223,6 +223,10 @@ class RdfcConfigCompiler(Compiler):
         channel_pred: str,
         shape_class: str,
     ) -> None:
+        """Inject ``step_id``'s single ``channel_pred`` channel into its
+        config under the component's declared reader/writer path, if
+        unambiguous and not already set — see :meth:`describe_channel_wiring`.
+        """
         channels = (
             self.output_reader.filter(sub=step_id, pred=channel_pred)
             .df["obj"]

@@ -528,6 +528,7 @@ class GraphReader:
         along: list[str] | None | str = None,
         against: list[str] | None | str = None,
         prune: list[str] | None | str = None,
+        stop_at_named_nodes: bool = False,
     ) -> Self:
         """
         Recursively extract the subgraph starting at root_node.
@@ -540,6 +541,16 @@ class GraphReader:
         - along: Allows you to provide a list of predicates that should be exclusivelu followed in direction 'along'. Overwrites direction for that predicate
         - against: Allows you to provide a list of predicates that should be exclusivelu followed in direction 'against'. Overwrites direction for that predicate
         - prune: Prevents to continue search on the neighbors. Allows for example to fetch dependencies of a Processor via osw:hasDependency, without fetching further info on that dependency
+        - stop_at_named_nodes: Concise Bounded Description mode
+          (https://www.w3.org/submissions/CBD/). Every matched triple is
+          still added regardless, but recursion never continues past a
+          named node (URIRef) — only blank-node neighbors are followed
+          further. Use this when a node's own description may reference
+          other named resources (e.g. a config value pointing at a
+          channel IRI) that should be named in the result but not have
+          their own description pulled in too. Combines with
+          along/against/exclude/prune rather than replacing them — a
+          neighbor must clear both checks to be followed.
         """
 
         # Making sure the function argument always comes out as list of expanded urls
@@ -574,7 +585,7 @@ class GraphReader:
         if not self.check_exists(root_node):
             raise NameError(f"{root_node} not found in graph.")
 
-        def _dfs(node):
+        def visit_node(node):
             """
             Add each triple that has node as subject to the subgraph.
             To traverse the graph along the edges in the regular direction,
@@ -595,8 +606,13 @@ class GraphReader:
                     if (p in exclude) or (p in against and p not in along):
                         continue
                     subgraph.add((node, p, o))
-                    # Recurse for objects that are URIRef or BNode
-                    if isinstance(o, (URIRef, BNode)) and (p not in prune):
+                    # Recurse for objects that are URIRef or BNode, unless
+                    # stop_at_named_nodes restricts recursion to BNodes only.
+                    if (
+                        isinstance(o, (URIRef, BNode))
+                        and (p not in prune)
+                        and (not stop_at_named_nodes or isinstance(o, BNode))
+                    ):
                         neighbors.add(o)
 
             # following AGAINST the edge's direction: Add all tripls with node as object
@@ -606,14 +622,19 @@ class GraphReader:
                     if (p in exclude) or (p in along and p not in against):
                         continue
                     subgraph.add((s, p, node))
-                    # Recurse for objects that are URIRef or BNode
-                    if isinstance(s, (URIRef, BNode)) and (p not in prune):
+                    # Recurse for objects that are URIRef or BNode, unless
+                    # stop_at_named_nodes restricts recursion to BNodes only.
+                    if (
+                        isinstance(s, (URIRef, BNode))
+                        and (p not in prune)
+                        and (not stop_at_named_nodes or isinstance(s, BNode))
+                    ):
                         neighbors.add(s)
 
             for neighbor in neighbors:
-                _dfs(neighbor)
+                visit_node(neighbor)
 
-        _dfs(root_node)
+        visit_node(root_node)
 
         self.prefix_store.bind_to_namespace(subgraph)
         return type(self)(subgraph)

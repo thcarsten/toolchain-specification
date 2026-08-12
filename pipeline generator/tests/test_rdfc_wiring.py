@@ -88,3 +88,16 @@ def test_already_explicit_key_is_never_overwritten(catalog_graph):
     content = pipeline_ttl_content(build)
     assert "explicit_channel" in content
     assert "ch1" not in content
+
+
+def test_pipeline_ttl_excludes_validation_report_bookkeeping(demonstrator_graph):
+    # ValidationReportCompiler runs before RdfcConfigCompiler and attaches
+    # dcat:qualifiedRelation (inputshaperel/outputshaperel, emptyshape)
+    # onto channels; extract_config's traversal must not leak that
+    # validation bookkeeping into the emitted pipeline.ttl.
+    _, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+    content = pipeline_ttl_content(build)
+    assert "qualifiedRelation" not in content
+    assert "inputshaperel" not in content
+    assert "outputshaperel" not in content
+    assert "emptyshape" not in content

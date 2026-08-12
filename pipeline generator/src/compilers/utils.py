@@ -166,7 +166,30 @@ def extract_config(reader: GraphReader, config_id: str) -> Union[dict, str]:
         config_id: The IRI of the ``tcs:Config`` to extract (compact
             form, e.g. ``':ldio_config_0'``).
     """
-    config_gd = GraphDict(reader.traverse(config_id).graph)
+    # Concise Bounded Description (https://www.w3.org/submissions/CBD/):
+    # a config's embedded values can be IRIs of real resources (e.g. a
+    # step's tcs:readsFrom channel), and a plain traversal would keep
+    # following *that* resource's own outgoing edges too — including
+    # any SHACL role attachment (ValidationReportCompiler's
+    # inputShape/outputShape/configShape relations) it happens to
+    # carry, silently leaking validation bookkeeping into the
+    # extracted config. stop_at_named_nodes still names the referenced
+    # resource but never chases its own description, while still
+    # descending into the config's own nested blank-node structure.
+    #
+    # dcat:qualifiedRelation is additionally excluded outright as a
+    # second, independent line of defense: stop_at_named_nodes alone
+    # is airtight only because every qualifiedRelation attachment today
+    # lives on a *named* node (a channel or component) reached as a
+    # config value. If a future change ever attaches one to a
+    # blank-node-reachable subject instead, or this call ever grows a
+    # direction/along/against override, this exclude keeps holding
+    # regardless.
+    config_gd = GraphDict(
+        reader.traverse(
+            config_id, stop_at_named_nodes=True, exclude="dcat:qualifiedRelation"
+        ).graph
+    )
     config_gd = config_gd.frame({"@id": config_id})
     return parse_config(config_gd.dict)[":config"]
 
