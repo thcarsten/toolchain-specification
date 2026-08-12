@@ -350,7 +350,7 @@ Roughly speaking, this `ValidationReportCompiler` consists of the following meth
 7. **validate_throughput_shapes**
 - For every pair listed by the previous method, submit it to the external shape-matching bridge (see below) and record the result as a new dataframe-column. 
 8. **generate_validation_report**
-- Attach a validation report combining the results of `validate_normal_shapes` and `validate_throughput_shapes` to the `PipelineBuild` via `attach_file()`.
+- Attach a validation report combining the results of `validate_normal_shapes` and `validate_throughput_shapes` to the `PipelineBuild` via `attach_file()`. For the demonstrator pipeline this is written to [`pipeline generator/out/dishacled-full/validation/validation-report.ttl`](../pipeline%20generator/out/dishacled-full/validation/validation-report.ttl) — a plain SHACL validation report (`sh:conforms`, `sh:result`) combined with one `tcs:ThroughputMatchResult` per `tcs:Channel`.
 
 With the exception of shape-matching, all steps above can be executed in Python. Shape-matching however is implemented as a [Typescript library](https://github.com/DiSHACLed/query-shape-matching-algorithm). This requires a bridge between the `ValidationReportCompiler` and an external service responsible for shape-matching. For this, the `ValidationReportCompiler` talks to a small long-lived Node service over HTTP+JSON. 
 
@@ -382,9 +382,9 @@ One way this could be implemented is to write a new compiler called `ThroughputV
 - [ ] Prototype the `ValidationReportCompiler`
     - [x] method: normalize_config_shapes
     - [x] method: validate_normal_shapes
-    - [ ] method: gather_throughput_shapes
-    - [ ] method: normalize_passthrough_shapes
-    - [ ] method: fill_missing_shapes
-    - [ ] method: list_shapes_to_match
-    - [ ] method: validate_throughput_shapes
-    - [ ] method: generate_validation_report
+    - [x] method: gather_throughput_shapes
+    - [x] method: normalize_passthrough_shapes
+    - [x] method: fill_missing_shapes
+    - [x] method: list_shapes_to_match
+    - [x] method: validate_throughput_shapes (stub — see `match_shapes()`; `qsm-service` bridge itself not yet built)
+    - [x] method: generate_validation_report
