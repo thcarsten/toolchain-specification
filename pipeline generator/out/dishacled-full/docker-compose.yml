@@ -1,10 +1,7 @@
 services:
   berichtencentrum-deliver-email-service:
     image: lblod/berichtencentrum-deliver-email-service
-  dispatcher:
-    image: semtech/mu-dispatcher:2.1.1
-    volumes:
-    - ./semantic-works/config/dispatcher:/config
+    environment: {}
   ldio-workbench:
     container_name: ldio-workbench
     image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
@@ -17,10 +14,35 @@ services:
     command: 'sh -c " sleep 30 && curl -X POST -H ''content-type: application/yaml''
       http://ldio-workbench:8080/admin/api/v1/pipeline --data-binary @/pipeline.yml
       "'
-  triplestore:
-    image: redpencil/virtuoso:1.4.0
+  error-alert:
+    image: lblod/loket-error-alert-service:1.0.2
+    volumes:
+    - ./config/error-alert/:/config/
     environment:
-      SPARQL_UPDATE: 'true'
+      EMAIL_FROM: mail@threshold-monitoring.com
+      EMAIL_TO: firefighters@antwerpen.be
+      ERROR_TEMPLATE: /mnt/templates/error.hbs
+  database:
+    image: semtech/sparql-parser:0.0.15
+    volumes:
+    - ./semantic-works/config/authorization/:/config/
+    - ./semantic-works/data/authorization/:/data/
+  resource:
+    image: semtech/mu-cl-resources:1.27.2
+    volumes:
+    - ./semantic-works/config/resources:/config
+  delta-notifier:
+    image: semtech/mu-delta-notifier:0.4.0
+    volumes:
+    - ./semantic-works/config/delta:/config/
+  dispatcher:
+    image: semtech/mu-dispatcher:2.1.1
+    volumes:
+    - ./semantic-works/config/dispatcher:/config
+  identifier:
+    image: semtech/mu-identifier:1.11.0
+    environment:
+      SESSION_COOKIE_SECURE: 'on'
   rdfc:
     container_name: rdfc
     image: rdf-connect:latest
@@ -30,28 +52,7 @@ services:
     environment:
       LOG_LEVEL: debug
     command: npx rdfc /workspace/pipeline/pipeline.ttl
-  error-alert:
-    image: lblod/loket-error-alert-service:1.0.2
-    volumes:
-    - ./config/error-alert/:/config/
+  triplestore:
+    image: redpencil/virtuoso:1.4.0
     environment:
-      EMAIL_FROM: mail@threshold-monitoring.com
-      EMAIL_TO: firefighters@antwerpen.be
-      ERROR_TEMPLATE: /mnt/templates/error.hbs
-  resource:
-    image: semtech/mu-cl-resources:1.27.2
-    volumes:
-    - ./semantic-works/config/resources:/config
-  database:
-    image: semtech/sparql-parser:0.0.15
-    volumes:
-    - ./semantic-works/config/authorization/:/config/
-    - ./semantic-works/data/authorization/:/data/
-  delta-notifier:
-    image: semtech/mu-delta-notifier:0.4.0
-    volumes:
-    - ./semantic-works/config/delta:/config/
-  identifier:
-    image: semtech/mu-identifier:1.11.0
-    environment:
-      SESSION_COOKIE_SECURE: 'on'
+      SPARQL_UPDATE: 'true'
