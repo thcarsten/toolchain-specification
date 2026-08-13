@@ -6,7 +6,10 @@ from .core.pipeline_assembler import PipelineAssembler
 from .core.docker_compose_compiler import DockerComposeCompiler
 from .ldio.config_compiler import LdioConfigCompiler
 from .rdfc.config_compiler import RdfcConfigCompiler
+from .rdfc.config_shape_compiler import RdfcConfigShapeCompiler
 from .rdfc.dockerfile_compiler import RdfcDockerFileCompiler
+from .rdfc.import_expander import RdfcImportExpander
+from .rdfc.shape_normalizer import RdfcShapeNormalizer
 from .sw.env_var_compiler import SemanticWorksEnvVarCompiler
 from .sw.virtuoso_compiler import VirtuosoCompiler
 from .sw.mu_cl_resources_compiler import MuClResourcesCompiler
@@ -25,7 +28,10 @@ __all__ = [
     "PipelineAssembler",
     "LdioConfigCompiler",
     "RdfcConfigCompiler",
+    "RdfcConfigShapeCompiler",
     "RdfcDockerFileCompiler",
+    "RdfcImportExpander",
+    "RdfcShapeNormalizer",
     "DockerComposeCompiler",
     "SemanticWorksEnvVarCompiler",
     "VirtuosoCompiler",
