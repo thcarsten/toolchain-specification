@@ -6,9 +6,9 @@ A step states its wiring twice — framework-specifically inside
 application-profile shapes read the second, and until now nothing
 connected them, so the pair could disagree in silence.
 
-`inference_rules.yaml` derives `tcs:derivedReadsFrom` /
+`rdfc_inference_rules.yaml` derives `tcs:derivedReadsFrom` /
 `tcs:derivedWritesTo` from the config plus the generated config shapes;
-`tcs:StepChannelWiringShape` requires that everything derived was also
+`tcs:RdfcStepChannelWiringShape` requires that everything derived was also
 declared. These tests pin both halves, and the one-directional nature of
 the check — plenty of declared edges are legitimately underivable.
 """
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import CATALOG_FILES, PIPELINE_ID
+from conftest import CATALOG_FILES, PIPELINE_ID, infer_all
 
 
 DERIVED = """
@@ -51,14 +51,13 @@ demo:MiswiredLog a tcs:InstancePipelineComponent ;
 
 def _load(data_dir: Path, extra: str | None = None):
     from rdflib import Graph
-    from rdfine import GraphReader
 
     graph = Graph()
     for name in CATALOG_FILES:
         graph.parse(data_dir / name, publicID="file:///workspace/pipeline/")
     if extra:
         graph.parse(data=extra, format="turtle")
-    return GraphReader(graph).infer(str(data_dir / "inference_rules.yaml"))
+    return infer_all(graph, data_dir)
 
 
 @pytest.fixture(scope="module")
@@ -71,9 +70,42 @@ def _edges(reader, pattern: str) -> set[tuple[str, str, str]]:
     return {(r.step, r.dir, r.channel) for r in rows.itertuples()}
 
 
+def _steps(reader, pattern: str) -> set[str]:
+    return set(reader.select("?step", pattern)["step"])
+
+
 def test_derivation_produces_edges(reader):
     """If this is empty the rules silently stopped matching."""
     assert len(_edges(reader, DERIVED)) == 14
+
+
+def test_wiring_shape_targets_only_rdfc_steps(reader):
+    """The shape's discriminator must actually discriminate.
+
+    `tcs:RdfcStepChannelWiringShape` selects its focus nodes with the
+    query mirrored here. Scoping it to RDF-Connect only means something
+    while something is left outside the scope, so both halves are
+    asserted: RDF-Connect steps are in, and the LDIO steps sharing this
+    pipeline are out. Typing a non-RDFC component `rdfc:Processor`, or
+    dropping the type from the emitter, then fails here instead of
+    quietly widening or emptying what the shape checks.
+    """
+    targeted = _steps(
+        reader,
+        "?step a tcs:InstancePipelineComponent ; prov:specializationOf ?c . "
+        "?c a rdfc:Processor .",
+    )
+    every = _steps(reader, "?step a tcs:InstancePipelineComponent .")
+    ldio = _steps(
+        reader,
+        "?step prov:specializationOf ?c . "
+        "?c dct:requires ldio:LinkedDataInteractionsOrchestrator .",
+    )
+
+    assert targeted, "no RDF-Connect steps targeted"
+    assert ldio, "fixture should contain LDIO steps"
+    assert targeted & ldio == set()
+    assert targeted < every, "shape targets every step — the scope is not scoped"
 
 
 def test_every_derived_edge_was_declared(reader):
@@ -98,12 +130,10 @@ def test_check_is_one_directional(reader):
 
 def test_ldio_steps_yield_no_derived_edges(reader):
     """LDIO expresses topology by ordering, so nothing is derivable."""
-    ldio = set(
-        reader.select(
-            "?step",
-            "?step prov:specializationOf ?c . "
-            "?c dct:requires ldio:LinkedDataInteractionsOrchestrator .",
-        )["step"]
+    ldio = _steps(
+        reader,
+        "?step prov:specializationOf ?c . "
+        "?c dct:requires ldio:LinkedDataInteractionsOrchestrator .",
     )
     assert ldio, "fixture should contain LDIO steps"
     derived_steps = {step for step, _, _ in _edges(reader, DERIVED)}

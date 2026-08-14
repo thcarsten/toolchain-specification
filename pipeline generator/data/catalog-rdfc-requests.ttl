@@ -9,8 +9,8 @@
 # `processors.ttl` by the emitter.
 #
 # Regenerate with:
-#     python -m catalog harvest    # network; refreshes data/harvest/
-#     python -m catalog generate   # offline; rewrites catalog-rdfc.ttl
+#     python -m rdfc_catalog_harvest harvest    # network; refreshes data/rdfc_harvest/
+#     python -m rdfc_catalog_harvest generate   # offline; rewrites catalog-rdfc.ttl
 #
 # `spdx:versionInfo` is the one field that cannot be derived — it is a
 # policy choice, not a fact about the package. It is copied verbatim

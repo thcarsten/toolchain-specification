@@ -12,8 +12,8 @@ Three sources, one return shape (:class:`FetchedPackage`):
   published anywhere.
 
 This is the only module in the package that touches the network.
-:mod:`catalog.emitter` reads exclusively from the snapshot written by
-:mod:`catalog.harvester`, so regeneration stays offline and
+:mod:`rdfc_catalog_harvest.emitter` reads exclusively from the snapshot written by
+:mod:`rdfc_catalog_harvest.harvester`, so regeneration stays offline and
 reproducible.
 """
 

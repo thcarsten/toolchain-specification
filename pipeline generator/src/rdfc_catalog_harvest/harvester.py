@@ -21,25 +21,16 @@ from rdflib.namespace import RDFS
 from . import registries, snapshot
 from .model import (
     IMPLEMENTATION_PREDICATES,
-    PREFIXES,
     CatalogRequest,
     HarvestRecord,
+    iri,
 )
 
-RDFC = PREFIXES["rdfc"]
-MODULE_PATH = URIRef(f"{RDFC}modulePath")
+MODULE_PATH = iri("rdfc:modulePath")
 
 # Not a term in rdflib's RDFS namespace object, but upstream processors
 # use it interchangeably with rdfs:comment for the prose description.
-RDFS_DESCRIPTION = URIRef(f"{PREFIXES['rdfs']}description")
-
-
-def _expand(compact: str) -> URIRef:
-    prefix, _, local = compact.partition(":")
-    namespace = PREFIXES.get(prefix)
-    if namespace is None:
-        raise ValueError(f"unknown prefix in {compact!r}")
-    return URIRef(f"{namespace}{local}")
+RDFS_DESCRIPTION = iri("rdfs:description")
 
 
 def _declaration(graph: Graph, component: URIRef) -> str | None:
@@ -64,7 +55,7 @@ def _select_source(
             upstream processor, which is the failure mode hand-editing
             never surfaced.
     """
-    component = _expand(request.component)
+    component = iri(request.component)
 
     candidates = fetched.turtle_files
     if request.source_file is not None:
@@ -109,7 +100,7 @@ def harvest_one(request: CatalogRequest, repo_root: Path) -> HarvestRecord:
             fetched = registries.fetch_pypi(request.package, request.version)
 
     source_file, graph, language = _select_source(fetched, request)
-    component = _expand(request.component)
+    component = iri(request.component)
 
     def _literal(*predicates) -> str | None:
         """First non-empty literal among ``predicates``.

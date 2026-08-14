@@ -8,7 +8,7 @@ wrong answer silently harvests a shape from the wrong version.
 
 import pytest
 
-from catalog import semver
+from rdfc_catalog_harvest import semver
 
 
 @pytest.mark.parametrize(

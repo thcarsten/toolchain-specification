@@ -217,51 +217,6 @@ tcs:InstancePipelineComponentShape a sh:NodeShape ;
 # from the other side.
 #################################################################
 
-# A step's channel wiring is expressed twice: framework-specifically
-# inside its `tcs:embedded` config (`rdfc:reader demo:sdsMeasurements`),
-# and framework-neutrally as `tcs:readsFrom` / `tcs:writesTo`. The two
-# had no connection — the compilers read the config, these shapes read
-# the annotation — so a step could wire one channel and declare another
-# with nothing objecting.
-#
-# `inference_rules.yaml` materialises what the config implies as
-# `tcs:derivedReadsFrom` / `tcs:derivedWritesTo`; this shape requires
-# that every derived edge was also declared.
-#
-# The check is deliberately one-directional (derived must be a subset of
-# declared, not equal to it). Plenty of declared edges are legitimately
-# underivable: LDIO steps carry no channel parameters at all, the
-# LDIO -> RDF-Connect boundary channel has no RDFC-side config property
-# behind it (`rdfc:HttpServer` receives an HTTP POST, not a channel), and
-# hand-maintained components such as `proc:JsonLdToNQuads` have no config
-# shape to key on. Those produce no derived triples, so they are not
-# constrained here.
-tcs:StepChannelWiringShape a sh:NodeShape ;
-    rdfs:label "Step channel wiring shape" ;
-    sh:targetClass tcs:InstancePipelineComponent ;
-
-    sh:sparql [
-        sh:prefixes tcs:prefixes ;
-        sh:message "Step {?this} reads from {?value} according to its config, but does not declare tcs:readsFrom {?value}. The framework-specific wiring and the framework-neutral annotation disagree." ;
-        sh:select """
-            SELECT ?this ?value WHERE {
-                ?this tcs:derivedReadsFrom ?value .
-                FILTER NOT EXISTS { ?this tcs:readsFrom ?value . }
-            }
-        """
-    ] ;
-
-    sh:sparql [
-        sh:prefixes tcs:prefixes ;
-        sh:message "Step {?this} writes to {?value} according to its config, but does not declare tcs:writesTo {?value}. The framework-specific wiring and the framework-neutral annotation disagree." ;
-        sh:select """
-            SELECT ?this ?value WHERE {
-                ?this tcs:derivedWritesTo ?value .
-                FILTER NOT EXISTS { ?this tcs:writesTo ?value . }
-            }
-        """
-    ] .
-
 
 tcs:PipelineDefinitionShape a sh:NodeShape ;
     rdfs:label "PipelineDefinition application-profile shape" ;
@@ -432,6 +387,72 @@ tcs:SpdxPackageShape a sh:NodeShape ;
 #################################################################
 # 2.1  RDF-Connect
 #################################################################
+
+# A step's channel wiring is expressed twice: framework-specifically
+# inside its `tcs:embedded` config (`rdfc:reader demo:sdsMeasurements`),
+# and framework-neutrally as `tcs:readsFrom` / `tcs:writesTo`. The two
+# had no connection — the compilers read the config, these shapes read
+# the annotation — so a step could wire one channel and declare another
+# with nothing objecting.
+#
+# `rdfc_inference_rules.yaml` materialises what the config implies as
+# `tcs:derivedReadsFrom` / `tcs:derivedWritesTo`; this shape requires
+# that every derived edge was also declared.
+#
+# Discriminator: the step specialises an `rdfc:Processor`. Only
+# RDF-Connect states its topology inside a config in the first place, so
+# targeting `tcs:InstancePipelineComponent` — every step of every
+# framework — claimed a reach this shape does not have. It made no
+# practical difference (nothing else derives the `tcs:derived*`
+# predicates it reads, so other frameworks' steps passed vacuously) but
+# it read as a general constraint, and the next framework to grow
+# channel-valued parameters would have inherited RDF-Connect's rules by
+# accident.
+#
+# The check is deliberately one-directional (derived must be a subset of
+# declared, not equal to it). Plenty of declared edges are legitimately
+# underivable even within RDF-Connect: the LDIO -> RDF-Connect boundary
+# channel has no RDFC-side config property behind it (`rdfc:HttpServer`
+# receives an HTTP POST, not a channel), and hand-maintained components
+# such as `proc:JsonLdToNQuads` have no config shape to key on. Those
+# produce no derived triples, so they are not constrained here.
+tcs:RdfcStepChannelWiringShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect step channel wiring shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?component .
+                ?component a rdfc:Processor .
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Step {?this} reads from {?value} according to its config, but does not declare tcs:readsFrom {?value}. The framework-specific wiring and the framework-neutral annotation disagree." ;
+        sh:select """
+            SELECT ?this ?value WHERE {
+                ?this tcs:derivedReadsFrom ?value .
+                FILTER NOT EXISTS { ?this tcs:readsFrom ?value . }
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Step {?this} writes to {?value} according to its config, but does not declare tcs:writesTo {?value}. The framework-specific wiring and the framework-neutral annotation disagree." ;
+        sh:select """
+            SELECT ?this ?value WHERE {
+                ?this tcs:derivedWritesTo ?value .
+                FILTER NOT EXISTS { ?this tcs:writesTo ?value . }
+            }
+        """
+    ] .
+
 
 # Every RDF-Connect processor must declare `owl:imports` pointing at the
 # processor's own `.ttl` shape file. The RdfcConfigCompiler copies these

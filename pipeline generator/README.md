@@ -66,7 +66,7 @@ pip install "./src/rdfine[dev]"
 PYTHONPATH=src pytest tests/ -q
 ```
 
-The tests cover the catalog generator (see [§3.1](#31-generating-the-rdf-connect-catalog)) and an end-to-end check that the merged catalog validates and the demonstrator pipeline still compiles. They need no network — catalog generation runs off the committed snapshot in `data/harvest/`.
+The tests cover the catalog generator (see [§3.1](#31-generating-the-rdf-connect-catalog)) and an end-to-end check that the merged catalog validates and the demonstrator pipeline still compiles. They need no network — catalog generation runs off the committed snapshot in `data/rdfc_harvest/`.
 
 ## 3. Workflow
 The `PipelineGenerator` class wraps the full compilation flow. After loading the catalog into a `GraphReader` and enriching it with inference rules, instantiate `PipelineGenerator` with the id of the pipeline to compile and the catalog graph, then call `compile()`:
@@ -121,11 +121,11 @@ Everything else is derived:
 Two commands, deliberately separate:
 
 ```
-python -m catalog harvest     # network: resolves versions, refreshes data/harvest/
-python -m catalog generate    # offline + deterministic: rewrites data/catalog-rdfc.ttl
+python -m rdfc_catalog_harvest harvest     # network: resolves versions, refreshes data/rdfc_harvest/
+python -m rdfc_catalog_harvest generate    # offline + deterministic: rewrites data/catalog-rdfc.ttl
 ```
 
-`harvest` resolves each request's version range against the registry (real caret/tilde/prerelease matching, not `dist-tags.latest`), downloads the package, and freezes the Turtle file that declares the component into `data/harvest/` next to a JSON record of the registry facts. Both are committed. `generate` reads only that snapshot, so regeneration needs no network, produces byte-identical output, and a diff shows whether a change came from upstream (the snapshot moved) or from policy (the request file moved) — the same discipline as committing a lockfile. `python -m catalog generate --check` exits non-zero if the committed file is stale.
+`harvest` resolves each request's version range against the registry (real caret/tilde/prerelease matching, not `dist-tags.latest`), downloads the package, and freezes the Turtle file that declares the component into `data/rdfc_harvest/` next to a JSON record of the registry facts. Both are committed. `generate` reads only that snapshot, so regeneration needs no network, produces byte-identical output, and a diff shows whether a change came from upstream (the snapshot moved) or from policy (the request file moved) — the same discipline as committing a lockfile. `python -m rdfc_catalog_harvest generate --check` exits non-zero if the committed file is stale.
 
 **Translating the shape.** Upstream shapes cannot be pasted verbatim; four systematic rewrites are applied, all traceable to one root cause — a pipeline definition supplies parameter values as bare IRIs and untyped blank nodes inside a `tcs:embedded` block, so any constraint requiring an `rdf:type` on the value is unsatisfiable as written:
 
@@ -154,15 +154,15 @@ The `catalog` package is deliberately **not** part of the `Compiler` hierarchy. 
 
 | Module | Purpose |
 | --- | --- |
-| [catalog/requests.py](src/catalog/requests.py) | Parse `tcs:CatalogRequest` blocks — the whole hand-written input. |
-| [catalog/semver.py](src/catalog/semver.py) | Resolve a version range to a concrete version (npm caret/tilde/prerelease rules). |
-| [catalog/registries.py](src/catalog/registries.py) | Fetch from npm / PyPI / a local checkout. The only module that touches the network. |
-| [catalog/harvester.py](src/catalog/harvester.py) | Pick the Turtle file that declares the requested component, freeze it into the snapshot. |
-| [catalog/snapshot.py](src/catalog/snapshot.py) | Read/write the committed `data/harvest/` records. |
-| [catalog/shapes.py](src/catalog/shapes.py) | Translate an upstream SHACL shape into a toolchain config shape (the four rewrites). |
-| [catalog/emitter.py](src/catalog/emitter.py) | Render the catalog file. Pure function of requests + snapshot. |
-| [catalog/turtle.py](src/catalog/turtle.py) | Deterministic Turtle text emission, for stable diffs. |
-| [catalog/cli.py](src/catalog/cli.py) | `python -m catalog {harvest,generate}`. |
+| [rdfc_catalog_harvest/requests.py](src/rdfc_catalog_harvest/requests.py) | Parse `tcs:CatalogRequest` blocks — the whole hand-written input. |
+| [rdfc_catalog_harvest/semver.py](src/rdfc_catalog_harvest/semver.py) | Resolve a version range to a concrete version (npm caret/tilde/prerelease rules). |
+| [rdfc_catalog_harvest/registries.py](src/rdfc_catalog_harvest/registries.py) | Fetch from npm / PyPI / a local checkout. The only module that touches the network. |
+| [rdfc_catalog_harvest/harvester.py](src/rdfc_catalog_harvest/harvester.py) | Pick the Turtle file that declares the requested component, freeze it into the snapshot. |
+| [rdfc_catalog_harvest/snapshot.py](src/rdfc_catalog_harvest/snapshot.py) | Read/write the committed `data/rdfc_harvest/` records. |
+| [rdfc_catalog_harvest/shapes.py](src/rdfc_catalog_harvest/shapes.py) | Translate an upstream SHACL shape into a toolchain config shape (the four rewrites). |
+| [rdfc_catalog_harvest/emitter.py](src/rdfc_catalog_harvest/emitter.py) | Render the catalog file. Pure function of requests + snapshot. |
+| [rdfc_catalog_harvest/turtle.py](src/rdfc_catalog_harvest/turtle.py) | Deterministic Turtle text emission, for stable diffs. |
+| [rdfc_catalog_harvest/cli.py](src/rdfc_catalog_harvest/cli.py) | `python -m rdfc_catalog_harvest {harvest,generate}`. |
 
 ### 4.1. Module overview
 
@@ -364,7 +364,14 @@ Any pipeline that reuses these components today gets the demonstrator's content 
 
 ### 5.2a. Topology is stated twice, and only partly cross-checked
 
-A step declares its channel wiring in two places: framework-specifically inside its `tcs:embedded` config (`rdfc:reader demo:sdsMeasurements`) and framework-neutrally as `tcs:readsFrom` / `tcs:writesTo`. The compilers read the first, the application-profile shapes read the second. Two inference rules now derive `tcs:derivedReadsFrom` / `tcs:derivedWritesTo` from the config plus the generated config shapes, and `tcs:StepChannelWiringShape` requires that every derived edge was also declared — so a step that wires one channel and annotates another is now a validation error instead of a silent inconsistency.
+A step declares its channel wiring in two places: framework-specifically inside its `tcs:embedded` config (`rdfc:reader demo:sdsMeasurements`) and framework-neutrally as `tcs:readsFrom` / `tcs:writesTo`. The compilers read the first, the application-profile shapes read the second. Two inference rules in [`data/rdfc_inference_rules.yaml`](data/rdfc_inference_rules.yaml) now derive `tcs:derivedReadsFrom` / `tcs:derivedWritesTo` from the config plus the generated config shapes, and `tcs:RdfcStepChannelWiringShape` requires that every derived edge was also declared — so a step that wires one channel and annotates another is now a validation error instead of a silent inconsistency.
+
+Both the rules and the shape are RDF-Connect-only and say so, selecting on `?component a rdfc:Processor` — the type the emitter carries over from upstream's `rdfc:{js,py}ImplementationOf rdfc:Processor`. That is also why the rules sit in their own file rather than in `inference_rules.yaml`. **Load both**, or the derivation never runs and the shape passes with nothing to check:
+
+```python
+catalog_reader = catalog_reader.infer(input_folder + "inference_rules.yaml")       # framework-neutral
+catalog_reader = catalog_reader.infer(input_folder + "rdfc_inference_rules.yaml")  # RDF-Connect
+```
 
 The check is one-directional (derived must be a **subset** of declared) because most declared edges are legitimately underivable. Of 24 declared edges in the demonstrator, 14 are derived and all 14 agree; the other 10 break down as:
 
@@ -440,7 +447,7 @@ rdfc:MyProcessor a tcs:CatalogRequest ;
     spdx:versionInfo "^1.0.0" .
 ```
 
-then `python -m catalog harvest && python -m catalog generate`. If the package ships several Turtle files and auto-detection picks the wrong one, add `tcs:sourceFile "configs/mine.ttl"`. If the source is not published, vendor it into the repo and point `tcs:fromPath` at it plus `spdx:downloadLocation` at the container path. Harvesting fails loudly if the component is not declared in the package, which is what catches an upstream rename.
+then `python -m rdfc_catalog_harvest harvest && python -m rdfc_catalog_harvest generate`. If the package ships several Turtle files and auto-detection picks the wrong one, add `tcs:sourceFile "configs/mine.ttl"`. If the source is not published, vendor it into the repo and point `tcs:fromPath` at it plus `spdx:downloadLocation` at the container path. Harvesting fails loudly if the component is not declared in the package, which is what catches an upstream rename.
 
 **For everything else** (LDIO, semantic.works, or an RDF-Connect component with no resolvable source) the catalog is hand-written. Check the catalog in the data folder for examples. At a minimum, a Pipeline Component needs either a DockerComposeConfig or a dependency to a component with a DockerComposeConfig. The assumption is that each DockerComposeConfig resolves all dependencies of components attached to it, including itself. Depending on the framework, you may also need to include framework-specific properties. For example, the LdioConfigCompiler needs to be able to look up ldio:type and rdf:label, whereas the RdfcConfigCompiler needs to be able to look up owl:imports. This is explicitly mentioned in the sh:NodeShapes a tcs:Compiler points to. Everything else is optional, but it is a good idea to include as many NodeShapes as possible: It serves as a lookup reference for the constraints that need to be fulfilled once a component is included in a pipeline. A typical NodeShape for a tcs:PipelineComponent is for example the schema of its expected Config.
 
@@ -450,6 +457,7 @@ then `python -m catalog harvest && python -m catalog generate`. If the package s
 - Write compilers for your new framework that can produce the expected output files. Each compiler must subclass `Compiler` (from `compilers.base`), implement `compile(self) -> Graph` returning the enriched build graph, and override `applies_to(cls, graph_reader) -> bool` to declare the graph-state conditions under which the compiler should run — typically the presence of a framework-specific node type or predicate in the build graph. The default `applies_to` returns `False`, so this override is required. If your compiler must run only after other shaping compilers have finished (for example because it consumes their output), gate its `applies_to` on `<build> tcs:isFinishing true`, which `PipelineGenerator` sets whenever a shaping pass has settled (see §4.4).
 - Compilers that produce a file should end their `compile()` method with a call to `attach_file(self.output_reader, filename=..., filepath=..., content=...)` (from `compilers.utils`), re-assigning `self.output_reader` with the returned reader. The helper adds an `spdx:File` node to the `tcs:PipelineBuild` carrying the produced file body as a literal.
 - Import the new compiler from `compilers/__init__.py`. The auto-registration mechanism (`Compiler.__init_subclass__`) then makes it visible to `PipelineGenerator`, which will run it automatically against any pipeline whose build graph matches its `applies_to` condition. New compilers usually belong in a per-framework subfolder (`compilers/<framework>/`); framework-agnostic ones go in `compilers/core/`. No edits to `PipelineGenerator` are required.
+- Keep anything framework-specific visibly framework-specific, the way RDF-Connect does: inference rules in `data/<framework>_inference_rules.yaml` rather than in `inference_rules.yaml`, application-profile shapes under §2 of `catalog-application-profile-shapes.ttl` with a `tcs:<Framework>…Shape` name and a discriminator in their `sh:target`, and any harvesting code under `src/<framework>_catalog_harvest/`. A rule or shape that reads a framework's own config layout but targets `tcs:InstancePipelineComponent` will be inherited by the next framework by accident.
 - Test the new compilers based on a Pipeline Definition that includes components of the new framework.
 
 

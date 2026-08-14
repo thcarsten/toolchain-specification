@@ -1,9 +1,9 @@
-"""Command line entry point: ``python -m catalog {harvest,generate}``.
+"""Command line entry point: ``python -m rdfc_catalog_harvest {harvest,generate}``.
 
 Two commands, deliberately separate:
 
 ``harvest``
-    Talks to npm / PyPI, refreshes ``data/harvest/``. Needs network.
+    Talks to npm / PyPI, refreshes ``data/rdfc_harvest/``. Needs network.
 ``generate``
     Rewrites the catalog file from the snapshot. Offline and
     deterministic, so it is safe to run in CI and to diff.
@@ -22,7 +22,7 @@ from . import emitter, harvester
 from .requests import load_requests
 
 DEFAULT_REQUESTS = "data/catalog-rdfc-requests.ttl"
-DEFAULT_SNAPSHOT = "data/harvest"
+DEFAULT_SNAPSHOT = "data/rdfc_harvest"
 DEFAULT_OUTPUT = "data/catalog-rdfc.ttl"
 
 
@@ -80,7 +80,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         current = output.read_text(encoding="utf-8") if output.exists() else ""
         if current != text:
             print(
-                f"{args.output} is stale - re-run `python -m catalog generate`",
+                f"{args.output} is stale - re-run `python -m rdfc_catalog_harvest generate`",
                 file=sys.stderr,
             )
             return 1
@@ -94,7 +94,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m catalog",
+        prog="python -m rdfc_catalog_harvest",
         description="Generate the RDF-Connect section of the component catalog.",
     )
     parser.add_argument(

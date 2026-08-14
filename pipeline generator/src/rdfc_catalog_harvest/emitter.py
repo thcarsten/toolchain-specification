@@ -13,7 +13,7 @@ What each emitted component block gets, and where it comes from:
 ``dct:requires`` <runner>       upstream ``rdfc:{js,py}ImplementationOf``
 ``dct:requires`` [spdx:Package] request package + version
 ``owl:imports``                 package layout + harvested file path
-``dcat:qualifiedRelation``      upstream SHACL shape (see :mod:`catalog.shapes`)
+``dcat:qualifiedRelation``      upstream SHACL shape (see :mod:`rdfc_catalog_harvest.shapes`)
 ==============================  ==========================================
 
 Only ``spdx:versionInfo`` is not derivable: it is a policy choice, so it
@@ -24,10 +24,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rdflib import Graph, URIRef
+from rdflib import Graph
 
 from . import shapes, snapshot
-from .model import PREFIXES, CatalogRequest, HarvestRecord
+from .model import PREFIX_STORE, CatalogRequest, HarvestRecord, iri
 from .turtle import INDENT, banner, inline_bnode, statement, wrap
 
 # Python minor version whose site-packages the generated owl:imports
@@ -47,12 +47,14 @@ _DO_NOT_EDIT = """\
 #################################################################
 # GENERATED FILE - DO NOT EDIT
 #
-# Produced by `python -m catalog generate` from:
+# Produced by `python -m rdfc_catalog_harvest generate` from:
 #   - data/catalog-rdfc-requests.ttl   (hand-written: which package)
-#   - data/harvest/                    (frozen upstream definitions)
+#   - data/rdfc_harvest/               (frozen upstream definitions)
 #
 # To change a version or add a component, edit the request file and
-# re-run `python -m catalog harvest && python -m catalog generate`.
+# re-run:
+#     python -m rdfc_catalog_harvest harvest
+#     python -m rdfc_catalog_harvest generate
 # To change the orchestrator, the runners, or a component whose source
 # is not resolvable, edit data/catalog-rdfc-manual.ttl instead.
 #
@@ -65,7 +67,10 @@ _DO_NOT_EDIT = """\
 
 def _prefix_header() -> str:
     lines = [banner("Prefixes"), ""]
-    for prefix, namespace in sorted(PREFIXES.items()):
+    # PREFIX_STORE.prefixes is kept in alphabetical key order by the
+    # store itself, so the header's line order is guaranteed there
+    # rather than by a sort repeated at each use site.
+    for prefix, namespace in PREFIX_STORE.prefixes.items():
         lines.append(f"@prefix {prefix}: <{namespace}> .")
     return "\n".join(lines) + "\n"
 
@@ -117,7 +122,18 @@ def _component_block(
     shape: shapes.TranslatedShape | None,
 ) -> str:
     """Render one component's full catalog entry."""
-    pairs: list[tuple[str, str]] = [("a", "tcs:PipelineComponent, dcat:Resource")]
+    # ``rdfc:Processor`` carries the upstream declaration
+    # (``<component> rdfc:{js,py}ImplementationOf rdfc:Processor``, the
+    # same triple the harvester discriminates files by) into the
+    # catalog, where it is what marks an entry as RDF-Connect's rather
+    # than LDIO's or semantic.works'. The topology rules and
+    # ``tcs:RdfcStepChannelWiringShape`` both key on it, so it is
+    # stated as a type rather than left to inference: a shape whose
+    # target depends on an inference pass that a caller forgot to run
+    # is a shape that silently checks nothing.
+    pairs: list[tuple[str, str]] = [
+        ("a", "tcs:PipelineComponent, dcat:Resource, rdfc:Processor")
+    ]
 
     if record.label:
         pairs.append(("rdfs:label", f'"{record.label}"'))
@@ -189,7 +205,7 @@ def generate(
         upstream = Graph()
         upstream.parse(data=record.turtle, format="turtle")
 
-        component = URIRef(_expand(request.component))
+        component = iri(request.component)
         shape = shapes.translate(upstream, component)
 
         component_blocks.append(_component_block(record, request, shape))
@@ -238,9 +254,3 @@ def generate(
     return "\n\n".join(section.rstrip() for section in sections) + "\n"
 
 
-def _expand(compact_iri: str) -> str:
-    prefix, _, local = compact_iri.partition(":")
-    namespace = PREFIXES.get(prefix)
-    if namespace is None:
-        raise ValueError(f"unknown prefix in {compact_iri!r}")
-    return f"{namespace}{local}"

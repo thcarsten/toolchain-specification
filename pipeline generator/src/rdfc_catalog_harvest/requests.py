@@ -12,7 +12,7 @@ One block per component, in the shape:
 Everything else in the emitted catalog entry — label, description,
 landing page, runner dependency, package manager, ``owl:imports``, and
 the full SHACL config shape — is derived from the package's own
-``processors.ttl``. See :mod:`catalog.emitter`.
+``processors.ttl``. See :mod:`rdfc_catalog_harvest.emitter`.
 
 This module uses ``rdflib`` directly rather than
 :class:`rdfine.GraphReader`. GraphReader is the project's tool for
@@ -28,38 +28,20 @@ from pathlib import Path
 from rdflib import Graph, URIRef
 from rdflib.namespace import RDF
 
-from .model import PREFIXES, CatalogRequest
+from .model import CatalogRequest, iri
+from .turtle import compact as _compact
 
-TCS = PREFIXES["tcs"]
-SPDX = PREFIXES["spdx"]
-
-CATALOG_REQUEST = URIRef(f"{TCS}CatalogRequest")
+CATALOG_REQUEST = iri("tcs:CatalogRequest")
 
 # request predicate -> CatalogRequest field
 _FIELDS: dict[URIRef, str] = {
-    URIRef(f"{TCS}package"): "package",
-    URIRef(f"{SPDX}versionInfo"): "version",
-    URIRef(f"{TCS}fromPath"): "from_path",
-    URIRef(f"{SPDX}downloadLocation"): "download_location",
-    URIRef(f"{SPDX}suppliedBy"): "supplied_by",
-    URIRef(f"{TCS}sourceFile"): "source_file",
+    iri("tcs:package"): "package",
+    iri("spdx:versionInfo"): "version",
+    iri("tcs:fromPath"): "from_path",
+    iri("spdx:downloadLocation"): "download_location",
+    iri("spdx:suppliedBy"): "supplied_by",
+    iri("tcs:sourceFile"): "source_file",
 }
-
-
-def _compact(node: URIRef) -> str:
-    """Render an IRI in the prefixed form the catalog files use.
-
-    Longest-namespace-first so that ``tm:`` (a sub-path of no other
-    namespace here) and the empty prefix cannot shadow a better match.
-    """
-    text = str(node)
-    best_prefix, best_ns = None, ""
-    for prefix, namespace in PREFIXES.items():
-        if text.startswith(namespace) and len(namespace) > len(best_ns):
-            best_prefix, best_ns = prefix, namespace
-    if best_prefix is None:
-        return f"<{text}>"
-    return f"{best_prefix}:{text[len(best_ns):]}"
 
 
 def load_requests(path: str | Path) -> list[CatalogRequest]:

@@ -2,7 +2,7 @@
 
 import pytest
 
-from catalog.requests import load_requests
+from rdfc_catalog_harvest.requests import load_requests
 
 PREAMBLE = """
 @prefix : <http://example.org/example/> .

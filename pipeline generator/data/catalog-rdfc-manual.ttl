@@ -85,7 +85,7 @@ rdfc:Orchestrator a tcs:PipelineComponent, dcat:Resource ;
 # Python `owl:imports` paths generated into catalog-rdfc.ttl encode both
 # the interpreter version and the working directory's depth. If either
 # changes here, update `PYTHON_VERSION` / `CONTAINER_WORKDIR` in
-# src/catalog/emitter.py and regenerate.
+# src/rdfc_catalog_harvest/emitter.py and regenerate.
 :RdfcOrchestratorDockerImage
     a tcs:Config, tcs:DockerImageConfig ;
     dct:format "text/x-dockerfile" ;
@@ -172,6 +172,12 @@ rdfc:PyRunner a tcs:PipelineComponent, rdfc:Runner, dcat:Resource ;
 
 #################################################################
 # 3. Components with no resolvable source
+#
+# These carry `rdfc:Processor` by hand, for the same reason the emitter
+# writes it on every generated component: it is what marks an entry as
+# RDF-Connect's, and both `tcs:RdfcStepChannelWiringShape` and the topology
+# rules in `rdfc_inference_rules.yaml` select on it. A processor added
+# here without it is simply not checked.
 #################################################################
 
 # Locally-built processor. Source lives in the demonstrator repo at
@@ -180,7 +186,7 @@ rdfc:PyRunner a tcs:PipelineComponent, rdfc:Runner, dcat:Resource ;
 # on a registry for the harvester to read. Move this to a
 # `tcs:CatalogRequest` with `tcs:fromPath` once the source is vendored
 # here.
-proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource ;
+proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     rdfs:label "JSON-LD to N-Quads converter" ;
     rdfs:description "Locally-built RDF-Connect processor that parses JSON-LD bytes on the input channel into N-Quads on the output channel." ;
     dct:requires rdfc:NodeRunner ;
@@ -202,7 +208,7 @@ proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource ;
 # Unbuilt stub. No implementation exists yet, so there is no package to
 # request and no shape to derive. The `owl:imports` records the path the
 # processor is expected to install to.
-rdfc:HttpIn a tcs:PipelineComponent, dcat:Resource ;
+rdfc:HttpIn a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     rdfs:label "RDF Connect Http In" ;
     dct:requires rdfc:PyRunner ;
     owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_in/processor.ttl> .
@@ -212,7 +218,7 @@ rdfc:HttpIn a tcs:PipelineComponent, dcat:Resource ;
 # is generated from `@rdfc/threshold-monitor-processor-ts`). Retained
 # only because it is still referenced from the catalog; drop it once
 # nothing points at it.
-rdfc:thresholdMonitoringProcessor a tcs:PipelineComponent, dcat:Resource ;
+rdfc:thresholdMonitoringProcessor a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     dct:requires rdfc:NodeRunner ;
     owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_threshold_monitoring/processor.ttl> .
 
@@ -222,7 +228,7 @@ rdfc:thresholdMonitoringProcessor a tcs:PipelineComponent, dcat:Resource ;
 #
 # Shapes for classes referenced by upstream processor shapes that come
 # from vocabularies outside RDF-Connect. The emitter keeps a registry
-# (`EXTERNAL_SHAPES` in src/catalog/shapes.py) mapping such a class to a
+# (`EXTERNAL_SHAPES` in src/rdfc_catalog_harvest/shapes.py) mapping such a class to a
 # shape declared here; a generated `sh:class rdfl:PathLens` then becomes
 # `sh:node :ShaclPathShape` instead of being demoted to a
 # non-constraining annotation.

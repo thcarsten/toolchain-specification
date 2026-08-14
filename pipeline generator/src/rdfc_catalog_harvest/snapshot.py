@@ -67,7 +67,7 @@ def read_record(directory: Path, component: str) -> HarvestRecord:
     if not metadata_path.exists() or not turtle_path.exists():
         raise FileNotFoundError(
             f"no harvest record for {component} in {directory}. "
-            "Run `python -m catalog harvest` to fetch it."
+            "Run `python -m rdfc_catalog_harvest harvest` to fetch it."
         )
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     return HarvestRecord(

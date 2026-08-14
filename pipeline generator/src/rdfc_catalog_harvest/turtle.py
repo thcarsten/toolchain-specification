@@ -11,7 +11,7 @@ built as *text* rather than via ``rdflib.Graph.serialize``. Two reasons:
   their blocks. Generated output should look like it belongs next to
   them, which a generic serialiser cannot do.
 
-Correctness is not taken on faith: :mod:`catalog.emitter` re-parses its
+Correctness is not taken on faith: :mod:`rdfc_catalog_harvest.emitter` re-parses its
 own output and the test suite compares it to the upstream source
 graph-wise, so a rendering bug surfaces as a failed isomorphism rather
 than a silently wrong catalog.
@@ -22,7 +22,7 @@ from __future__ import annotations
 from rdflib import BNode, Literal, URIRef
 from rdflib.namespace import XSD
 
-from .model import PREFIXES
+from .model import PREFIX_STORE
 
 INDENT = "    "
 
@@ -30,25 +30,30 @@ INDENT = "    "
 def compact(node: URIRef) -> str:
     """Render an IRI prefixed if possible, else as a full ``<IRI>``.
 
-    Unknown namespaces deliberately fall through to the angle-bracket
-    form rather than getting a synthesised prefix: upstream shapes
-    reference foreign vocabularies (``rdf-lens:PathLens``), and inventing
-    a prefix for each would churn the prefix header every time upstream
-    adds one.
+    The prefix matching itself is :class:`rdfine.PrefixStore`'s — it
+    already resolves longest-namespace-wins from a deterministically
+    ordered table, which is the property the generated file's byte
+    stability rests on, and a second copy of that loop here could drift
+    from it. What stays local is the Turtle *syntax* policy, which is
+    not the store's business:
+
+    - Unknown namespaces fall through to the angle-bracket form rather
+      than getting a synthesised prefix. Upstream shapes reference
+      foreign vocabularies (``rdf-lens:PathLens``), and inventing a
+      prefix per vocabulary would churn the prefix header every time
+      upstream adds one.
+    - A local part containing a slash, or starting with a digit, is not
+      a legal prefixed name, so it also falls back rather than emitting
+      something unparseable.
     """
     text = str(node)
-    best_prefix, best_ns = None, ""
-    for prefix, namespace in PREFIXES.items():
-        if text.startswith(namespace) and len(namespace) > len(best_ns):
-            best_prefix, best_ns = prefix, namespace
-    if best_prefix is None:
+    qname = PREFIX_STORE.compact_string(text)
+    if qname == text:  # no namespace matched
         return f"<{text}>"
-    local = text[len(best_ns) :]
-    # A prefixed name cannot contain a slash or start with a digit; fall
-    # back to the full form rather than emitting something unparseable.
+    _, _, local = qname.partition(":")
     if not local or "/" in local or local[0].isdigit():
         return f"<{text}>"
-    return f"{best_prefix}:{local}"
+    return qname
 
 
 def render_literal(value: Literal) -> str:

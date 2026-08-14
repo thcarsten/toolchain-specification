@@ -65,23 +65,19 @@ from dataclasses import dataclass, field
 
 from rdflib import Graph, URIRef
 
-from .model import PREFIXES
+from .model import iri
 from .turtle import INDENT, compact, inline_bnode, render_term
 
-SH = PREFIXES["sh"]
-RDFC = PREFIXES["rdfc"]
-TCS = PREFIXES["tcs"]
+SH_PROPERTY = iri("sh:property")
+SH_PATH = iri("sh:path")
+SH_CLASS = iri("sh:class")
+SH_DATATYPE = iri("sh:datatype")
+SH_NODE = iri("sh:node")
+SH_NODEKIND = iri("sh:nodeKind")
+SH_TARGET_CLASS = iri("sh:targetClass")
 
-SH_PROPERTY = URIRef(f"{SH}property")
-SH_PATH = URIRef(f"{SH}path")
-SH_CLASS = URIRef(f"{SH}class")
-SH_DATATYPE = URIRef(f"{SH}datatype")
-SH_NODE = URIRef(f"{SH}node")
-SH_NODEKIND = URIRef(f"{SH}nodeKind")
-SH_TARGET_CLASS = URIRef(f"{SH}targetClass")
-
-RDFC_READER = URIRef(f"{RDFC}Reader")
-RDFC_WRITER = URIRef(f"{RDFC}Writer")
+RDFC_READER = iri("rdfc:Reader")
+RDFC_WRITER = iri("rdfc:Writer")
 CHANNEL_CLASSES = {RDFC_READER, RDFC_WRITER}
 
 # Upstream writes `sh:datatype xsd:iri` to mean "this parameter takes an
@@ -89,11 +85,11 @@ CHANNEL_CLASSES = {RDFC_READER, RDFC_WRITER}
 # SHACL the constraint says "a literal whose datatype is xsd:iri" — which
 # no IRI can ever be, making it permanently unsatisfiable. `sh:nodeKind
 # sh:IRI` is the standard way to say what upstream meant.
-XSD_IRI = URIRef(f"{PREFIXES['xsd']}iri")
+XSD_IRI = iri("xsd:iri")
 
-TCS_CHANNEL = compact(URIRef(f"{TCS}Channel"))
-TCS_UPSTREAM_CLASS = compact(URIRef(f"{TCS}upstreamClass"))
-TCS_UPSTREAM_DATATYPE = compact(URIRef(f"{TCS}upstreamDatatype"))
+TCS_CHANNEL = compact(iri("tcs:Channel"))
+TCS_UPSTREAM_CLASS = compact(iri("tcs:upstreamClass"))
+TCS_UPSTREAM_DATATYPE = compact(iri("tcs:upstreamDatatype"))
 
 # Classes from vocabularies outside RDF-Connect whose value space the
 # toolchain can nonetheless check, mapped to a hand-written shape in
@@ -117,24 +113,27 @@ EXTERNAL_SHAPES: dict[URIRef, str] = {
 # not listed sorts alphabetically after these, so an upstream addition
 # lands in a predictable place instead of reshuffling the file.
 _PREDICATE_ORDER = [
-    f"{SH}path",
-    f"{SH}name",
-    f"{SH}description",
-    f"{SH}datatype",
-    f"{SH}class",
-    f"{SH}node",
-    f"{SH}nodeKind",
-    f"{SH}in",
-    f"{SH}hasValue",
-    f"{SH}minCount",
-    f"{SH}maxCount",
+    str(iri(curie))
+    for curie in (
+        "sh:path",
+        "sh:name",
+        "sh:description",
+        "sh:datatype",
+        "sh:class",
+        "sh:node",
+        "sh:nodeKind",
+        "sh:in",
+        "sh:hasValue",
+        "sh:minCount",
+        "sh:maxCount",
+    )
 ]
 
 # SHACL constructs this translator understands. Upstream currently uses
 # a strict subset; anything new fails the run rather than being dropped
 # silently, because a silently dropped constraint is exactly the class
 # of bug hand-transcription produced.
-_SUPPORTED = set(_PREDICATE_ORDER) | {f"{SH}property", f"{SH}targetClass"}
+_SUPPORTED = set(_PREDICATE_ORDER) | {str(SH_PROPERTY), str(SH_TARGET_CLASS)}
 
 
 def _order_key(predicate: URIRef) -> tuple[int, str]:
@@ -201,7 +200,7 @@ def _translate_property(
             raise NotImplementedError(
                 f"unsupported SHACL construct {compact(predicate)} on a property "
                 f"shape for path {compact(path) if path else '?'}. Extend "
-                "catalog.shapes._SUPPORTED once its translation is decided."
+                "rdfc_catalog_harvest.shapes._SUPPORTED once its translation is decided."
             )
         for value in graph.objects(property_node, predicate):
             if predicate == SH_CLASS and isinstance(value, URIRef):

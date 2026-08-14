@@ -9,18 +9,17 @@ from pathlib import Path
 
 import pytest
 
-from conftest import CATALOG_FILES, PIPELINE_ID
+from conftest import CATALOG_FILES, INFERENCE_RULES, PIPELINE_ID, infer_all
 
 
 @pytest.fixture(scope="module")
 def catalog_reader(data_dir: Path):
     from rdflib import Graph
-    from rdfine import GraphReader
 
     graph = Graph()
     for name in CATALOG_FILES:
         graph.parse(data_dir / name, publicID="file:///workspace/pipeline/")
-    return GraphReader(graph).infer(str(data_dir / "inference_rules.yaml"))
+    return infer_all(graph, data_dir)
 
 
 def test_notebook_file_list_matches_this_test(repo_root: Path):
@@ -31,6 +30,30 @@ def test_notebook_file_list_matches_this_test(repo_root: Path):
     source = "".join(notebook["cells"][2]["source"])
     for name in CATALOG_FILES:
         assert f'"{name}"' in source, f"{name} missing from demo.ipynb load list"
+
+
+def test_notebook_rule_list_matches_this_test(repo_root: Path, data_dir: Path):
+    """Same for the rule files, and that the set is the whole set.
+
+    Splitting the RDF-Connect rules out of inference_rules.yaml made it
+    possible to load a graph that is *almost* fully inferred: everything
+    still types correctly, but tcs:derivedReadsFrom is never derived and
+    tcs:RdfcStepChannelWiringShape passes because it has nothing to check.
+    Nothing else in the suite would notice, so the directory listing is
+    checked against the list rather than only the notebook against it.
+    """
+    import json
+
+    notebook = json.loads((repo_root / "src/demo.ipynb").read_text(encoding="utf-8"))
+    source = "".join(notebook["cells"][2]["source"])
+    for name in INFERENCE_RULES:
+        assert f'"{name}"' in source, f"{name} missing from demo.ipynb infer list"
+
+    on_disk = {path.name for path in data_dir.glob("*inference_rules.yaml")}
+    assert on_disk == set(INFERENCE_RULES), (
+        f"rule files on disk {sorted(on_disk)} do not match "
+        f"INFERENCE_RULES {sorted(INFERENCE_RULES)}"
+    )
 
 
 def test_catalog_conforms_to_its_application_profile(catalog_reader):

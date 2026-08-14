@@ -6,7 +6,7 @@ package:
 - :class:`CatalogRequest` — what the catalog *author* writes. One
   statement per component, read from ``data/catalog-rdfc-requests.ttl``.
 - :class:`HarvestRecord` — what the *network* said, frozen into
-  ``data/harvest/``. The emitter reads only these, never the network,
+  ``data/rdfc_harvest/``. The emitter reads only these, never the network,
   so ``catalog generate`` is deterministic and offline.
 
 Keeping them apart is what makes the split work: a request is a
@@ -17,6 +17,10 @@ answer, and the generated catalog is a pure function of the pair.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from rdflib import URIRef
+
+from rdfine import PrefixStore
 
 # Namespace prefixes bound in every file this package emits. Kept here
 # rather than in the emitter so ``requests.py`` can parse against the
@@ -39,6 +43,29 @@ PREFIXES: dict[str, str] = {
     "tm": "https://w3id.org/rdf-connect/threshold-monitor#",
     "xsd": "http://www.w3.org/2001/XMLSchema#",
 }
+
+# One store over that table, shared by the whole package rather than
+# rebuilt per call. It is what turns ``sh:property`` into a full IRI and
+# back, and using rdfine's rather than a local f-string / ``startswith``
+# pair keeps a single implementation of longest-prefix matching in the
+# codebase — the one whose documented ordering the generated file's byte
+# stability relies on (``PrefixStore._order_prefixes``).
+PREFIX_STORE = PrefixStore(PREFIXES)
+
+
+def iri(curie: str) -> URIRef:
+    """``"sh:property"`` to the full ``URIRef`` it stands for.
+
+    Strict where :meth:`PrefixStore.expand_string` is lenient: it hands
+    back an unregistered prefix untouched, which would turn a typo into
+    a plausible-looking IRI that silently matches nothing. Everything
+    passed here is a literal written in this package or a prefix read
+    from a request file, so an unknown one is a bug worth raising on.
+    """
+    expanded = PREFIX_STORE.expand_string(curie)
+    if expanded == curie:
+        raise ValueError(f"unknown prefix in {curie!r}")
+    return URIRef(expanded)
 
 # RDF-Connect declares a processor's implementation language by the
 # predicate linking it to ``rdfc:Processor``. That single predicate is

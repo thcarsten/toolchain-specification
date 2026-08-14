@@ -1,12 +1,14 @@
 #################################################################
 # GENERATED FILE - DO NOT EDIT
 #
-# Produced by `python -m catalog generate` from:
+# Produced by `python -m rdfc_catalog_harvest generate` from:
 #   - data/catalog-rdfc-requests.ttl   (hand-written: which package)
-#   - data/harvest/                    (frozen upstream definitions)
+#   - data/rdfc_harvest/               (frozen upstream definitions)
 #
 # To change a version or add a component, edit the request file and
-# re-run `python -m catalog harvest && python -m catalog generate`.
+# re-run:
+#     python -m rdfc_catalog_harvest harvest
+#     python -m rdfc_catalog_harvest generate
 # To change the orchestrator, the runners, or a component whose source
 # is not resolvable, edit data/catalog-rdfc-manual.ttl instead.
 #
@@ -46,7 +48,7 @@
 #   source:  npm @rdfc/http-utils-processor-ts@1.2.0-alpha.1
 #   defined: processors.ttl
 rdfc:HttpFetch
-    a tcs:PipelineComponent, dcat:Resource ;
+    a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     rdfs:label "HTTP Fetch processor" ;
     rdfs:description "This processor fetches a URL and writes the response to the output channel. It supports various options such as HTTP method, headers, authentication, and scheduling with cron expressions." ;
     dcat:landingPage "https://github.com/rdf-connect/http-utils-processor-ts" ;
@@ -69,7 +71,7 @@ rdfc:HttpFetch
 #   source:  path
 #   defined: rdfc_http_out/processor.ttl
 rdfc:HttpOut
-    a tcs:PipelineComponent, dcat:Resource ;
+    a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     rdfs:label "Http Out Processor" ;
     rdfs:description "Processor to forward data to a http endpoint via POST." ;
     dct:requires rdfc:PyRunner ;
@@ -91,7 +93,7 @@ rdfc:HttpOut
 #   source:  npm @rdfc/http-utils-processor-ts@1.2.0-alpha.1
 #   defined: server.ttl
 rdfc:HttpServer
-    a tcs:PipelineComponent, dcat:Resource ;
+    a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     rdfs:label "HTTP Server processor" ;
     rdfs:description "This processor starts an HTTP server and writes the body of every incoming request to the output channel. It supports configuring the bind address, accepted HTTP method, path, and the status code returned to clients." ;
     dcat:landingPage "https://github.com/rdf-connect/http-utils-processor-ts" ;
@@ -114,7 +116,7 @@ rdfc:HttpServer
 #   source:  npm @rdfc/log-processor-ts@2.0.3
 #   defined: processor.ttl
 rdfc:LogProcessorJs
-    a tcs:PipelineComponent, dcat:Resource ;
+    a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     rdfs:label "JS/TS Log Processor" ;
     rdfs:description "A simple JS/TS processor to log an incoming stream to the RDF-Connect logging system." ;
     dcat:landingPage "https://github.com/rdf-connect/log-processor-ts" ;
@@ -137,7 +139,7 @@ rdfc:LogProcessorJs
 #   source:  pypi rdfc_log-processor@1.0.0
 #   defined: rdfc_log_processor/processor.ttl
 rdfc:LogProcessorPy
-    a tcs:PipelineComponent, dcat:Resource ;
+    a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     rdfs:label "Python Log Processor" ;
     rdfs:description "A simple Python processor to log an incoming stream to the RDF-Connect logging system." ;
     dcat:landingPage "https://rdf-connect.github.io" ;
@@ -160,7 +162,7 @@ rdfc:LogProcessorPy
 #   source:  npm @rdfc/sparql-ingest-processor-ts@2.1.7
 #   defined: processors.ttl
 rdfc:SPARQLIngest
-    a tcs:PipelineComponent, dcat:Resource ;
+    a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     rdfs:label "SPARQL Ingest Processor" ;
     rdfs:description "A processor that ingests RDF data into a SPARQL endpoint" ;
     dcat:landingPage "https://github.com/rdf-connect/sparql-ingest-processor-ts" ;
@@ -183,7 +185,7 @@ rdfc:SPARQLIngest
 #   source:  npm @rdfc/sds-processors-ts@3.0.1
 #   defined: configs/sdsify.ttl
 rdfc:Sdsify
-    a tcs:PipelineComponent, dcat:Resource ;
+    a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     rdfs:label "Sdsify processor" ;
     rdfs:description "Ingest a stream of RDF dumps and produce a stream of SDS records, based on the provided configuration." ;
     dcat:landingPage "https://github.com/rdf-connect/sds-processors-ts" ;
@@ -206,7 +208,7 @@ rdfc:Sdsify
 #   source:  npm @rdfc/skolemization-processor-ts@1.0.0
 #   defined: processor.ttl
 rdfc:SkolemizationProcessor
-    a tcs:PipelineComponent, dcat:Resource ;
+    a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     rdfs:label "Skolemization Processor" ;
     rdfs:description "A processor that converts a RDF data to a skolemized form (removing blank nodes)." ;
     dcat:landingPage "https://github.com/rdf-connect/skolemization-processor-ts" ;
@@ -229,7 +231,7 @@ rdfc:SkolemizationProcessor
 #   source:  npm @rdfc/threshold-monitor-processor-ts@0.0.1-alpha.2
 #   defined: processor.ttl
 tm:ThresholdMonitorJs
-    a tcs:PipelineComponent, dcat:Resource ;
+    a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     rdfs:label "JS/TS Threshold Monitor Processor" ;
     rdfs:description "Reads a stream of SDS members, extracts a value at a configured SHACL path, and writes a tm:ThresholdViolation alert whenever that value falls outside the configured min/max bounds." ;
     dcat:landingPage "https://github.com/rdf-connect/threshold-monitor-processor-ts" ;

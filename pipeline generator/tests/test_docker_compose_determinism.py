@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import CATALOG_FILES, PIPELINE_ID
+from conftest import CATALOG_FILES, PIPELINE_ID, infer_all
 import yaml
 
 
@@ -23,12 +23,11 @@ def _compose(data_dir: Path) -> str:
     from rdflib import Graph
 
     from compilers import PipelineGenerator, ProjectBuilder
-    from rdfine import GraphReader
 
     graph = Graph()
     for name in CATALOG_FILES:
         graph.parse(data_dir / name, publicID="file:///workspace/pipeline/")
-    reader = GraphReader(graph).infer(str(data_dir / "inference_rules.yaml"))
+    reader = infer_all(graph, data_dir)
 
     build = PipelineGenerator(PIPELINE_ID, reader.graph).compile()
     files = ProjectBuilder(build).files

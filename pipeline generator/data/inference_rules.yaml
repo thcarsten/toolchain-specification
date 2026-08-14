@@ -1,5 +1,22 @@
+#################################################################
+# Inference rules — framework-neutral
+#
+# Rules that hold for any pipeline regardless of the framework it
+# compiles to. Anything RDF-Connect-specific lives in
+# rdfc_inference_rules.yaml and has to be loaded as well:
+#
+#     GraphReader(graph).infer(".../inference_rules.yaml") \
+#                       .infer(".../rdfc_inference_rules.yaml")
+#
+# Loading only this file leaves `tcs:derivedReadsFrom` /
+# `tcs:derivedWritesTo` underived, which makes
+# `tcs:RdfcStepChannelWiringShape` pass vacuously rather than fail — so a
+# caller that forgets the second file loses the topology cross-check
+# without being told.
+#################################################################
+
 context:
-  '' : http://example.org/example/ 
+  '' : http://example.org/example/
   tcs: https://w3id.org/toolchain# 
   rdf: http://www.w3.org/1999/02/22-rdf-syntax-ns# 
   rdfs: http://www.w3.org/2000/01/rdf-schema# 
@@ -81,58 +98,3 @@ rules:
       ?sub a tcs:Config .
     where: |
       ?sub a tcs:DockerComposeConfig .
-
-  #################################################################
-  # Pipeline topology
-  #
-  # A step's channel wiring is stated twice: framework-specifically
-  # inside its `tcs:embedded` config (`rdfc:reader demo:x`), and
-  # framework-neutrally as `tcs:readsFrom` / `tcs:writesTo`. Nothing
-  # previously connected the two — compilers read the config, the
-  # application-profile shapes read the annotation — so the pair could
-  # disagree silently.
-  #
-  # These rules materialise what the config *implies*, into separate
-  # `tcs:derived*` predicates. They deliberately do NOT write
-  # `tcs:readsFrom` / `tcs:writesTo` directly: the authored annotation
-  # stays the source of truth, and `tcs:StepChannelWiringShape` (in
-  # catalog-application-profile-shapes.ttl) then asserts that everything
-  # derived was also declared.
-  #
-  # Derivation is keyed on the generated config shapes: a property with
-  # `sh:class tcs:Channel` is a channel parameter, and its
-  # `tcs:upstreamClass` records which end of the channel it is. Both
-  # conditions are required — `tcs:upstreamClass` alone also appears on
-  # non-channel properties (e.g. `tm:path`, carrying rdfl:PathLens),
-  # where it means "translated from that class" rather than a direction.
-  #
-  # Only RDF-Connect steps are covered, because only their components
-  # carry channel-valued parameters. LDIO expresses topology through the
-  # *ordering* of its input/adapter/transformer/output slots and has no
-  # channel parameters at all, so nothing is derivable there and the
-  # shape correctly leaves those steps alone.
-  #################################################################
-  -
-    construct: |
-      ?step tcs:derivedReadsFrom ?channel .
-    where: |
-      ?step prov:specializationOf ?component ;
-            p-plan:hasInputVar/tcs:embedded ?config .
-      ?component dcat:qualifiedRelation/dct:relation ?shape .
-      ?shape sh:property ?property .
-      ?property sh:path ?path ;
-                sh:class tcs:Channel ;
-                tcs:upstreamClass rdfc:Reader .
-      ?config ?path ?channel .
-  -
-    construct: |
-      ?step tcs:derivedWritesTo ?channel .
-    where: |
-      ?step prov:specializationOf ?component ;
-            p-plan:hasInputVar/tcs:embedded ?config .
-      ?component dcat:qualifiedRelation/dct:relation ?shape .
-      ?shape sh:property ?property .
-      ?property sh:path ?path ;
-                sh:class tcs:Channel ;
-                tcs:upstreamClass rdfc:Writer .
-      ?config ?path ?channel .

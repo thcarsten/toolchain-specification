@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from rdflib import Graph
 
-from catalog import emitter
-from catalog.model import CatalogRequest, HarvestRecord
-from catalog.requests import load_requests
+from rdfc_catalog_harvest import emitter
+from rdfc_catalog_harvest.model import CatalogRequest, HarvestRecord
+from rdfc_catalog_harvest.requests import load_requests
 
 
 def test_output_is_valid_turtle(generated: str):
@@ -21,14 +21,14 @@ def test_generation_is_byte_stable(requests, snapshot_dir: Path):
 
 
 def test_committed_catalog_is_current(generated: str, data_dir: Path):
-    """`python -m catalog generate --check` in test form.
+    """`python -m rdfc_catalog_harvest generate --check` in test form.
 
     Fails when data/catalog-rdfc.ttl was hand-edited or a harvest landed
     without regenerating.
     """
     on_disk = (data_dir / "catalog-rdfc.ttl").read_text(encoding="utf-8")
     assert on_disk == generated, (
-        "data/catalog-rdfc.ttl is stale - run `python -m catalog generate`"
+        "data/catalog-rdfc.ttl is stale - run `python -m rdfc_catalog_harvest generate`"
     )
 
 
@@ -124,7 +124,7 @@ def test_local_package_gets_download_location_not_version():
 
 def test_missing_harvest_record_names_the_fix(tmp_path: Path):
     request = CatalogRequest(component="rdfc:Nope", package="nope")
-    with pytest.raises(FileNotFoundError, match="catalog harvest"):
+    with pytest.raises(FileNotFoundError, match="rdfc_catalog_harvest harvest"):
         emitter.generate([request], tmp_path)
 
 

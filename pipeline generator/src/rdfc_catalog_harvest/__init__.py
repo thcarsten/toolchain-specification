@@ -11,7 +11,7 @@ The pipeline is two steps, split so the second one is reproducible:
 
 .. code-block:: text
 
-    catalog-rdfc-requests.ttl  --harvest-->  data/harvest/  --generate-->  catalog-rdfc.ttl
+    catalog-rdfc-requests.ttl  --harvest-->  data/rdfc_harvest/  --generate-->  catalog-rdfc.ttl
       (hand-written: which        (network)   (committed        (offline)    (generated)
        package, which version)                 snapshot)
 

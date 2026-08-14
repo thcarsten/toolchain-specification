@@ -8,7 +8,7 @@ annotation that preserves what upstream said.
 
 from rdflib import Graph, URIRef
 
-from catalog import shapes
+from rdfc_catalog_harvest import shapes
 
 RDFC = "https://w3id.org/rdf-connect#"
 
@@ -118,7 +118,7 @@ def test_external_shape_registry_targets_a_real_shape(data_dir):
     from rdflib import Graph
     from rdflib.namespace import RDF
 
-    from catalog.shapes import EXTERNAL_SHAPES
+    from rdfc_catalog_harvest.shapes import EXTERNAL_SHAPES
 
     graph = Graph()
     graph.parse(data_dir / "catalog-rdfc-manual.ttl")
