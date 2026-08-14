@@ -112,21 +112,12 @@ tcs:PipelineComponentShape a sh:NodeShape ;
     # tcs:DockerComposeConfig. dct:requires* (zero-or-more) also
     # matches ``?this = ?deployable`` so components that are
     # themselves microservices trivially satisfy the rule.
-    #
-    # The FILTER excludes spdx:Package-typed nodes: the current
-    # inference rule (?sub dct:requires ?obj ; ?sub a tcs:PipelineComponent
-    # => ?obj a tcs:PipelineComponent) over-types dependency packages
-    # as components. Packages are not deployable and should not be
-    # subjected to this check. A cleaner fix would tighten that
-    # inference rule; the FILTER is the defensive counterpart until
-    # then.
     sh:sparql [
         sh:prefixes tcs:prefixes ;
         sh:message "PipelineComponent {?this} is not deployable: neither it nor any component reachable via dct:requires+ carries a tcs:DockerComposeConfig." ;
         sh:select """
             SELECT ?this WHERE {
                 ?this a tcs:PipelineComponent .
-                FILTER NOT EXISTS { ?this a spdx:Package . }
                 FILTER NOT EXISTS {
                     ?this dct:requires* ?deployable .
                     ?deployable tcs:config ?cfg .
@@ -190,8 +181,9 @@ tcs:InstancePipelineComponentShape a sh:NodeShape ;
     sh:property [
         sh:path p-plan:hasInputVar ;
         sh:class tcs:Config ;
+        sh:maxCount 1 ;
         sh:name "hasInputVar" ;
-        sh:message "p-plan:hasInputVar on a step must point at a tcs:Config."
+        sh:message "A step may have at most one p-plan:hasInputVar — two configs on the same step silently merge their predicates (e.g. duplicate rdfc:level values) instead of composing with any defined precedence."
     ] ;
 
     sh:property [
@@ -206,6 +198,56 @@ tcs:InstancePipelineComponentShape a sh:NodeShape ;
         sh:class tcs:Channel ;
         sh:name "writesTo" ;
         sh:message "tcs:writesTo must point at a tcs:Channel."
+    ] .
+
+
+# Acyclic channel graph: no step may (transitively) read from a channel
+# it feeds — including the trivial self-loop of reading and writing the
+# very same channel. Framework-agnostic: tcs:readsFrom/tcs:writesTo are
+# core predicates, so this holds across the whole pipeline definition,
+# not just within one framework's segment (e.g. LDIO).
+tcs:AcyclicGraphShape a sh:NodeShape ;
+    rdfs:label "Acyclic channel graph shape" ;
+    sh:targetClass tcs:InstancePipelineComponent ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Step {?this} is part of a cycle in the channel graph — it transitively reads from a channel it also writes to." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this (tcs:writesTo/^tcs:readsFrom)+ ?this .
+            }
+        """
+    ] .
+
+
+# A dangling/mistyped prov:specializationOf target is also caught by
+# InstancePipelineComponentShape's own sh:class check on that property
+# (inference_rules.yaml no longer entails tcs:PipelineComponent from
+# specializationOf usage alone — see the 2026-08-04 inference-scoping
+# pass). This shape exists alongside that generic check because it
+# names the actual, more specific concern: is the specialized
+# component listed as a dcat:resource of some tcs:Catalog at all,
+# rather than merely typed correctly (e.g. a component that exists but
+# was never added to the catalog would pass the class check but still
+# be undeployable through any catalog-driven tooling).
+tcs:SpecializedComponentIsCatalogedShape a sh:NodeShape ;
+    rdfs:label "Specialized component is catalogued shape" ;
+    sh:targetClass tcs:InstancePipelineComponent ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Step {?this} specializes {?component}, which is not listed as a dcat:resource of any tcs:Catalog — likely an undefined or mistyped component reference." ;
+        sh:select """
+            SELECT ?this ?component WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?component .
+                FILTER NOT EXISTS {
+                    ?catalog a tcs:Catalog ;
+                             dcat:resource ?component .
+                }
+            }
+        """
     ] .
 
 
@@ -488,6 +530,92 @@ tcs:RdfcProcessorShape a sh:NodeShape ;
     ] .
 
 
+# If a step's component declares a *mandatory* reader parameter, the
+# step cannot run without a reader regardless of how its config key ends
+# up filled in — so it must have at least one tcs:readsFrom. Currently
+# bites on nothing in the demonstrator catalog (every reader path today
+# is optional upstream), but fires the moment a component makes one
+# mandatory, without needing a new shape written for it.
+#
+# This pair is also where a generated config shape's dropped cardinality
+# lands. Upstream marks a channel parameter sh:minCount 1 and means it —
+# but that is a requirement on the *running pipeline*, not on the author:
+# RdfcConfigCompiler fills the config key in from tcs:readsFrom /
+# tcs:writesTo, so an authored config omits it and the generator moves
+# the obligation onto tcs:upstreamMinCount (rewrite 5 in
+# rdfc_catalog_harvest/shapes.py). Asking here instead puts the question
+# at the level that can answer it: not "did you write rdfc:reader" but
+# "is this step wired to anything at all".
+#
+# Discriminator: instance components whose specialized component's
+# configShape (the same dcat:qualifiedRelation / dcat:hadRole
+# tcs:configShape attachment used throughout catalog-rdfc.ttl) has a
+# sh:property carrying a channel — sh:class tcs:Channel with
+# tcs:upstreamClass rdfc:Reader — that upstream made mandatory.
+tcs:RdfcMandatoryReaderWiringShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect mandatory reader wiring shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?component .
+                ?component dcat:qualifiedRelation ?rel .
+                ?rel dcat:hadRole tcs:configShape ;
+                     dct:relation ?shape .
+                ?shape sh:property ?prop .
+                ?prop sh:class tcs:Channel ;
+                      tcs:upstreamClass rdfc:Reader ;
+                      tcs:upstreamMinCount ?minCount .
+                FILTER (?minCount >= 1)
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path tcs:readsFrom ;
+        sh:minCount 1 ;
+        sh:name "readsFrom" ;
+        sh:message "{?this}'s component declares a mandatory rdfc:Reader config path but the step has no tcs:readsFrom wiring — it cannot run without one."
+    ] .
+
+
+# Mirror of RdfcMandatoryReaderWiringShape for writer paths /
+# tcs:writesTo. Currently the only components this fires against a
+# missing wiring for are Sdsify's rdfc:output / rdfc:metadataOutput —
+# both mandatory upstream.
+tcs:RdfcMandatoryWriterWiringShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect mandatory writer wiring shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?component .
+                ?component dcat:qualifiedRelation ?rel .
+                ?rel dcat:hadRole tcs:configShape ;
+                     dct:relation ?shape .
+                ?shape sh:property ?prop .
+                ?prop sh:class tcs:Channel ;
+                      tcs:upstreamClass rdfc:Writer ;
+                      tcs:upstreamMinCount ?minCount .
+                FILTER (?minCount >= 1)
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path tcs:writesTo ;
+        sh:minCount 1 ;
+        sh:name "writesTo" ;
+        sh:message "{?this}'s component declares a mandatory rdfc:Writer config path but the step has no tcs:writesTo wiring — it cannot run without one."
+    ] .
+
+
 # Every rdfc:Runner must declare an orchestrator dependency. The
 # RdfcConfigCompiler emits one `rdfc:consistsOf :env_N` per runner
 # and needs the runner-to-orchestrator link to identify which
@@ -719,6 +847,62 @@ tcs:LdioStepOrderingShape a sh:NodeShape ;
     ] .
 
 
+# LDIO's own YAML schema makes `input:` and `input.adapter:` *singular*
+# keys — unlike `transformers:`/`outputs:`, which are lists. A second
+# `Input` or `Adapter` step in one pipeline has nowhere to go in that
+# schema.
+tcs:LdioSingularStepShape a sh:NodeShape ;
+    rdfs:label "LDIO singular Input/Adapter shape" ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp .
+                ?comp ldio:type ?anytype .
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "LDIO step {?this} is a second \"Input\" step in pipeline {?plan}, alongside {?other} — LDIO's input: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
+        sh:select """
+            SELECT ?this ?plan ?other WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      p-plan:isStepOfPlan ?plan ;
+                      prov:specializationOf ?comp .
+                ?comp ldio:type "Input" .
+                ?other a tcs:InstancePipelineComponent ;
+                       p-plan:isStepOfPlan ?plan ;
+                       prov:specializationOf ?ocomp .
+                ?ocomp ldio:type "Input" .
+                FILTER ( ?other != ?this )
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "LDIO step {?this} is a second \"Adapter\" step in pipeline {?plan}, alongside {?other} — LDIO's input.adapter: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
+        sh:select """
+            SELECT ?this ?plan ?other WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      p-plan:isStepOfPlan ?plan ;
+                      prov:specializationOf ?comp .
+                ?comp ldio:type "Adapter" .
+                ?other a tcs:InstancePipelineComponent ;
+                       p-plan:isStepOfPlan ?plan ;
+                       prov:specializationOf ?ocomp .
+                ?ocomp ldio:type "Adapter" .
+                FILTER ( ?other != ?this )
+            }
+        """
+    ] .
+
+
 #################################################################
 # 2.3  Semantic.works
 #
@@ -766,31 +950,6 @@ tcs:SwComponentDockerConfigShape a sh:NodeShape ;
     ] .
 
 
-# Semantic.works steps may declare at most one `p-plan:hasInputVar`.
-# With multiple, `SemanticWorksCompiler.update_docker_config` selects
-# only the first via `receive_first` — SPARQL result order is
-# non-deterministic, so the remaining configs are dropped silently.
-tcs:SwStepInputVarShape a sh:NodeShape ;
-    rdfs:label "Semantic.works step InputVar cardinality shape" ;
-
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?this a tcs:InstancePipelineComponent ;
-                      prov:specializationOf ?comp .
-                FILTER ( STRSTARTS(STR(?comp), "https://semantic.works/services/") )
-            }
-        """
-    ] ;
-
-    sh:property [
-        sh:path p-plan:hasInputVar ;
-        sh:maxCount 1 ;
-        sh:name "hasInputVar" ;
-        sh:message "Semantic.works step {?this} has more than one p-plan:hasInputVar — the compiler folds only one into the compose environment, silently dropping the rest."
-    ] .
 
 
 # Semantic.works step-config values must be RDF literals. The

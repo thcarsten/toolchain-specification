@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import CATALOG_FILES, INFERENCE_RULES, PIPELINE_ID, infer_all
+from testing_helpers import PIPELINE_ID, INFERENCE_RULES, NOTEBOOK_FILES, load_reader
 
 
 @pytest.fixture(scope="module")
@@ -17,9 +17,9 @@ def catalog_reader(data_dir: Path):
     from rdflib import Graph
 
     graph = Graph()
-    for name in CATALOG_FILES:
+    for name in NOTEBOOK_FILES:
         graph.parse(data_dir / name, publicID="file:///workspace/pipeline/")
-    return infer_all(graph, data_dir)
+    return load_reader(graph)
 
 
 def test_notebook_file_list_matches_this_test(repo_root: Path):
@@ -28,7 +28,7 @@ def test_notebook_file_list_matches_this_test(repo_root: Path):
 
     notebook = json.loads((repo_root / "src/demo.ipynb").read_text(encoding="utf-8"))
     source = "".join(notebook["cells"][2]["source"])
-    for name in CATALOG_FILES:
+    for name in NOTEBOOK_FILES:
         assert f'"{name}"' in source, f"{name} missing from demo.ipynb load list"
 
 

@@ -141,8 +141,11 @@ Key properties and methods:
   query (`DataFrame` / `GraphReader` / `bool`).
 - `infer(filepath, max_repetitions=10)` — apply a YAML rule file of
   `construct` / `where` SPARQL rules until a fixed point is reached
-- `traverse(node_id, direction="along"|"against"|"both", exclude=, along=, against=, prune=)` —
-  recursively extract a sub-graph starting from a node
+- `traverse(node_id, direction="along"|"against"|"both", exclude=, along=, against=, prune=, stop_at_named_nodes=False)` —
+  recursively extract a sub-graph starting from a node. `stop_at_named_nodes=True`
+  gives Concise Bounded Description semantics (https://www.w3.org/submissions/CBD/):
+  every matched triple is still added, but recursion never continues past a
+  named node (URIRef) — only blank-node neighbors are followed further
 - `serialize(output_format)` — thin wrapper around `graph.serialize`
 
 ### `GraphDict` ([graph_dict.py](graph_dict.py))

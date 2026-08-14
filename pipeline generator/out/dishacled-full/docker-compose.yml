@@ -1,6 +1,7 @@
 services:
   berichtencentrum-deliver-email-service:
     image: lblod/berichtencentrum-deliver-email-service
+    environment: {}
   database:
     image: semtech/sparql-parser:0.0.15
     volumes:

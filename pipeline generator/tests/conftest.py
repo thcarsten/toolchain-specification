@@ -1,59 +1,61 @@
-"""Shared pytest fixtures.
+"""Pytest fixtures for the pipeline generator's test suite.
 
-``compilers`` and ``rdfc_catalog_harvest`` are not installed as packages (only
-``rdfine`` is, from ``src/rdfine``), so ``src`` goes on the path here the
-same way the demo notebook does it.
+Plain helper functions and the shared file lists (`parse_extra`,
+`compile_pipeline`, `CATALOG_FILES`, `INFERENCE_RULES`, ...) live in
+testing_helpers.py, not here — see that module's docstring for why.
+Import them from there rather than from this module: `from conftest
+import ...` is the pattern that breaks once a second conftest.py exists
+under src/rdfine/tests/.
 
-Run from the ``pipeline generator`` directory:
+Two groups of fixtures below. The first builds graphs for the edge-case
+suite, which supplies its own synthetic pipeline. The second serves the
+catalog generator's tests, which work from the committed harvest
+snapshot and the real demonstrator pipeline.
 
-    PYTHONPATH=src pytest tests/ -q
+`src/` is importable via `pythonpath = src` in pytest.ini; run `pytest`
+from the `pipeline generator` directory.
 """
 
-import sys
 from pathlib import Path
 
 import pytest
+from rdflib import Graph
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+from testing_helpers import CATALOG_FILES, DATA_DIR, NOTEBOOK_FILES, SHAPES_FILE
 
-# The catalog + pipeline graph, in the order the demo notebook loads it.
-#
-# Defined once here because several test modules need the same set, and a
-# stale copy is a real failure mode: adding catalog-rdfc-manual.ttl broke
-# a test that had its own list. ``test_notebook_file_list_matches_this_test``
-# keeps this in sync with demo.ipynb.
-CATALOG_FILES = [
-    "catalog-core.ttl",
-    "catalog-ldio.ttl",
-    "catalog-rdfc.ttl",
-    "catalog-rdfc-manual.ttl",
-    "catalog-sw.ttl",
-    "pipeline_definition.ttl",
-    "catalog-application-profile-shapes.ttl",
-]
-
-# Both rule files, in the order the demo notebook applies them. Same
-# reasoning as CATALOG_FILES, with a sharper failure mode: a caller that
-# loads only the neutral file still infers *most* things, so the
-# topology cross-check goes quiet instead of failing.
-# ``test_notebook_rule_list_matches_this_test`` keeps this in sync too.
-INFERENCE_RULES = [
-    "inference_rules.yaml",
-    "rdfc_inference_rules.yaml",
-]
-
-PIPELINE_ID = "demo:DishacledPipeline"
+ROOT = DATA_DIR.parent
 
 
-def infer_all(graph, data_dir: Path):
-    """Apply every rule file to ``graph``, the way the notebook does."""
-    from rdfine import GraphReader
+@pytest.fixture
+def catalog_graph() -> Graph:
+    """The framework catalog files only — no shapes, no pipeline
+    definition. Edge-case tests parse their own tiny synthetic pipeline
+    into this via `parse_extra`."""
+    g = Graph()
+    for filename in CATALOG_FILES:
+        g.parse(str(DATA_DIR / filename), publicID="file:///workspace/pipeline/")
+    return g
 
-    reader = GraphReader(graph)
-    for name in INFERENCE_RULES:
-        reader = reader.infer(str(data_dir / name))
-    return reader
+
+@pytest.fixture
+def catalog_with_shapes(catalog_graph: Graph) -> Graph:
+    """Catalog + the application-profile SHACL shapes, for violation tests."""
+    catalog_graph.parse(
+        str(DATA_DIR / SHAPES_FILE), publicID="file:///workspace/pipeline/"
+    )
+    return catalog_graph
+
+
+@pytest.fixture
+def demonstrator_graph(catalog_with_shapes: Graph) -> Graph:
+    """Catalog + shapes + the real ``demo:DishacledPipeline`` definition —
+    for tests that exercise the actual demonstrator pipeline rather than
+    a synthetic snippet."""
+    catalog_with_shapes.parse(
+        str(DATA_DIR / "pipeline_definition.ttl"),
+        publicID="file:///workspace/pipeline/",
+    )
+    return catalog_with_shapes
 
 
 @pytest.fixture(scope="session")
@@ -63,13 +65,13 @@ def repo_root() -> Path:
 
 
 @pytest.fixture(scope="session")
-def catalog_files() -> list[str]:
-    return list(CATALOG_FILES)
+def data_dir() -> Path:
+    return DATA_DIR
 
 
 @pytest.fixture(scope="session")
-def data_dir(repo_root: Path) -> Path:
-    return repo_root / "data"
+def notebook_files() -> list[str]:
+    return list(NOTEBOOK_FILES)
 
 
 @pytest.fixture(scope="session")

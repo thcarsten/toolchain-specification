@@ -53,10 +53,27 @@ literal no IRI can be. Rewritten to ``sh:nodeKind sh:IRI`` for checking,
 with the original preserved on ``tcs:upstreamDatatype`` so the runtime
 convention is not lost.
 
+**5. Required channel parameters.** Upstream marks a channel parameter
+``sh:minCount 1``, and it is genuinely required — of the *running
+pipeline*. It is not required of the author: ``RdfcConfigCompiler``
+fills a step's ``rdfc:reader`` / ``rdfc:writer`` in from the
+framework-neutral ``tcs:readsFrom`` / ``tcs:writesTo``, so a
+hand-written config omits it on purpose and upstream's cardinality
+would fail every pipeline in this repo. The ``sh:class`` constraint
+from rule 1 still applies to whatever the author *does* write — a
+config may still name a channel where the neutral annotation cannot say
+which slot is meant, as ``rdfc:Sdsify`` does with its two outputs. Only
+the obligation moves, onto ``tcs:upstreamMinCount``, where a
+post-compile check can pick it up once the wiring has been filled in.
+``sh:maxCount`` is left alone: it constrains what is written, and what
+is written is still bounded.
+
 Rules 1 and 2 were reverse-engineered from the one hand-written shape in
 the catalog that actually fires (``:SparqlIngestShape``). Rules 3 and 4
 surfaced only once generation made every component's shape live —
-neither was reachable before, so neither had ever been noticed.
+neither was reachable before, so neither had ever been noticed. Rule 5
+surfaced when generated shapes first met a pipeline definition that had
+stopped restating its channels.
 """
 
 from __future__ import annotations
@@ -75,6 +92,7 @@ SH_DATATYPE = iri("sh:datatype")
 SH_NODE = iri("sh:node")
 SH_NODEKIND = iri("sh:nodeKind")
 SH_TARGET_CLASS = iri("sh:targetClass")
+SH_MIN_COUNT = iri("sh:minCount")
 
 RDFC_READER = iri("rdfc:Reader")
 RDFC_WRITER = iri("rdfc:Writer")
@@ -90,6 +108,7 @@ XSD_IRI = iri("xsd:iri")
 TCS_CHANNEL = compact(iri("tcs:Channel"))
 TCS_UPSTREAM_CLASS = compact(iri("tcs:upstreamClass"))
 TCS_UPSTREAM_DATATYPE = compact(iri("tcs:upstreamDatatype"))
+TCS_UPSTREAM_MIN_COUNT = compact(iri("tcs:upstreamMinCount"))
 
 # Classes from vocabularies outside RDF-Connect whose value space the
 # toolchain can nonetheless check, mapped to a hand-written shape in
@@ -194,6 +213,9 @@ def _translate_property(
     pairs: list[tuple[str, str]] = []
     nested_class: URIRef | None = None
     path = graph.value(property_node, SH_PATH)
+    # Set by rewrite 1 and read by rewrite 5 below. Safe because
+    # ``_PREDICATE_ORDER`` puts ``sh:class`` ahead of ``sh:minCount``.
+    is_channel = False
 
     for predicate in sorted(set(graph.predicates(property_node)), key=_order_key):
         if str(predicate) not in _SUPPORTED:
@@ -207,6 +229,7 @@ def _translate_property(
                 if value in CHANNEL_CLASSES:
                     # Rewrite 1: collapse Reader/Writer to tcs:Channel,
                     # keeping the direction as a non-constraining hint.
+                    is_channel = True
                     pairs.append((compact(SH_CLASS), TCS_CHANNEL))
                     pairs.append((TCS_UPSTREAM_CLASS, compact(value)))
                     continue
@@ -232,6 +255,20 @@ def _translate_property(
                 # something uncheckable. Promote it by adding an entry to
                 # EXTERNAL_SHAPES.
                 pairs.append((TCS_UPSTREAM_CLASS, compact(value)))
+                continue
+
+            if predicate == SH_MIN_COUNT and is_channel:
+                # Rewrite 5: a required channel parameter is not required
+                # of the *author*. `RdfcConfigCompiler` fills a step's
+                # rdfc:reader / rdfc:writer in from tcs:readsFrom /
+                # tcs:writesTo, so the config these shapes validate is
+                # written without them on purpose and upstream's
+                # `sh:minCount 1` would fail every pipeline in the repo.
+                # The value constraint above still applies to whatever
+                # the author *does* write; only the obligation moves, and
+                # the original is kept for the compiler to check against
+                # once it has done the filling in.
+                pairs.append((TCS_UPSTREAM_MIN_COUNT, render_term(value)))
                 continue
 
             if predicate == SH_DATATYPE and value == XSD_IRI:

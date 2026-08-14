@@ -1,5 +1,5 @@
 from rdflib import Graph, URIRef, Literal
-from rdfine import GraphReader, receive_first
+from rdfine import GraphReader
 import pandas as pd
 import json
 
@@ -36,8 +36,11 @@ class SemanticWorksEnvVarCompiler(Compiler):
 
     def compile(self) -> Graph:
         self.fetch_components()
-        for component_id in self.component_df["component"].to_list():
-            self.update_docker_config(component_id)
+        # One call per *step*, not per component — two steps sharing
+        # one sw: component each fold their own env vars in, rather
+        # than a component-keyed lookup arbitrarily picking one.
+        for _, row in self.component_df.iterrows():
+            self.update_docker_config(row["step_config"], row["docker_config"])
         return self.output_reader.graph
 
     def fetch_components(self) -> None:
@@ -61,7 +64,7 @@ class SemanticWorksEnvVarCompiler(Compiler):
         component_df = component_df.loc[component_df["component"].str.startswith("sw:")]
         self.component_df = component_df
 
-    def update_docker_config(self, component_id) -> None:
+    def update_docker_config(self, step_config_id: str, docker_config_id: str) -> None:
         """
         The strategy here is surprisingly simple:
         - fetch the DockerComposeConfig via the shared parser, which
@@ -71,19 +74,12 @@ class SemanticWorksEnvVarCompiler(Compiler):
         - fold the StepConfig into the (single) service body's
           ``environment:``
         - write the edited config back to the graph via ``tcs:literal``
-        """
 
-        # Grabbing the right references
-        step_config_id = receive_first(
-            self.component_df.loc[
-                self.component_df["component"] == component_id, "step_config"
-            ],
-        )
-        docker_config_id = receive_first(
-            self.component_df.loc[
-                self.component_df["component"] == component_id, "docker_config"
-            ],
-        )
+        Called once per step (not per component) — if two steps share
+        one sw: component, each call folds its own step's env vars in
+        turn, accumulating onto the same docker_config rather than one
+        step's config silently winning.
+        """
 
         # StepConfig is a generic ``tcs:Config`` (not a
         # DockerComposeConfig) so the plain ``extract_config`` helper

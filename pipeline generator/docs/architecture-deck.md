@@ -336,7 +336,7 @@ A: So the compiled build is a single serializable artifact. Provenance, caching,
 | Compiler | Triggers on (`applies_to`) | Produces |
 | --- | --- | --- |
 | PipelineExtractor | always | triples for the requested pipeline; seeds `tcs:PipelineBuild` linked to the definition via `prov:hadPlan` |
-| PipelineAssembler | exactly one `tcs:PipelineDefinition` with at least one `:hasStep` | containers, steps, config assignments |
+| PipelineAssembler | exactly one `tcs:PipelineDefinition` with at least one step (`p-plan:isStepOfPlan`) | containers, steps, config assignments |
 | SemanticWorksEnvVarCompiler | any `sw:` component present, and `tcs:DockerContainer`s exist | env vars folded into the microservice's docker config |
 | LdioConfigCompiler | a container instantiates the LDIO orchestrator | `ldio/config.yml` |
 | RdfcConfigCompiler | a container instantiates the RDF-Connect orchestrator | `rdfc/pipeline.ttl` |

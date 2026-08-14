@@ -77,6 +77,16 @@ ldio:HttpInPoller a tcs:PipelineComponent, dcat:Resource;
             sh:maxCount 1;
          ]
         ]
+    ] ,
+    # The poller relays the raw HTTP response body verbatim — at this
+    # point in the pipeline it is not yet RDF (JSON bytes, unparsed), so
+    # no NodeShape constraint can meaningfully describe it. Trivial
+    # empty shape makes that "no known constraint" claim explicit rather
+    # than an undocumented gap.
+    [
+        a dcat:Relationship;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation [ a sh:NodeShape ]
 ] .
 
 
@@ -289,6 +299,17 @@ ldio:JsonToLdAdapter a tcs:PipelineComponent, dcat:Resource ;
             sh:maxCount 1;
          ]
         ]
+    ] ,
+    # The output shape fully depends on the @context supplied per
+    # instance (see ldio:context above), so no generic claim holds
+    # across every possible configuration. Trivial empty shape at the
+    # component level; a pipeline that knows its own @context should
+    # override this at the instance level (see demo:JsonLdParse in
+    # pipeline_definition.ttl).
+    [
+        a dcat:Relationship;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation [ a sh:NodeShape ]
 ] .
 
 
@@ -604,6 +625,17 @@ ldio:HttpOut a tcs:PipelineComponent, dcat:Resource;
             sh:node ldio:RdfWriterShape;
          ]
         ]
+    ] ,
+    # Ldio:HttpOut serializes the incoming model and POSTs it verbatim.
+    # At the RDF level (ignoring byte serialization) it is a pure passthrough:
+    # the outgoing HTTP body encodes the same triples that were read from
+    # upstream. Trivial NodeShape — no constraint on what may flow through.
+    # Instance-level passthroughShapes in a PipelineDefinition may override
+    # this with a pipeline-specific shape.
+    [
+        a dcat:Relationship;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation [ a sh:NodeShape ]
 ] .
 
 

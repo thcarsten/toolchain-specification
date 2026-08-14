@@ -49,16 +49,62 @@ class PipelineExtractor(Compiler):
         self.output_reader = self.output_reader.add(new_triples)
 
     def extract_pipeline(self) -> None:
-        # Extracting the pipeline
-        graph_inverse_steps = (
-            self.output_reader.filter(pred="p-plan:isStepOfPlan", obj=self.pipeline_id)
-            .construct("?o :hasStep ?s", "?s ?p ?o.")
-            .graph
+        # SHACL shapes float independently of the pipeline (reached by no
+        # graph edge from it), so the traversal below would otherwise drop
+        # them; collect each shape's own subgraph up front and re-add it
+        # after extraction.
+        shape_ids = (
+            self.output_reader.filter(pred="rdf:type", obj="sh:NodeShape")
+            .df["sub"]
+            .to_list()
         )
-        # Filtering down to triples concerning the pipeline
-        self.output_reader = self.output_reader.add(graph_inverse_steps).traverse(
-            self.pipeline_id
+        # ``bind_namespaces="none"`` avoids rdflib's default core bindings
+        # (e.g. ``dcterms``), which collide with the catalog's own ``dct``
+        # prefix for the same URI and can silently evict it once merged.
+        shape_graph = Graph(bind_namespaces="none")
+        for shape_id in shape_ids:
+            shape_graph += self.output_reader.traverse(shape_id).graph
+
+        # tcs:Catalog nodes float independently of the pipeline the same
+        # way shapes do, so a catalog's dcat:resource membership
+        # assertion for a component this pipeline's steps actually
+        # specialize would otherwise be dropped too —
+        # SpecializedComponentIsCatalogedShape depends on it surviving to
+        # tell a real catalog member from a dangling/mistyped
+        # prov:specializationOf target. Scoped to just the components
+        # this pipeline's own steps specialize, not the catalog's full
+        # resource list: pulling in every listed component (most of
+        # which this pipeline never uses) would instead make each one a
+        # fresh validation target for catalog-wide shapes (CatalogShape,
+        # PipelineComponentShape's deployability check) they were never
+        # meant to be checked against in a single pipeline's build.
+        used_components = self.output_reader.select(
+            "?component",
+            f"""
+            ?step p-plan:isStepOfPlan {self.pipeline_id} ;
+                  prov:specializationOf ?component .
+            """,
+        )["component"].to_list()
+
+        catalog_graph = Graph(bind_namespaces="none")
+        if used_components:
+            catalog_graph += self.output_reader.filter(
+                pred="rdf:type", obj="tcs:Catalog"
+            ).graph
+            catalog_graph += self.output_reader.filter(
+                pred="dcat:resource", obj=used_components
+            ).graph
+
+        # ``p-plan:isStepOfPlan`` points from step to plan; traversing it
+        # in the "against" direction reaches every step (and everything
+        # below it) without needing to materialize an inverse ``:hasStep``
+        # triple first — this also scopes the extraction to just the one
+        # pipeline's triples.
+        self.output_reader = self.output_reader.traverse(
+            self.pipeline_id, against="p-plan:isStepOfPlan"
         )
+        self.output_reader = self.output_reader.add(shape_graph)
+        self.output_reader = self.output_reader.add(catalog_graph)
 
     def name_blind_nodes(self) -> None:
         """
@@ -66,15 +112,23 @@ class PipelineExtractor(Compiler):
 
         Renames blank nodes typed with any of the prefixes we know how
         to reason on further downstream: ``tcs:`` (configs, files,
-        containers, ...) and ``spdx:`` (package dependencies attached
-        to components via ``dct:requires``). Anything else stays a
-        blank node.
+        containers, ...), ``spdx:`` (package dependencies attached
+        to components via ``dct:requires``), and ``sh:`` (anonymous
+        ``sh:NodeShape``s — e.g. the trivial passthrough/input/output
+        shapes attached to catalog components — so they become stable
+        named IRIs downstream compilers can reference in a SPARQL query
+        string instead of blank nodes, whose labels aren't safely
+        reusable across separate query executions). Anything else stays
+        a blank node.
         """
 
         # renaming
         rename_ids = (
             self.output_reader.filter(
-                sub="^_:", pred="^rdf:type$", obj=["^tcs:", "^spdx:"], regex=True
+                sub="^_:",
+                pred="^rdf:type$",
+                obj=["^tcs:", "^spdx:", "^sh:"],
+                regex=True,
             )
             .df["sub"]
             .to_list()
@@ -89,9 +143,15 @@ class PipelineExtractor(Compiler):
             )
             type_list.sort()
             first_type = receive_first(type_list)
-            new_name = (
-                ":"
-                + self.output_reader.prefix_store.drop_string(first_type).lower()
-                + f"_{i}"
+            prefix = (
+                ":" + self.output_reader.prefix_store.drop_string(first_type).lower()
             )
+            new_name = f"{prefix}_{i}"
+            # Guard against colliding with a name already in use (e.g. an
+            # author-declared resource in the pipeline definition) — bump
+            # the suffix until the name is free rather than silently
+            # merging two distinct resources under one IRI.
+            while self.output_reader.check_exists(new_name):
+                i += 1
+                new_name = f"{prefix}_{i}"
             self.output_reader = self.output_reader.rename(rename_id, new_name)

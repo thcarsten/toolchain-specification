@@ -1,4 +1,5 @@
 @prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
 @prefix demo: <http://example.org/example/demonstrator/> .
 @prefix dct: <http://purl.org/dc/terms/> .
 @prefix ldio: <http://example.org/example/ldio/> .
@@ -6,8 +7,12 @@
 @prefix p-plan: <http://purl.org/net/p-plan#> .
 @prefix proc: <http://dishacled.example.org/processors#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix schema: <https://schema.org/> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix sosa: <http://www.w3.org/ns/sosa/> .
 @prefix sw: <https://semantic.works/services/> .
 @prefix tcs: <https://w3id.org/toolchain#> .
@@ -51,13 +56,16 @@
 #################################################################
 # Aspects the current toolchain specification does **not yet** cover
 #
-#  1. Cross-framework transport-as-channel. `demo:ldioToRdfcBridge` is an
-#     HTTP hop between the LDIO `HttpOut` step and the RDF-Connect
-#     `HttpServer` step. Both sides configure the transport independently
-#     (`endpoint: http://rdfc:9000/source-a` on one side, `port: 9000` +
-#     `path: /source-a` on the other). `tcs:Channel` currently has no way
-#     to declare its transport type — the model treats every channel as
-#     opaque. The two ends could drift without any error.
+#  1. Cross-framework transport-as-channel. `demo:HttpIngest
+#     p-plan:isPrecededBy demo:LdioForward` is an HTTP hop between the LDIO
+#     `HttpOut` step and the RDF-Connect `HttpServer` step, expanded by
+#     `PipelineEnricher` into an auto-named `tcs:Channel` (formerly
+#     the hand-named `demo:ldioToRdfcBridge`). Both sides still configure
+#     the transport independently (`endpoint: http://rdfc:9000/source-a` on
+#     one side, `port: 9000` + `path: /source-a` on the other).
+#     `tcs:Channel` currently has no way to declare its transport type —
+#     the model treats every channel as opaque. The two ends could drift
+#     without any error.
 #
 #  2. Branching output. `rdfc:Sdsify` writes to *two* channels: the main
 #     data stream (`rdfc:output`) and a metadata sidestream
@@ -141,6 +149,7 @@ demo:DishacledPipeline a tcs:PipelineDefinition ;
 # 1. LDIO segment — poll, parse, enrich, forward
 #################################################################
 
+
 demo:ApiPoll a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpInPoller ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
@@ -150,8 +159,8 @@ demo:ApiPoll a tcs:InstancePipelineComponent ;
             ldio:url "https://dishacled-api.azurewebsites.net/api/v1/source-a/current" ;
             ldio:cron "*/10 * * * * *"
         ]
-    ] ;
-    tcs:writesTo demo:sourceARaw .
+    ] .
+
 
 
 # Uses Ldio:JsonToLdAdapter (not RdfAdapter) because the source-a API
@@ -159,6 +168,13 @@ demo:ApiPoll a tcs:InstancePipelineComponent ;
 demo:JsonLdParse a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:ApiPoll ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:outputShape ;
+        # Only after adding the json-ld context can be make statements about the expected rdf data
+        dct:relation demo:WaterLevelPropertyValueShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -174,15 +190,23 @@ demo:JsonLdParse a tcs:InstancePipelineComponent ;
               }
             }"""
         ]
-    ] ;
-    tcs:readsFrom demo:sourceARaw ;
-    tcs:writesTo demo:sourceARdf .
+    ] .
 
 
 # schema:PropertyValue → sosa:Observation + qudt:QuantityValue.
 demo:SsnSosaMap a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:SparqlConstructTransformer ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:JsonLdParse ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:inputShape ;
+        dct:relation demo:WaterLevelPropertyValueShape
+    ] , [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -223,72 +247,97 @@ demo:SsnSosaMap a tcs:InstancePipelineComponent ;
                 }
             """
         ]
-    ] ;
-    tcs:readsFrom demo:sourceARdf ;
-    tcs:writesTo demo:sourceAObservations .
+    ] .
 
 
 # HTTP POST to the RDF-Connect ingest endpoint. Effectively the LDIO→RDFC
-# handoff — see gap #1 in the file header.
+# handoff — see gap #1 in the file header. `ldio:HttpOut` carries a
+# trivial (empty) passthroughShape in `catalog-ldio.ttl`; here we
+# override it with a pipeline-specific shape describing what actually
+# flows across the HTTP bridge.
 demo:LdioForward a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpOut ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:SsnSosaMap ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
             ldio:endpoint "http://rdfc:9000/source-a" ;
             ldio:rdf-writer [ ldio:content-type "application/ld+json" ]
         ]
-    ] ;
-    tcs:readsFrom demo:sourceAObservations ;
-    tcs:writesTo demo:ldioToRdfcBridge .
+    ] .
 
 
 #################################################################
 # 2. RDF-Connect segment — accept POST, SDS, threshold, ingest
 #################################################################
 
+# rdfc:Reader/rdfc:Writer typing is explicit-author responsibility for
+# now (no inference rule yet) — every channel named here is written by
+# one step's Writer-role configShape path and read by another's
+# Reader-role path, so both types apply. Compiler-minted channels
+# (the anonymous :channel_N wiring synthesized by PipelineEnricher for
+# isPrecededBy edges, e.g. HttpIngest -> JsonLdToRdf) have no stable
+# author-facing name to type against and are left untyped.
+demo:sdsMeasurements a rdfc:Reader, rdfc:Writer .
+demo:sdsMeasurementsMeta a rdfc:Reader, rdfc:Writer .
+demo:sdsViolations a rdfc:Reader, rdfc:Writer .
+demo:sdsViolationsMeta a rdfc:Reader, rdfc:Writer .
+
 demo:HttpIngest a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:HttpServer ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:LdioForward ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
             rdfc:port 9000 ;
-            rdfc:writer demo:rawJson ;
             rdfc:options [
                 rdfc:method "POST" ;
                 rdfc:path "/source-a" ;
                 rdfc:successStatusCode 202
             ]
         ]
-    ] ;
-    tcs:readsFrom demo:ldioToRdfcBridge ;
-    tcs:writesTo demo:rawJson .
+    ] .
 
 
 demo:JsonLdToRdf a tcs:InstancePipelineComponent ;
     prov:specializationOf proc:JsonLdToNQuads ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
-    p-plan:hasInputVar [
-        a tcs:PipelineConfig ;
-        tcs:embedded [
-            rdfc:reader demo:rawJson ;
-            rdfc:writer demo:rdf
-        ]
-    ] ;
-    tcs:readsFrom demo:rawJson ;
-    tcs:writesTo demo:rdf .
+    p-plan:isPrecededBy demo:HttpIngest ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] .
 
 
-# Branching writer — see gap #2 in the file header.
+# Branching writer — see gap #2 in the file header. Read side is a plain
+# 1:1 edge (isPrecededBy); write side stays fully explicit because the
+# two outputs are genuinely ambiguous (nothing can disambiguate which
+# downstream consumer wants which branch).
 demo:SdsifyMeasurements a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:Sdsify ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:JsonLdToRdf ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:inputShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:input demo:rdf ;
             rdfc:output demo:sdsMeasurements ;
             rdfc:metadataOutput demo:sdsMeasurementsMeta ;
             rdfc:metadataConfig [
@@ -298,18 +347,22 @@ demo:SdsifyMeasurements a tcs:InstancePipelineComponent ;
             rdfc:typeFilter sosa:Observation
         ]
     ] ;
-    tcs:readsFrom demo:rdf ;
     tcs:writesTo demo:sdsMeasurements , demo:sdsMeasurementsMeta .
 
 
+# Reader side stays explicit — the upstream producer (SdsifyMeasurements)
+# branches, so isPrecededBy alone couldn't tell which output this reads.
 demo:ThresholdMonitor a tcs:InstancePipelineComponent ;
     prov:specializationOf tm:ThresholdMonitorJs ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:inputShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:reader demo:sdsMeasurements ;
-            rdfc:writer demo:violations ;
             tm:path sosa:hasSimpleResult ;
             tm:min "0.0"^^xsd:double ;
             tm:max "300.0"^^xsd:double ;
@@ -317,32 +370,30 @@ demo:ThresholdMonitor a tcs:InstancePipelineComponent ;
             tm:creator demo:thresholdMonitorAgent
         ]
     ] ;
-    tcs:readsFrom demo:sdsMeasurements ;
-    tcs:writesTo demo:violations .
+    tcs:readsFrom demo:sdsMeasurements .
 
 
 demo:SkolemizeViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:SkolemizationProcessor ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:ThresholdMonitor ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:incoming demo:violations ;
-            rdfc:outgoing demo:violationsSkolemized ;
             rdfc:mime "text/turtle"
         ]
-    ] ;
-    tcs:readsFrom demo:violations ;
-    tcs:writesTo demo:violationsSkolemized .
+    ] .
 
 
+# Read side is a plain 1:1 edge (isPrecededBy); write side stays fully
+# explicit for the same branching reason as SdsifyMeasurements above.
 demo:SdsifyViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:Sdsify ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
+    p-plan:isPrecededBy demo:SkolemizeViolations ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:input demo:violationsSkolemized ;
             rdfc:output demo:sdsViolations ;
             rdfc:metadataOutput demo:sdsViolationsMeta ;
             rdfc:metadataConfig [
@@ -352,7 +403,6 @@ demo:SdsifyViolations a tcs:InstancePipelineComponent ;
             rdfc:typeFilter <http://open-services.net/ns/core#Error>
         ]
     ] ;
-    tcs:readsFrom demo:violationsSkolemized ;
     tcs:writesTo demo:sdsViolations , demo:sdsViolationsMeta .
 
 
@@ -363,7 +413,6 @@ demo:LogMeasurementsMeta a tcs:InstancePipelineComponent ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:reader demo:sdsMeasurementsMeta ;
             rdfc:level "debug" ;
             rdfc:label "sds-measurements-metadata"
         ]
@@ -377,7 +426,6 @@ demo:LogViolationsMeta a tcs:InstancePipelineComponent ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:reader demo:sdsViolationsMeta ;
             rdfc:level "debug" ;
             rdfc:label "sds-violations-metadata"
         ]
@@ -394,7 +442,6 @@ demo:SparqlIngest a tcs:InstancePipelineComponent ;
     p-plan:hasInputVar [
         a tcs:Config ;
         tcs:embedded [
-            rdfc:memberStream demo:sdsViolations ;
             rdfc:ingestConfig [
                 rdfc:operationMode "Sync" ;
                 rdfc:memberBatchSize 1 ;
@@ -435,3 +482,173 @@ demo:DeliverEmail a tcs:InstancePipelineComponent ;
     # nmo:Email triples are not (yet) linked to the mail folder it polls,
     # so no SMTP is actually sent. This is a deployment gap flagged in
     # AGENTS.md §3, not a pipeline-definition modelling issue.
+
+
+###############################################################################
+# Input / output / passthrough shapes — LDIO segment
+#
+# Attached to the four LDIO instance-components above via
+# `dcat:qualifiedRelation` + `dcat:hadRole tcs:inputShape|tcs:outputShape|tcs:passthroughShape`
+# (see `test suite/README.md`). Shapes are attached at the instance level,
+# not the `PipelineComponent` level, because the shape flowing through each
+# LDIO step depends on how the step is configured in *this* pipeline (the
+# JSON-LD `@context` on `demo:JsonLdParse`, the SPARQL CONSTRUCT on
+# `demo:SsnSosaMap`, the target endpoint on `demo:LdioForward`).
+#
+# Role choice per step:
+#
+#   - `demo:JsonLdParse` — `outputShape` only. `ldio:JsonToLdAdapter` is
+#     conceptually a passthrough (the `@context` fully determines the RDF
+#     graph), but its read channel `demo:sourceARaw` carries JSON bytes,
+#     not RDF, so a `passthroughShape` cannot be validated against the
+#     upstream side. The `outputShape` on `demo:sourceARdf` is the first
+#     meaningful RDF-level constraint in the chain.
+#
+#   - `demo:SsnSosaMap` — `inputShape` + `outputShape`. A real transformer
+#     (SPARQL CONSTRUCT); input and output shapes are distinct.
+#
+#   - `demo:LdioForward` — `passthroughShape`. `ldio:HttpOut` is a
+#     canonical passthrough component (see `catalog-ldio.ttl`); the
+#     pipeline-specific shape here overrides its trivial catalog-level
+#     passthroughShape.
+#
+# Not attached:
+#
+#   - `demo:ApiPoll` — its output channel `demo:sourceARaw` carries raw
+#     JSON bytes, not RDF triples, so an RDF NodeShape does not apply.
+#     Once `demo:JsonLdParse` promotes the bytes into a graph, the shape
+#     below (`demo:WaterLevelPropertyValueShape`) is the first meaningful
+#     constraint. Left implicit; per the validation-strategy convention an
+#     empty shape may be materialized on the channel at validation time.
+#
+#   - `demo:JsonLdParse` inputShape — same reason (upstream is non-RDF).
+###############################################################################
+
+
+# Mirrors the API's public shape at
+# https://dishacled-api.azurewebsites.net/api/v1/shapes/shacl
+# (`urn:shapes:WaterLevelShape` + `urn:shapes:SourceAShape`), collapsed to
+# a single NodeShape describing what `demo:JsonLdParse` writes onto
+# `demo:sourceARdf` and what `demo:SsnSosaMap` expects on its input side.
+demo:WaterLevelPropertyValueShape a sh:NodeShape ;
+    rdfs:label "Water level PropertyValue (source-a)" ;
+    rdfs:comment """Shape of a single water-level measurement as served by
+        the source-a API and as reconstructed into RDF by
+        `demo:JsonLdParse`. Derived from the API's own SHACL shapes plus
+        the source-a specialization (unit `CMT`, value range 1300–2200
+        cm).""" ;
+    sh:closed false ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue schema:PropertyValue ;
+        sh:minCount 1 ;
+    ] , [
+        sh:path schema:name ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:pattern "Water Level.*" ;
+    ] , [
+        sh:path schema:value ;
+        sh:datatype xsd:decimal ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:minInclusive 1300 ;
+        sh:maxInclusive 2200 ;
+    ] , [
+        sh:path schema:unitCode ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:hasValue "CMT" ;
+    ] , [
+        sh:path sosa:resultTime ;
+        sh:datatype xsd:dateTime ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path schema:source ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:hasValue "Source A" ;
+    ] , [
+        sh:path schema:location ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:node demo:PlaceShape ;
+    ] , [
+        sh:path dct:conformsTo ;
+        sh:minCount 1 ;
+    ] .
+
+
+demo:PlaceShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue schema:Place ;
+    ] , [
+        sh:path schema:geo ;
+        sh:minCount 1 ;
+        sh:node [
+            a sh:NodeShape ;
+            sh:property [
+                sh:path schema:latitude ;
+                sh:datatype xsd:decimal ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+            ] , [
+                sh:path schema:longitude ;
+                sh:datatype xsd:decimal ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+            ]
+        ] ;
+    ] .
+
+
+# Mirrors the two star patterns of ?obs and ?result in the SPARQL CONSTRUCT
+# clause of `demo:SsnSosaMap`. Also matches what `demo:LdioForward` POSTs
+# to the RDFC HTTP ingest.
+demo:SosaWaterLevelObservationShape a sh:NodeShape ;
+    rdfs:label "SOSA water-level observation" ;
+    rdfs:comment """Shape of the RDF produced by `demo:SsnSosaMap`, and
+        equivalently the shape POSTed by `demo:LdioForward` onto the
+        LDIO → RDF-Connect HTTP bridge.""" ;
+    sh:closed false ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue sosa:Observation ;
+        sh:minCount 1 ;
+    ] , [
+        sh:path sosa:madeBySensor ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+    ] , [
+        sh:path sosa:observedProperty ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+    ] , [
+        sh:path sosa:hasFeatureOfInterest ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path sosa:resultTime ;
+        sh:datatype xsd:dateTime ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path sosa:hasSimpleResult ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path sosa:hasResult ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:node demo:QuantityValueShape ;
+    ] .
+
+
+demo:QuantityValueShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue qudt:QuantityValue ;
+        sh:minCount 1 ;
+    ] , [
+        sh:path qudt:numericValue ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path qudt:unit ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+    ] .

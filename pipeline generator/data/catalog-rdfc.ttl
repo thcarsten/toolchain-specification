@@ -313,7 +313,7 @@ tm:ThresholdMonitorJs
         sh:name "writer" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Writer ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] .
 
@@ -441,7 +441,7 @@ tm:ThresholdMonitorJs
         sh:name "reader" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Reader ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] ;
     sh:property [
@@ -449,7 +449,7 @@ tm:ThresholdMonitorJs
         sh:name "writer" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Writer ;
-        sh:minCount 0 ;
+        tcs:upstreamMinCount 0 ;
         sh:maxCount 1
     ] .
 
@@ -488,7 +488,7 @@ tm:ThresholdMonitorJs
         sh:name "writer" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Writer ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] .
 
@@ -579,7 +579,7 @@ tm:ThresholdMonitorJs
         sh:name "reader" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Reader ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] ;
     sh:property [
@@ -587,7 +587,7 @@ tm:ThresholdMonitorJs
         sh:name "writer" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Writer ;
-        sh:minCount 0 ;
+        tcs:upstreamMinCount 0 ;
         sh:maxCount 1
     ] .
 
@@ -634,7 +634,7 @@ tm:ThresholdMonitorJs
         sh:name "reader" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Reader ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] ;
     sh:property [
@@ -642,7 +642,7 @@ tm:ThresholdMonitorJs
         sh:name "writer" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Writer ;
-        sh:minCount 0 ;
+        tcs:upstreamMinCount 0 ;
         sh:maxCount 1
     ] .
 
@@ -675,7 +675,7 @@ tm:ThresholdMonitorJs
         sh:name "memberStream" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Reader ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] ;
     sh:property [
@@ -876,7 +876,7 @@ tm:ThresholdMonitorJs
         sh:name "input" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Reader ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] ;
     sh:property [
@@ -891,7 +891,7 @@ tm:ThresholdMonitorJs
         sh:name "metadataOutput" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Writer ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] ;
     sh:property [
@@ -899,7 +899,7 @@ tm:ThresholdMonitorJs
         sh:name "output" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Writer ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] ;
     sh:property [
@@ -995,7 +995,7 @@ tm:ThresholdMonitorJs
         sh:name "incoming" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Reader ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] ;
     sh:property [
@@ -1009,7 +1009,7 @@ tm:ThresholdMonitorJs
         sh:name "outgoing" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Writer ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] .
 
@@ -1041,7 +1041,7 @@ tm:ThresholdMonitorJs
         sh:name "reader" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Reader ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] ;
     sh:property [
@@ -1049,7 +1049,7 @@ tm:ThresholdMonitorJs
         sh:name "writer" ;
         sh:class tcs:Channel ;
         tcs:upstreamClass rdfc:Writer ;
-        sh:minCount 1 ;
+        tcs:upstreamMinCount 1 ;
         sh:maxCount 1
     ] ;
     sh:property [

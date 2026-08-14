@@ -54,12 +54,12 @@ class DockerComposeCompiler(Compiler):
 
         # Getting a list of all microservice configs.
         #
-        # Sorted, because SPARQL SELECT results come back in whatever
-        # order the triple store yields and two things depend on this
-        # order: which config wins a name collision in the merge below,
-        # and — since the YAML dumper preserves insertion order — the
-        # order services appear in the emitted file. Without the sort,
-        # the same build graph produces a different (if equivalent)
+        # Sorted for reproducibility: SPARQL SELECT rows come back in
+        # whatever order the triple store yields, and two things depend
+        # on that order — which config the collision guard below blames
+        # second, and, since the YAML dumper preserves insertion order,
+        # the order services appear in the emitted file. Without the
+        # sort the same build graph produces a different (if equivalent)
         # docker-compose.yml on each run.
         config_list = sorted(
             self.output_reader.select(
@@ -73,15 +73,27 @@ class DockerComposeCompiler(Compiler):
         # Every ``tcs:DockerComposeConfig`` is normalized to the same
         # compose-file shape (``{"services": {...}, ...}``) by
         # ``parse_docker_compose_config``, so aggregating multiple
-        # configs is just a shallow merge per top-level key. Later
-        # configs override earlier ones on name collision within
-        # ``services`` / ``volumes`` / ``networks`` / etc. — now
-        # deterministically, following the sorted config order.
+        # configs is a merge per top-level key. Two configs are never
+        # *expected* to name the same service/volume/network entry —
+        # docker-compose requires unique names, so that's always a
+        # modelling mistake; raise instead of letting one silently
+        # clobber the other.
         compose_file: dict = {"services": {}}
+        contributed_by: dict[str, str] = {}
         for config_id in config_list:
             normalized = parse_docker_compose_config(self.output_reader, config_id)
             for key, val in normalized.items():
                 if isinstance(compose_file.get(key), dict) and isinstance(val, dict):
+                    for name in val:
+                        owner = contributed_by.get(f"{key}.{name}")
+                        if owner is not None and owner != config_id:
+                            raise ValueError(
+                                f"tcs:DockerComposeConfig {config_id!s} and {owner!s} "
+                                f"both declare a {key!r} entry named {name!r} — "
+                                "docker-compose requires unique names; rename one "
+                                "of them in the catalog/pipeline definition."
+                            )
+                        contributed_by[f"{key}.{name}"] = config_id
                     compose_file[key].update(val)
                 else:
                     compose_file[key] = val

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import CATALOG_FILES, PIPELINE_ID, infer_all
+from testing_helpers import PIPELINE_ID, NOTEBOOK_FILES, load_reader
 import yaml
 
 
@@ -25,9 +25,9 @@ def _compose(data_dir: Path) -> str:
     from compilers import PipelineGenerator, ProjectBuilder
 
     graph = Graph()
-    for name in CATALOG_FILES:
+    for name in NOTEBOOK_FILES:
         graph.parse(data_dir / name, publicID="file:///workspace/pipeline/")
-    reader = infer_all(graph, data_dir)
+    reader = load_reader(graph)
 
     build = PipelineGenerator(PIPELINE_ID, reader.graph).compile()
     files = ProjectBuilder(build).files

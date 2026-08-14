@@ -19,11 +19,11 @@
 ## 1. Introduction
 In this repo you find the codebase for the tool "pipeline generator". As the name suggests, the pipeline generator automatically generates pipelines based on a semantic description of a pipeline. The pipeline generator accepts pipeline definitions which are written in RDF and follow the [semantic model](https://github.com/thcarsten/toolchain-specification/tree/main/semantic%20model) of the toolchain specification. Based on the pipeline definition, it looks up components and their dependencies in a component catalog, and generates a Docker Compose file wiring together the containers that resolve these dependencies. It also generates the framework-specific configuration files necessary to run the pipelines. In the [data-folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/data), you can find the pipeline definitions and the catalog used for [the demo](https://github.com/thcarsten/toolchain-specification/blob/main/pipeline%20generator/src/demo.ipynb). Currently three frameworks are supported: RDF-Connect, LDIO and semantic.works.
 
-The codebase is found in the [src-folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/src). It consists of three packages: `rdfine` provides ergonomic graph IO and transformation primitives (see its own [README](src/rdfine/README.md)); `compilers` is the pipeline generator itself, built around a small `Compiler` ABC and a self-registering dispatch system orchestrated by `PipelineGenerator`; `catalog` is a pre-compile step that generates the RDF-Connect section of the component catalog from the packages' own published definitions (see [§3.1](#31-generating-the-rdf-connect-catalog)). Section 4 describes the architecture in detail.
+The codebase is found in the [src-folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/src). It consists of three packages: `rdfine` provides ergonomic graph IO and transformation primitives (see its own [README](src/rdfine/README.md)); `compilers` is the pipeline generator itself, built around a small `Compiler` ABC and a self-registering dispatch system orchestrated by `PipelineGenerator`; `rdfc_catalog_harvest` is a pre-compile step that generates the RDF-Connect section of the component catalog from the packages' own published definitions (see [§3.1](#31-generating-the-rdf-connect-catalog)). Section 4 describes the architecture in detail.
 
 ## 2. Installation
 
-The pipeline generator targets **Python 3.11+** and consists of two packages that live under `src/`: `rdfine` and `compilers`.
+The pipeline generator targets **Python 3.11+** and consists of three packages that live under `src/`: `rdfine`, `compilers`, and `rdfc_catalog_harvest`.
 
 The recommended setup is to install `rdfine` from source — this also pulls in every third-party dependency that `compilers` needs:
 
@@ -127,7 +127,7 @@ python -m rdfc_catalog_harvest generate    # offline + deterministic: rewrites d
 
 `harvest` resolves each request's version range against the registry (real caret/tilde/prerelease matching, not `dist-tags.latest`), downloads the package, and freezes the Turtle file that declares the component into `data/rdfc_harvest/` next to a JSON record of the registry facts. Both are committed. `generate` reads only that snapshot, so regeneration needs no network, produces byte-identical output, and a diff shows whether a change came from upstream (the snapshot moved) or from policy (the request file moved) — the same discipline as committing a lockfile. `python -m rdfc_catalog_harvest generate --check` exits non-zero if the committed file is stale.
 
-**Translating the shape.** Upstream shapes cannot be pasted verbatim; four systematic rewrites are applied, all traceable to one root cause — a pipeline definition supplies parameter values as bare IRIs and untyped blank nodes inside a `tcs:embedded` block, so any constraint requiring an `rdf:type` on the value is unsatisfiable as written:
+**Translating the shape.** Upstream shapes cannot be pasted verbatim; five systematic rewrites are applied. The first four share a root cause — a pipeline definition supplies parameter values as bare IRIs and untyped blank nodes inside a `tcs:embedded` block, so any constraint requiring an `rdf:type` on the value is unsatisfiable as written:
 
 1. `sh:class rdfc:Reader` / `rdfc:Writer` → `sh:class tcs:Channel` (the type `inference_rules.yaml` derives from `tcs:readsFrom` / `tcs:writesTo`). Direction preserved on a non-constraining `tcs:upstreamClass`.
 2. `sh:class` at a nested config class → `sh:node` against a named shape, which is then targeted by `sh:targetObjectsOf` on the property path instead of by class.
@@ -136,7 +136,9 @@ python -m rdfc_catalog_harvest generate    # offline + deterministic: rewrites d
    - Not listed → demoted to a `tcs:upstreamClass` annotation. A constraint the toolchain can never satisfy is worse than a documented one it does not check. Adding a registry entry is how such a constraint gets promoted from documented to enforced.
 4. `sh:datatype xsd:iri` → `sh:nodeKind sh:IRI`. **Not a typo upstream** — rdf-lens keys its own extractor off exactly that term (`ShaclPredicatePath = extractLeaf(XSD.terms.custom("iri"))`), so the marker is load-bearing at runtime. It is simply not valid *validation*: there is no `xsd:iri` datatype, so as SHACL it demands a literal no IRI can be. The original is preserved on `tcs:upstreamDatatype` so the runtime convention survives.
 
-Rules 1 and 2 were reverse-engineered from `:SparqlIngestShape`, the one hand-written shape in the old catalog that actually fired. Rules 3 and 4 only surfaced once generation made every component's shape live — before, eleven of twelve components had no reachable shape at all, so neither problem was observable.
+5. `sh:minCount` on a channel parameter → moved to `tcs:upstreamMinCount`. Upstream is right that the parameter is required — of the *running pipeline*. It is not required of the author: `RdfcConfigCompiler` fills a step's `rdfc:reader` / `rdfc:writer` in from the framework-neutral `tcs:readsFrom` / `tcs:writesTo`, so a hand-written config leaves it out on purpose and upstream's cardinality would fail every pipeline in this repo. Rule 1's `sh:class` still constrains whatever the author *does* write — a config may still name a channel where the neutral annotation cannot say which slot is meant, as `rdfc:Sdsify` does with its two outputs. `sh:maxCount` is untouched.
+
+Rules 1 and 2 were reverse-engineered from `:SparqlIngestShape`, the one hand-written shape in the old catalog that actually fired. Rules 3 and 4 only surfaced once generation made every component's shape live — before, eleven of twelve components had no reachable shape at all, so neither problem was observable. Rule 5 surfaced when those live shapes first met a pipeline definition that had stopped restating its channels.
 
 `:ShaclPathShape` accepts the six path forms `ShaclPath` implements in rdf-lens (bare IRI, RDF-list sequence, `sh:alternativePath`, `sh:inversePath`, `sh:zeroOrMorePath`, `sh:zeroOrOnePath`) and deliberately rejects `sh:oneOrMorePath`, which SHACL defines but rdf-lens does not implement — see the note in `catalog-rdfc-manual.ttl`. Validation deliberately matches execution rather than the spec. The accept/reject matrix is the executable spec in [`tests/test_shacl_path_shape.py`](tests/test_shacl_path_shape.py).
 
@@ -148,9 +150,9 @@ Adding a new compiler is a matter of dropping a new file in the appropriate `com
 
 ## 4. Architecture
 
-This section is a closer look at the `compilers` package. (`rdfine` has its own [README](src/rdfine/README.md); `catalog` is described in [§3.1](#31-generating-the-rdf-connect-catalog).)
+This section is a closer look at the `compilers` package. (`rdfine` has its own [README](src/rdfine/README.md); `rdfc_catalog_harvest` is described in [§3.1](#31-generating-the-rdf-connect-catalog).)
 
-The `catalog` package is deliberately **not** part of the `Compiler` hierarchy. Compilers are graph-to-graph transformations inside a single pipeline build; catalog generation runs before any build exists and crosses the boundary into the outside world, which puts it in the same category as `ProjectBuilder`. Its modules:
+The `rdfc_catalog_harvest` package is deliberately **not** part of the `Compiler` hierarchy. Compilers are graph-to-graph transformations inside a single pipeline build; catalog generation runs before any build exists and crosses the boundary into the outside world, which puts it in the same category as `ProjectBuilder`. Its modules:
 
 | Module | Purpose |
 | --- | --- |
@@ -331,7 +333,7 @@ A useful side effect: because provenance is attached *while the loop is running*
 | Compiler | Trigger (`applies_to`) | Reads from the build | Writes to the build |
 | --- | --- | --- | --- |
 | `PipelineExtractor` | always | the catalog | triples for the requested pipeline definition; seeds `<pipeline>_build a tcs:PipelineBuild ; prov:hadPlan <pipeline>` |
-| `PipelineAssembler` | exactly one `tcs:PipelineDefinition` in the graph and it has at least one `:hasStep` | the extracted pipeline | `tcs:DockerContainer`, `dct:hasPart`, `tcs:instantiates`, `tcs:runs`, `:isAssigned` |
+| `PipelineAssembler` | exactly one `tcs:PipelineDefinition` in the graph and it has at least one step (`p-plan:isStepOfPlan`) | the extracted pipeline | `tcs:DockerContainer`, `dct:hasPart`, `tcs:instantiates`, `tcs:runs` |
 | `SemanticWorksEnvVarCompiler` | any `tcs:PipelineComponent` in the `sw:` namespace, and at least one `tcs:DockerContainer` exists | step configs + docker configs of `sw:` components | updated `tcs:literal` on each affected `tcs:DockerComposeConfig` |
 | `VirtuosoCompiler` | a container instantiates `sw:triple-store` | the `:VirtuosoIniDefault` config body | `spdx:File` named `semantic-works/config/virtuoso/virtuoso.ini` |
 | `MuClResourcesCompiler` | a container instantiates `sw:mu-cl-resources` | the three `mu-cl-resources` default config bodies | `spdx:File`s named `semantic-works/config/resources/{domain.json,domain.lisp,repository.lisp}` |
@@ -364,7 +366,7 @@ Any pipeline that reuses these components today gets the demonstrator's content 
 
 ### 5.2a. Topology is stated twice, and only partly cross-checked
 
-A step declares its channel wiring in two places: framework-specifically inside its `tcs:embedded` config (`rdfc:reader demo:sdsMeasurements`) and framework-neutrally as `tcs:readsFrom` / `tcs:writesTo`. The compilers read the first, the application-profile shapes read the second. Two inference rules in [`data/rdfc_inference_rules.yaml`](data/rdfc_inference_rules.yaml) now derive `tcs:derivedReadsFrom` / `tcs:derivedWritesTo` from the config plus the generated config shapes, and `tcs:RdfcStepChannelWiringShape` requires that every derived edge was also declared — so a step that wires one channel and annotates another is now a validation error instead of a silent inconsistency.
+A step *can* state its channel wiring in two places: framework-specifically inside its `tcs:embedded` config (`rdfc:output demo:sdsMeasurements`) and framework-neutrally as `tcs:readsFrom` / `tcs:writesTo`. The compilers read the first, the application-profile shapes read the second. Two inference rules in [`data/rdfc_inference_rules.yaml`](data/rdfc_inference_rules.yaml) now derive `tcs:derivedReadsFrom` / `tcs:derivedWritesTo` from the config plus the generated config shapes, and `tcs:RdfcStepChannelWiringShape` requires that every derived edge was also declared — so a step that wires one channel and annotates another is now a validation error instead of a silent inconsistency.
 
 Both the rules and the shape are RDF-Connect-only and say so, selecting on `?component a rdfc:Processor` — the type the emitter carries over from upstream's `rdfc:{js,py}ImplementationOf rdfc:Processor`. That is also why the rules sit in their own file rather than in `inference_rules.yaml`. **Load both**, or the derivation never runs and the shape passes with nothing to check:
 
@@ -373,11 +375,13 @@ catalog_reader = catalog_reader.infer(input_folder + "inference_rules.yaml")    
 catalog_reader = catalog_reader.infer(input_folder + "rdfc_inference_rules.yaml")  # RDF-Connect
 ```
 
-The check is one-directional (derived must be a **subset** of declared) because most declared edges are legitimately underivable. Of 24 declared edges in the demonstrator, 14 are derived and all 14 agree; the other 10 break down as:
+The check is one-directional (derived must be a **subset** of declared) because most declared edges are legitimately underivable — and since `RdfcConfigCompiler` learned to generate a step's `rdfc:reader` / `rdfc:writer` wiring from `tcs:readsFrom` / `tcs:writesTo`, most of them no longer *need* to be derivable. The duplication this check was written to police has largely been removed at the source: the demonstrator's configs stopped restating their channels, so there is nothing left to disagree with.
 
-- **7 LDIO edges.** LDIO components have no channel-valued parameters at all — topology is implicit in the ordering of the `input` / `input.adapter` / `transformers[]` / `outputs[]` slots, which is what `tcs:LdioStepOrderingShape` enforces. For LDIO, the annotation is the *only* record of the topology, so it cannot be checked against anything.
-- **1 cross-framework edge.** `demo:HttpIngest tcs:readsFrom demo:ldioToRdfcBridge`: `rdfc:HttpServer` receives an HTTP POST, not a channel, so there is no config property behind it. Same root cause as [§5.2](#52-cross-framework-channels).
-- **2 edges on a component with no config shape.** `proc:JsonLdToNQuads` is hand-maintained (see [§3.1](#31-generating-the-rdf-connect-catalog)), so there is no `tcs:upstreamClass` to key on. These become derivable if its source is vendored and harvested.
+Of 24 declared edges, 4 are now derived and all 4 agree. All four are `demo:SdsifyMeasurements` / `demo:SdsifyViolations`, the only steps whose configs still name channels by hand — `rdfc:Sdsify` has *two* output slots (`rdfc:output` and `rdfc:metadataOutput`), so `tcs:writesTo` alone cannot say which stream goes where and the config has to spell it out. That is exactly the shape of case where the two statements can drift apart, so the narrowed check still covers the part that can actually break. The remaining 20 edges are underivable because:
+
+- **LDIO steps** have no channel-valued parameters at all — topology is implicit in the ordering of the `input` / `input.adapter` / `transformers[]` / `outputs[]` slots, which is what `tcs:LdioStepOrderingShape` enforces. For LDIO, the annotation is the *only* record of the topology.
+- **The cross-framework edge** `demo:HttpIngest tcs:readsFrom demo:ldioToRdfcBridge`: `rdfc:HttpServer` receives an HTTP POST, not a channel, so there is no config property behind it. Same root cause as [§5.2](#52-cross-framework-channels).
+- **Everything else** now states its wiring once, framework-neutrally, and lets the compiler emit the framework-specific form. Nothing to cross-check is the *good* outcome here.
 
 Fully closing the loop therefore needs the LDIO ordering model and the cross-framework channel model, not more inference.
 
@@ -424,7 +428,7 @@ The pipeline generator is not fully implemented yet, it is a work in progress. W
 - [ ] Pipeline-level config override mechanism: let a `tcs:PipelineDefinition` shadow a catalog-level `tcs:DefaultConfig` with a pipeline-specific body. Prerequisite for cleanly moving the demonstrator-specific bodies (see [§5.1](#51-no-override-mechanism-for-tcsdefaultconfig-bodies)) out of `catalog-sw.ttl` and into `pipeline_definition.ttl`.
 - [ ] Cross-framework `tcs:Channel`: extend the channel model to describe transports that span framework boundaries (LDIO → RDFC HTTP hop, RDFC → sw SPARQL push, sw delta-notifier subscriptions). Prerequisite for synthesising the `oslc:Error` rule in `delta/rules.js` from the pipeline definition rather than shipping it as boilerplate.
 - [x] RdfcDockerFileCompiler: Creates an adhoc Dockerfile for RDF-Connect. This allows to include only those dependencies in a docker container which are actually used in the pipeline.
-- [x] Catalog generator for RDF-Connect: derive `catalog-rdfc.ttl` from each package's own published `processors.ttl` instead of transcribing it, so a component entry is a three-line request. Implemented as the `catalog` package with a committed harvest snapshot; see [§3.1](#31-generating-the-rdf-connect-catalog).
+- [x] Catalog generator for RDF-Connect: derive `catalog-rdfc.ttl` from each package's own published `processors.ttl` instead of transcribing it, so a component entry is a three-line request. Implemented as the `rdfc_catalog_harvest` package with a committed harvest snapshot; see [§3.1](#31-generating-the-rdf-connect-catalog).
 - [ ] Extend catalog generation beyond RDF-Connect. LDIO and semantic.works publish no machine-readable component definitions, so there is nothing to derive from today. For LDIO the closest source is the generated documentation site; for semantic.works, the per-service READMEs. Both would need a scraper rather than a parser, which is why they are still hand-written.
 - [ ] Deterministic `docker-compose.yml` service order. `DockerComposeCompiler` merges compose fragments in graph-iteration order, so the emitted service order varies between runs on identical input (the service bodies are identical — only key order moves). Harmless to Docker, but it makes the committed `out/` diff noisy and blocks byte-comparison in tests.
 - [ ] NifiCompiler: Compiler for [Nifi 2](https://nifi.apache.org/). 

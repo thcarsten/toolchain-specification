@@ -1,23 +1,30 @@
 """Cross-check between a step's channel config and its topology annotation.
 
-A step states its wiring twice — framework-specifically inside
-`tcs:embedded` (`rdfc:reader demo:x`) and framework-neutrally as
-`tcs:readsFrom` / `tcs:writesTo`. The compilers read the first, the
-application-profile shapes read the second, and until now nothing
-connected them, so the pair could disagree in silence.
+Where a step states its wiring twice — framework-specifically inside
+`tcs:embedded` (`rdfc:output demo:x`) and framework-neutrally as
+`tcs:readsFrom` / `tcs:writesTo` — the two can disagree in silence: the
+compilers read the first, the application-profile shapes read the
+second, and nothing connected them.
 
 `rdfc_inference_rules.yaml` derives `tcs:derivedReadsFrom` /
 `tcs:derivedWritesTo` from the config plus the generated config shapes;
-`tcs:RdfcStepChannelWiringShape` requires that everything derived was also
-declared. These tests pin both halves, and the one-directional nature of
-the check — plenty of declared edges are legitimately underivable.
+`tcs:RdfcStepChannelWiringShape` requires that everything derived was
+also declared. These tests pin both halves and the one-directional
+nature of the check — plenty of declared edges are legitimately
+underivable.
+
+Most of the duplication this guards has since been removed at the
+source: `RdfcConfigCompiler` generates the framework-specific wiring
+from the neutral annotation, so a config only names channels when the
+annotation genuinely cannot say which slot it means. See
+`test_derivation_produces_edges`.
 """
 
 from pathlib import Path
 
 import pytest
 
-from conftest import CATALOG_FILES, PIPELINE_ID, infer_all
+from testing_helpers import NOTEBOOK_FILES, load_reader
 
 
 DERIVED = """
@@ -53,11 +60,11 @@ def _load(data_dir: Path, extra: str | None = None):
     from rdflib import Graph
 
     graph = Graph()
-    for name in CATALOG_FILES:
+    for name in NOTEBOOK_FILES:
         graph.parse(data_dir / name, publicID="file:///workspace/pipeline/")
     if extra:
         graph.parse(data=extra, format="turtle")
-    return infer_all(graph, data_dir)
+    return load_reader(graph)
 
 
 @pytest.fixture(scope="module")
@@ -75,8 +82,19 @@ def _steps(reader, pattern: str) -> set[str]:
 
 
 def test_derivation_produces_edges(reader):
-    """If this is empty the rules silently stopped matching."""
-    assert len(_edges(reader, DERIVED)) == 14
+    """If this is empty the rules silently stopped matching.
+
+    Four, where this started at 14: `RdfcConfigCompiler` now generates a
+    step's `rdfc:reader` / `rdfc:writer` wiring from `tcs:readsFrom` /
+    `tcs:writesTo`, so the demonstrator's configs stopped restating
+    their channels and there is nothing left to disagree with. What
+    remains is `demo:SdsifyMeasurements` / `demo:SdsifyViolations`:
+    `rdfc:Sdsify` has two output slots (`rdfc:output` and
+    `rdfc:metadataOutput`) and `tcs:writesTo` cannot say which stream
+    goes where, so those configs still name channels by hand — and can
+    still name the wrong one.
+    """
+    assert len(_edges(reader, DERIVED)) == 4
 
 
 def test_wiring_shape_targets_only_rdfc_steps(reader):

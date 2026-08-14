@@ -19,6 +19,11 @@
 #   3. Components whose source cannot be resolved from a registry or
 #      from this repo — unbuilt stubs, and processors whose code lives
 #      in another repository.
+#   4. Data-shape roles (`tcs:passthroughShape`, `tcs:outputShape`) for
+#      components that are otherwise generated. What a processor does to
+#      the records passing through it is not something upstream
+#      publishes, so it cannot be derived.
+#   5. Value-space shapes for classes from foreign vocabularies.
 #
 # Loaded alongside catalog-core.ttl and catalog-rdfc.ttl.
 #################################################################
@@ -187,8 +192,8 @@ rdfc:PyRunner a tcs:PipelineComponent, rdfc:Runner, dcat:Resource ;
 # `tcs:CatalogRequest` with `tcs:fromPath` once the source is vendored
 # here.
 proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
-    rdfs:label "JSON-LD to N-Quads converter" ;
-    rdfs:description "Locally-built RDF-Connect processor that parses JSON-LD bytes on the input channel into N-Quads on the output channel." ;
+    rdfs:label "JSON-LD to N-Quads processor" ;
+    rdfs:description "Parses incoming JSON-LD strings and serializes them as N-Quads for downstream RDF processors." ;
     dct:requires rdfc:NodeRunner ;
     dct:requires [
         a spdx:Package ;
@@ -202,7 +207,64 @@ proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
         spdx:versionInfo "^9.0.0" ;
         spdx:suppliedBy :npm
     ] ;
-    owl:imports <./processors/jsonld-to-nquads/processor.ttl> .
+    owl:imports <./processors/jsonld-to-nquads/processor.ttl> ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:configShape ;
+        dct:relation :JsonLdToNQuadsShape
+    ] ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation [ a sh:NodeShape ]
+    ] .
+
+
+# Written by hand in the same shape the generator emits, because
+# `RdfcConfigCompiler.describe_channel_wiring` reads it: it finds a
+# step's single reader/writer slot by looking for `sh:class tcs:Channel`
+# plus a `tcs:upstreamClass` direction, and injects the channel from
+# `tcs:readsFrom` / `tcs:writesTo` into the step's config. Without this
+# shape `demo:JsonLdToRdf` compiles to an unwired processor. Note the
+# absence of `sh:minCount`: the wiring is the compiler's to supply, so
+# requiring it of the author would fail every pipeline (see rewrite 5 in
+# rdfc_catalog_harvest/shapes.py).
+:JsonLdToNQuadsShape
+    a sh:NodeShape ;
+    # Full IRIs rather than `sh:prefixes tcs:prefixes`, which the
+    # generated shapes use: that registry is declared in
+    # catalog-core.ttl, and this file is parsed on its own by
+    # test_shacl_path_shape.py (":ShaclPathShape as actually declared in
+    # the catalog"). A prefixed target here makes that parse fail with
+    # "Unknown namespace prefix", so the one shape in this file with a
+    # SPARQL target pays a little verbosity to keep the file standalone.
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step <http://www.w3.org/ns/prov#specializationOf>
+                          <http://dishacled.example.org/processors#JsonLdToNQuads> ;
+                      <http://purl.org/net/p-plan#hasInputVar>/<https://w3id.org/toolchain#embedded>
+                          ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path rdfc:reader ;
+        sh:name "reader" ;
+        sh:class tcs:Channel ;
+        tcs:upstreamClass rdfc:Reader ;
+        tcs:upstreamMinCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path rdfc:writer ;
+        sh:name "writer" ;
+        sh:class tcs:Channel ;
+        tcs:upstreamClass rdfc:Writer ;
+        tcs:upstreamMinCount 1 ;
+        sh:maxCount 1
+    ] .
 
 
 # Unbuilt stub. No implementation exists yet, so there is no package to
@@ -224,7 +286,55 @@ rdfc:thresholdMonitoringProcessor a tcs:PipelineComponent, dcat:Resource, rdfc:P
 
 
 #################################################################
-# 4. Value-space shapes for external vocabularies
+# 4. Data-shape roles for generated components
+#
+# `dcat:qualifiedRelation` entries whose `dcat:hadRole` is about the
+# *data* a component moves — `tcs:passthroughShape`, `tcs:outputShape` —
+# rather than its configuration. The emitter only ever writes
+# `tcs:configShape`, because a config shape is derivable from the
+# package's own `processors.ttl` and these are not: whether a processor
+# passes its input through unchanged is a fact about what its code does
+# to records, which upstream does not publish anywhere.
+#
+# They attach to generated components all the same. RDF is additive, so
+# a statement about `rdfc:Sdsify` made here merges with the generated
+# block in catalog-rdfc.ttl; the two files describe the same subject
+# from the two different sources that know about it. Keep them here
+# rather than in the generated file — `generate` would overwrite them.
+#
+# `PipelineAssembler.normalize_passthrough_shapes` reads these to carry
+# a shape along a chain of passthrough steps, so a missing entry does
+# not fail loudly: the chain just stops propagating and the downstream
+# step ends up with no `tcs:inputShape`.
+#################################################################
+
+rdfc:HttpServer dcat:qualifiedRelation [
+    a dcat:Relationship ;
+    dcat:hadRole tcs:passthroughShape ;
+    dct:relation [ a sh:NodeShape ]
+] .
+
+
+rdfc:SkolemizationProcessor dcat:qualifiedRelation [
+    a dcat:Relationship ;
+    dcat:hadRole tcs:passthroughShape ;
+    dct:relation [ a sh:NodeShape ]
+] .
+
+
+# Not a passthrough: Sdsify wraps each record into an SDS member, so
+# what comes out is not what went in. The empty shape says "this
+# produces something whose shape the toolchain does not describe",
+# which is what stops a chain rather than propagating a wrong shape.
+rdfc:Sdsify dcat:qualifiedRelation [
+    a dcat:Relationship ;
+    dcat:hadRole tcs:outputShape ;
+    dct:relation [ a sh:NodeShape ]
+] .
+
+
+#################################################################
+# 5. Value-space shapes for external vocabularies
 #
 # Shapes for classes referenced by upstream processor shapes that come
 # from vocabularies outside RDF-Connect. The emitter keeps a registry

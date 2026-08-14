@@ -8,7 +8,6 @@ from ..base import Compiler
 class PipelineAssembler(Compiler):
     """
     Compiler Class to assign components, steps and configs to the microservices responsible for executing the pipeline.
-    Also assigns configs to the components they belong to.
     """
 
     def __init__(self, graph: Graph) -> None:
@@ -21,8 +20,9 @@ class PipelineAssembler(Compiler):
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
         """Runs once there is exactly one ``tcs:PipelineDefinition`` with at
-        least one ``:hasStep`` — i.e. once ``PipelineExtractor`` has narrowed
-        the graph down to a single pipeline and populated its steps.
+        least one step (a ``p-plan:isStepOfPlan`` edge pointing at it) —
+        i.e. once ``PipelineExtractor`` has narrowed the graph down to a
+        single pipeline and populated its steps.
         """
         pipelines = (
             graph_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition")
@@ -31,7 +31,9 @@ class PipelineAssembler(Compiler):
         )
         if len(pipelines) != 1:
             return False
-        return not graph_reader.filter(sub=pipelines[0], pred=":hasStep").df.empty
+        return not graph_reader.filter(
+            pred="p-plan:isStepOfPlan", obj=pipelines[0]
+        ).df.empty
 
     def compile(self) -> Graph:
         self.pipeline_id = receive_first(
@@ -41,7 +43,6 @@ class PipelineAssembler(Compiler):
         )
         self.describe_docker_container()
         self.describe_step()
-        self.describe_config_assignment()
         return self.output_reader.graph
 
     def describe_docker_container(self) -> None:
@@ -49,6 +50,12 @@ class PipelineAssembler(Compiler):
         Adds:
             - tcs:PipelineBuild dct:hasPart tcs:DockerContainer
             - tcs:DockerContainer tcs:instantiates tcs:PipelineComponent
+
+        If the pipeline definition already declares a container that
+        instantiates a given microservice (``?container a
+        tcs:DockerContainer ; tcs:instantiates {microservice}``), that
+        container is reused instead of minting a new ``:container_N`` —
+        this method only fills in containers that are still missing.
         """
 
         # Create an overview df listing all components and their reliance on other components
@@ -96,11 +103,21 @@ class PipelineAssembler(Compiler):
             dependants_list = list(dependants)
             return dependants_list
 
-        # For each docker container, add the respective statements to the graph
-        for i, microservice_id in enumerate(microservice_list):
-            # tcs:PipelineBuild dct:hasPart tcs:DockerContainer
-            container_id = ":container_" + str(i)
+        # Only incremented when a new blank container is minted, and
+        # checked against the graph so it never collides with a name
+        # already in use — same idiom as
+        # PipelineExtractor.name_blind_nodes.
+        next_index = 0
 
+        # For each docker container, add the respective statements to the graph
+        for microservice_id in microservice_list:
+            container_id = f":container_{next_index}"
+            next_index += 1
+            while self.output_reader.check_exists(container_id):
+                container_id = f":container_{next_index}"
+                next_index += 1
+
+            # tcs:PipelineBuild dct:hasPart tcs:DockerContainer
             construct_statement = f"""
             {container_id} a tcs:DockerContainer .
             ?build_id dct:hasPart {container_id}. 
@@ -135,22 +152,5 @@ class PipelineAssembler(Compiler):
 
         new_triples = self.output_reader.construct(
             "?microservice tcs:runs ?step .", step_description
-        ).graph
-        self.output_reader = self.output_reader.add(new_triples)
-
-    def describe_config_assignment(self) -> None:
-        """
-        Adds:
-            - tcs:PipelineComponent :isAssigned tcs:Config .
-        """
-
-        assignment_description = """
-        ?step a tcs:InstancePipelineComponent .
-        ?step prov:specializationOf ?component .
-        ?step p-plan:hasInputVar ?config .
-        """
-
-        new_triples = self.output_reader.construct(
-            "?component :isAssigned ?config .", assignment_description
         ).graph
         self.output_reader = self.output_reader.add(new_triples)

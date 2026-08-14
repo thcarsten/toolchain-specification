@@ -50,6 +50,30 @@ def test_reader_and_writer_collapse_to_channel():
     assert not any(p == "sh:class" and o != "tcs:Channel" for p, o in pairs)
 
 
+def test_required_channel_parameter_loses_its_min_count():
+    # A channel parameter is required of the *pipeline*, not of the
+    # author: RdfcConfigCompiler fills rdfc:reader in from tcs:readsFrom,
+    # so the authored config deliberately omits it and upstream's
+    # sh:minCount 1 would fail every pipeline in the repo. The class
+    # constraint still applies to whatever the author does write; only
+    # the obligation moves, and the original is kept as provenance.
+    shape = _translate("""
+    rdfc:Demo rdfc:jsImplementationOf rdfc:Processor .
+    [] a sh:NodeShape ; sh:targetClass rdfc:Demo ;
+       sh:property [ sh:path rdfc:reader ; sh:name "reader" ;
+                     sh:class rdfc:Reader ; sh:minCount 1 ; sh:maxCount 1 ] ,
+                   [ sh:path rdfc:level ; sh:name "level" ;
+                     sh:datatype xsd:string ; sh:minCount 1 ] .
+    """)
+    pairs = _flat(shape)
+    assert ("tcs:upstreamMinCount", "1") in pairs
+    assert ("sh:class", "tcs:Channel") in pairs
+    # maxCount is untouched — it still holds for whatever is written.
+    assert ("sh:maxCount", "1") in pairs
+    # Non-channel parameters keep their obligation: nothing fills those in.
+    assert pairs.count(("sh:minCount", "1")) == 1
+
+
 def test_nested_config_class_becomes_node_reference():
     # The pipeline embeds config as an untyped blank node, so sh:class
     # cannot hold; sh:node against a named shape can.

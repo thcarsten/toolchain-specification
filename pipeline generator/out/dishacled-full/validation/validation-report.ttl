@@ -1,0 +1,225 @@
+@base <file:///workspace/pipeline/> .
+@prefix : <http://example.org/example/> .
+@prefix demo: <http://example.org/example/demonstrator/> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:ChangeSemanticsShape a tcs:ValidatedShape .
+
+:HttpFetchAuthShape a tcs:ValidatedShape .
+
+:HttpFetchOptionsShape a tcs:ValidatedShape .
+
+:HttpFetchShape a tcs:ValidatedShape .
+
+:HttpOutShape a tcs:ValidatedShape .
+
+:HttpServerOptionsShape a tcs:ValidatedShape .
+
+:HttpServerShape a tcs:ValidatedShape .
+
+:IngestConfigShape a tcs:ValidatedShape .
+
+:JsonLdToNQuadsShape a tcs:ValidatedShape .
+
+:LogProcessorJsShape a tcs:ValidatedShape .
+
+:LogProcessorPyShape a tcs:ValidatedShape .
+
+:MetadataConfigShape a tcs:ValidatedShape .
+
+:PerformanceConfigShape a tcs:ValidatedShape .
+
+:SPARQLIngestShape a tcs:ValidatedShape .
+
+:SdsifyShape a tcs:ValidatedShape .
+
+:ShaclPathListShape a tcs:UntargetedShape .
+
+:ShaclPathShape a tcs:UntargetedShape .
+
+:SkolemizationProcessorShape a tcs:ValidatedShape .
+
+:ThresholdMonitorJsShape a tcs:ValidatedShape .
+
+:TransactionConfigShape a tcs:ValidatedShape .
+
+demo:PlaceShape a tcs:UntargetedShape .
+
+demo:QuantityValueShape a tcs:UntargetedShape .
+
+ldio:HttpRequesterShape a tcs:UntargetedShape .
+
+ldio:LdesClientShape a tcs:UntargetedShape .
+
+ldio:RdfWriterShape a tcs:UntargetedShape .
+
+ldio:StatePersistenceShape a tcs:UntargetedShape .
+
+:nodeshape_19 a tcs:UntargetedShape .
+
+:nodeshape_2 a tcs:UntargetedShape .
+
+:nodeshape_24 a tcs:UntargetedShape .
+
+:nodeshape_25 a tcs:UntargetedShape .
+
+:nodeshape_30 a tcs:UntargetedShape .
+
+:nodeshape_31 a tcs:UntargetedShape .
+
+:nodeshape_44 a tcs:UntargetedShape .
+
+:nodeshape_48 a tcs:UntargetedShape .
+
+:nodeshape_49 a tcs:ValidatedShape .
+
+:nodeshape_50 a tcs:ValidatedShape .
+
+:nodeshape_56 a tcs:UntargetedShape .
+
+:nodeshape_57 a tcs:ValidatedShape .
+
+:nodeshape_58 a tcs:ValidatedShape .
+
+:nodeshape_63 a tcs:UntargetedShape .
+
+:nodeshape_64 a tcs:UntargetedShape .
+
+:nodeshape_71 a tcs:UntargetedShape .
+
+:nodeshape_8 a tcs:UntargetedShape .
+
+:throughputresult_0 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_60 ;
+    tcs:inputShape demo:SosaWaterLevelObservationShape ;
+    tcs:matches "unknown" ;
+    tcs:outputShape demo:SosaWaterLevelObservationShape .
+
+:throughputresult_1 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_37 ;
+    tcs:inputShape demo:SosaWaterLevelObservationShape ;
+    tcs:matches "unknown" ;
+    tcs:outputShape demo:SosaWaterLevelObservationShape .
+
+:throughputresult_10 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_1 ;
+    tcs:inputShape :nodeshape_6 ;
+    tcs:matches "unknown" ;
+    tcs:outputShape :emptyshape_0 .
+
+:throughputresult_11 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_66 ;
+    tcs:inputShape demo:WaterLevelPropertyValueShape ;
+    tcs:matches "unknown" ;
+    tcs:outputShape demo:WaterLevelPropertyValueShape .
+
+:throughputresult_2 a tcs:ThroughputMatchResult ;
+    tcs:forChannel demo:sdsViolationsMeta ;
+    tcs:inputShape :nodeshape_17 ;
+    tcs:matches "unknown" ;
+    tcs:outputShape :emptyshape_12 .
+
+:throughputresult_3 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_62 ;
+    tcs:inputShape :emptyshape_4 ;
+    tcs:matches "unknown" ;
+    tcs:outputShape :emptyshape_6 .
+
+:throughputresult_4 a tcs:ThroughputMatchResult ;
+    tcs:forChannel demo:sdsViolations ;
+    tcs:inputShape :nodeshape_17 ;
+    tcs:matches "unknown" ;
+    tcs:outputShape :emptyshape_10 .
+
+:throughputresult_5 a tcs:ThroughputMatchResult ;
+    tcs:forChannel demo:sdsMeasurementsMeta ;
+    tcs:inputShape :nodeshape_17 ;
+    tcs:matches "unknown" ;
+    tcs:outputShape :emptyshape_8 .
+
+:throughputresult_6 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_12 ;
+    tcs:inputShape demo:SosaWaterLevelObservationShape ;
+    tcs:matches "unknown" ;
+    tcs:outputShape demo:SosaWaterLevelObservationShape .
+
+:throughputresult_7 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_15 ;
+    tcs:inputShape demo:SosaWaterLevelObservationShape ;
+    tcs:matches "unknown" ;
+    tcs:outputShape demo:SosaWaterLevelObservationShape .
+
+:throughputresult_8 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_23 ;
+    tcs:inputShape :emptyshape_2 ;
+    tcs:matches "unknown" ;
+    tcs:outputShape :nodeshape_26 .
+
+:throughputresult_9 a tcs:ThroughputMatchResult ;
+    tcs:forChannel demo:sdsMeasurements ;
+    tcs:inputShape :nodeshape_17 ;
+    tcs:matches "unknown" ;
+    tcs:outputShape demo:SosaWaterLevelObservationShape .
+
+tcs:AcyclicGraphShape a tcs:ValidatedShape .
+
+tcs:CatalogShape a tcs:ValidatedShape .
+
+tcs:ConfigShape a tcs:ValidatedShape .
+
+tcs:DockerContainerShape a tcs:ValidatedShape .
+
+tcs:InstancePipelineComponentShape a tcs:ValidatedShape .
+
+tcs:LdioComponentTypeShape a tcs:ValidatedShape .
+
+tcs:LdioSingularStepShape a tcs:ValidatedShape .
+
+tcs:LdioStepOrderingShape a tcs:ValidatedShape .
+
+tcs:LdioStepSerialityShape a tcs:ValidatedShape .
+
+tcs:PipelineBuildShape a tcs:ValidatedShape .
+
+tcs:PipelineComponentShape a tcs:ValidatedShape .
+
+tcs:PipelineDefinitionShape a tcs:ValidatedShape .
+
+tcs:RdfcMandatoryReaderWiringShape a tcs:ValidatedShape .
+
+tcs:RdfcMandatoryWriterWiringShape a tcs:ValidatedShape .
+
+tcs:RdfcOrchestratorConfigShape a tcs:ValidatedShape .
+
+tcs:RdfcPackageManagerShape a tcs:ValidatedShape .
+
+tcs:RdfcProcessorShape a tcs:ValidatedShape .
+
+tcs:RdfcRunnerShape a tcs:ValidatedShape .
+
+tcs:RdfcStepChannelWiringShape a tcs:ValidatedShape .
+
+tcs:SpdxPackageShape a tcs:ValidatedShape .
+
+tcs:SpecializedComponentIsCatalogedShape a tcs:ValidatedShape .
+
+tcs:SwComponentDockerConfigShape a tcs:ValidatedShape .
+
+tcs:SwStepEnvValueShape a tcs:ValidatedShape .
+
+:nodeshape_26 a tcs:UntargetedShape .
+
+:nodeshape_6 a tcs:UntargetedShape .
+
+demo:WaterLevelPropertyValueShape a tcs:UntargetedShape .
+
+:nodeshape_17 a tcs:UntargetedShape .
+
+demo:SosaWaterLevelObservationShape a tcs:UntargetedShape .
+
+[] a sh:ValidationReport ;
+    sh:conforms true .
+
