@@ -88,9 +88,9 @@ what it does and how it works.
 Companion notes for the presenter. Assumes comfort with RDF, Turtle, SPARQL, rdflib.
 
 REPOSITORY CONTEXT
-- Location: toolchain-specification/pipeline generator/. Compilers under src/compilers/. End-to-end walkthrough in src/demo.ipynb. Sample catalog in data/catalog.ttl.
+- Location: toolchain-specification/pipeline generator/. Compilers under src/compilers/, grouped into per-framework subfolders (core/, ldio/, nifi/, rdfc/, sw/). End-to-end walkthrough in src/demo.ipynb. Sample catalog split by framework in data/catalog-ldio.ttl + data/catalog-nifi.ttl + data/catalog-rdfc.ttl + data/catalog-sw.ttl.
 - What it does: reads a pipeline definition and a component catalog (both RDF), assembles an in-memory build graph, emits a project folder with framework-specific configs and docker-compose.yml.
-- Target frameworks: RDF-Connect, LDIO, semantic.works.
+- Target frameworks: RDF-Connect, LDIO, Apache NiFi, semantic.works.
 - rdfine (src/rdfine/): in-repo wrapper over rdflib exposing GraphReader (filter, traverse, select, construct, add). Used by every compiler.
 - tcs: namespace: tcs:PipelineBuild, tcs:DockerContainer, tcs:DockerComposeConfig, tcs:compiledFile, tcs:filename, tcs:filepath, tcs:literal, tcs:instantiates, tcs:runs. spdx: namespace: spdx:File.
 
@@ -225,7 +225,7 @@ Debugging = look at the graph. Dry-runs = free.
 <!--
 SLIDE 5 - DECISION 1: EVERYTHING IS A GRAPH TRANSFORMATION
 - Every compiler takes an rdflib.Graph and returns an enriched rdflib.Graph. The only I/O happens in ProjectBuilder, which is not a Compiler subclass.
-- The five-stop diagram sequences the graph's states: catalog -> seeded (extractor) -> built (assembler and shaping compilers such as SemanticWorksCompiler, LdioConfigCompiler, RdfcConfigCompiler) -> enriched with the docker-compose file node (DockerComposeCompiler, during the finishing pass) -> written to disk.
+- The five-stop diagram sequences the graph's states: catalog -> seeded (extractor) -> built (assembler and shaping compilers such as SemanticWorksEnvVarCompiler, LdioConfigCompiler, RdfcConfigCompiler, plus per-service sw compilers) -> enriched with the docker-compose file node (DockerComposeCompiler, during the finishing pass) -> written to disk.
 - Because every intermediate is a graph, inspection at any stage is a matter of calling .compile() and looking at the result.
 -->
 
@@ -252,9 +252,19 @@ fixpoint loop until nothing new fires.
     <div class="label">SHAPE THE GRAPH</div>
     <div class="role">framework specifics</div>
     <ul>
-      <li>SemanticWorksCompiler</li>
+      <li>SemanticWorksEnvVarCompiler</li>
       <li>LdioConfigCompiler</li>
+      <li>NifiConfigCompiler</li>
+      <li>NifiDockerfileCompiler</li>
+      <li>NifiRemoteCompiler</li>
       <li>RdfcConfigCompiler</li>
+      <li>RdfcDockerFileCompiler</li>
+      <li>VirtuosoCompiler</li>
+      <li>MuClResourcesCompiler</li>
+      <li>MuDispatcherCompiler</li>
+      <li>MuDeltaNotifierCompiler</li>
+      <li>MuAuthorizationCompiler</li>
+      <li>ErrorAlertCompiler</li>
     </ul>
   </div>
   <div class="tier-arrow">→</div>
@@ -276,7 +286,7 @@ SLIDE 6 - DECISION 2: SMALL COMPILERS, SELF-REGISTERING
 - Concrete compilers subclass Compiler in src/compilers/base.py. Compiler.__init_subclass__ appends every non-abstract subclass to Compiler._registry; PipelineGenerator iterates that registry every loop iteration.
 - No tier attribute. Ordering emerges from each compiler's applies_to condition. The illustrative "seed / shape / wrap up" grouping above is a reading aid, not a code construct.
 - Each compiler defines an applies_to(graph_reader) classmethod that inspects the build graph and returns a boolean. Default is False, so every concrete compiler must declare its trigger explicitly.
-- Adding a framework: drop a new Compiler subclass into src/compilers/, import it from compilers/__init__.py. The driver is not touched.
+- Adding a framework: drop a new Compiler subclass into the appropriate src/compilers/<framework>/ subfolder (or src/compilers/core/ for framework-agnostic ones), import it from compilers/__init__.py. The driver is not touched.
 
 Q: How is compiler ordering guaranteed?
 A: It emerges. A compiler runs as soon as its applies_to trigger evaluates true, and does not run again once it has. Compilers eligible in the same loop iteration must be commutative; in practice each operates on a disjoint slice of the build graph selected by its applies_to check.
@@ -324,31 +334,38 @@ A: So the compiled build is a single serializable artifact. Provenance, caching,
 
 ---
 
-## 8. The design in practice — six compilers
+## 8. The design in practice — thirteen compilers
 
 | Compiler | Triggers on (`applies_to`) | Produces |
 | --- | --- | --- |
 | PipelineExtractor | always | triples for the requested pipeline; seeds `tcs:PipelineBuild` linked to the definition via `prov:hadPlan` |
-| PipelineAssembler | exactly one `tcs:PipelineDefinition` with at least one `:hasStep` | containers, steps, config assignments |
-| SemanticWorksCompiler | any `sw:` component present, and `tcs:DockerContainer`s exist | env vars folded into the microservice's docker config |
+| PipelineAssembler | exactly one `tcs:PipelineDefinition` with at least one step (`p-plan:isStepOfPlan`) | containers, steps, config assignments |
+| SemanticWorksEnvVarCompiler | any `sw:` component present, and `tcs:DockerContainer`s exist | env vars folded into the microservice's docker config |
 | LdioConfigCompiler | a container instantiates the LDIO orchestrator | `ldio/config.yml` |
 | RdfcConfigCompiler | a container instantiates the RDF-Connect orchestrator | `rdfc/pipeline.ttl` |
+| RdfcDockerFileCompiler | LDIO orchestrator container + a `tcs:DockerImageConfig` on `rdfc:Orchestrator` | `rdfc/{Dockerfile,pyproject.toml,package.json}` |
+| VirtuosoCompiler | a container instantiates `sw:triple-store` | `semantic-works/config/virtuoso/virtuoso.ini` |
+| MuClResourcesCompiler | a container instantiates `sw:mu-cl-resources` | `semantic-works/config/resources/{domain.json,domain.lisp,repository.lisp}` |
+| MuDispatcherCompiler | a container instantiates `sw:mu-dispatcher` | `semantic-works/config/dispatcher/dispatcher.ex` |
+| MuDeltaNotifierCompiler | a container instantiates `sw:mu-delta-notifier` | `semantic-works/config/delta/rules.js` |
+| MuAuthorizationCompiler | a container instantiates `sw:mu-authorization` | `semantic-works/config/authorization/config.lisp` |
+| ErrorAlertCompiler | a container instantiates `sw:loket-error-alert-service` | `semantic-works/config/error-alert/{config.json,error.hbs}` |
 | DockerComposeCompiler | `<build> tcs:isFinishing true` set (i.e. loop has settled) and any `tcs:DockerComposeConfig` present | `docker-compose.yml` |
 
-Six small classes. One driver. Every column above is a direct expression
+Thirteen small classes. One driver. Every column above is a direct expression
 of the three decisions in the previous slides.
 
 <!--
 SLIDE 8 - THE DESIGN IN PRACTICE
-The six-row table lists every concrete compiler with its trigger and output. PipelineExtractor is instantiated up front by PipelineGenerator because it is the only compiler needing the pipeline_id in its constructor; every other compiler is discovered via the registry and run when its applies_to trigger becomes true.
+The table lists every concrete compiler with its trigger and output. PipelineExtractor is instantiated up front by PipelineGenerator because it is the only compiler needing the pipeline_id in its constructor; every other compiler is discovered via the registry and run when its applies_to trigger becomes true. Compilers live in per-framework subfolders under src/compilers/ (core/, ldio/, nifi/, rdfc/, sw/).
 
 VOCABULARY (for reference)
 - Pipeline Definition: RDF description of a data pipeline, expressed against the public semantic model.
-- Component / Catalog: a component is a reusable pipeline building block; the catalog is the RDF library of all available components (data/catalog.ttl).
+- Component / Catalog: a component is a reusable pipeline building block; the catalog is the RDF library of all available components (data/catalog-ldio.ttl + data/catalog-nifi.ttl + data/catalog-rdfc.ttl + data/catalog-sw.ttl).
 - Build graph: the in-memory rdflib.Graph the generator assembles. All build state lives here.
 - tcs:PipelineBuild: root node of a build graph. Generated files hang off it via tcs:compiledFile.
 - spdx:File: RDF node representing a generated file. Carries tcs:filename, tcs:filepath, tcs:literal (the body).
-- Compiler: subclass in src/compilers/. Takes the build graph, transforms it, returns it. Registers automatically on import.
+- Compiler: subclass in src/compilers/, grouped into per-framework subfolders (core/, ldio/, nifi/, rdfc/, sw/). Takes the build graph, transforms it, returns it. Registers automatically on import.
 - applies_to: classmethod on every compiler. Decides whether the compiler should run against a given build graph. Default is False; every concrete compiler declares its own trigger. Execution order emerges from these triggers becoming true as the graph grows.
 - tcs:isFinishing: temporary triple on the build (`<build> tcs:isFinishing <bool>`) that PipelineGenerator toggles to true whenever a shaping pass finds nothing eligible. Compilers that need to run only after the graph has settled (DockerComposeCompiler) gate on this flag. Stripped from the graph before compile() returns.
 - rdfine / GraphReader: in-repo wrapper over rdflib used by every compiler.

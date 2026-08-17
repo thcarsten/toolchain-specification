@@ -1,0 +1,335 @@
+from rdflib import Graph
+from rdfine import GraphReader, GraphDict, receive_first
+import re
+
+from ..base import Compiler
+from ..utils import attach_file, extract_config, rewrite_compose_volume_host_path
+
+# The RDF-Connect Python / Node runners mount their pipeline
+# definition at this fixed container path. Kept next to the
+# host-side output location so the pairing is visible in one place.
+_RDFC_PIPELINE_CONTAINER_PATH = "/workspace/pipeline/pipeline.ttl"
+_RDFC_PIPELINE_HOST_PATH = "./rdfc/pipeline.ttl"
+
+
+class RdfcConfigCompiler(Compiler):
+    """
+    Compiles the pipeline definition file for a Rdf Connect pipeline.
+
+    Also patches the paired ``tcs:DockerComposeConfig`` on
+    ``rdfc:Orchestrator`` so its volume mount for ``pipeline.ttl``
+    points at ``./rdfc/pipeline.ttl`` — the host location this
+    compiler actually emits to. Doing that here rather than in
+    :class:`DockerComposeCompiler` keeps the aggregator generic:
+    each framework compiler shapes its own compose fragment, then
+    the aggregator merges them.
+    """
+
+    def __init__(self, graph: Graph) -> None:
+        super().__init__(graph)
+        # Intermediate state — populated in ``compile``. ``rdfc_reader``
+        # is a *separate* accumulator that holds only the RDF-Connect
+        # pipeline triples eventually serialized into ``pipeline.ttl``;
+        # it is not the compiler's output graph. The build graph the
+        # compiler contributes to (an ``spdx:File`` node with the
+        # serialized ttl) is managed via the base-class
+        # :attr:`output_reader` through :func:`compilers.utils.attach_file`.
+        self.rdfc_reader: GraphReader = GraphReader(Graph())
+        self.pipeline_id: str = ""
+
+    @classmethod
+    def applies_to(cls, graph_reader: GraphReader) -> bool:
+        """Triggered when a container instantiates the RDF-Connect orchestrator."""
+        return not graph_reader.filter(
+            pred="tcs:instantiates", obj="rdfc:Orchestrator"
+        ).df.empty
+
+    def compile(self) -> Graph:
+        self.rdfc_reader = self.input_reader.construct(
+            "?pipeline a rdfc:Pipeline .",
+            "?pipeline a tcs:PipelineDefinition",
+        )
+        self.pipeline_id = receive_first(
+            self.input_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
+                "sub"
+            ],
+        )
+
+        self.describe_pipeline()
+        self.describe_processors()
+        self.describe_channel_wiring()
+        self.describe_configs()
+        self.describe_channels()
+
+        ttl_string = self.rdfc_reader.serialize("ttl")
+        # RDF Connect requires the pipeline to be named ``<>``. A plain
+        # string replace would also corrupt any other IRI that happens
+        # to have the pipeline's compact name as a prefix (e.g. a
+        # channel ``demo:TestArchive`` when the pipeline is
+        # ``demo:Test``) — the lookahead/lookbehind keep the match
+        # anchored to the whole token.
+        ttl_string = re.sub(
+            rf"(?<![\w:]){re.escape(self.pipeline_id)}(?!\w)", "<>", ttl_string
+        )
+
+        self.output_reader = attach_file(
+            self.output_reader,
+            filename="pipeline.ttl",
+            filepath="rdfc",
+            content=ttl_string,
+        )
+
+        self.output_reader = rewrite_compose_volume_host_path(
+            self.output_reader,
+            component_iri="rdfc:Orchestrator",
+            container_path=_RDFC_PIPELINE_CONTAINER_PATH,
+            host_path=_RDFC_PIPELINE_HOST_PATH,
+        )
+        return self.output_reader.graph
+
+    def describe_pipeline(self) -> None:
+        """
+        Adds:
+            - {self.pipeline_id} rdfc:consistsOf :env_{env_i} .
+            - {self.pipeline_id} owl:imports ?import .
+            - :env_{env_i} rdfc:instantiates {runner_id} .
+            - :env_{env_i} rdfc:processor ?step .
+        """
+
+        # Fetching the rdfc:Runners as list
+        runner_list = (
+            self.input_reader.filter(pred="rdf:type", obj="rdfc:Runner")
+            .df["sub"]
+            .to_list()
+        )
+
+        # Each runner requires its own instanced environment
+        env_i = 0  # Simple running index for the environments
+        for runner_id in runner_list:
+            env_i += 1
+            # The pipeline HAS to be named <>, this is what RDF Connect expects. Otherwise it will not work
+            runner_reader = self.input_reader.construct(
+                f"""
+                    {self.pipeline_id} rdfc:consistsOf :env_{env_i} . 
+                     {self.pipeline_id} owl:imports ?import .
+                    :env_{env_i} rdfc:instantiates {runner_id} .
+                    :env_{env_i} rdfc:processor ?step . """,
+                f"""
+                    ?processor dct:requires {runner_id} .
+                    ?processor owl:imports ?import .
+                    ?step prov:specializationOf ?processor . 
+                    """,
+            )
+
+            self.rdfc_reader = self.rdfc_reader.add(runner_reader.graph)
+
+    def describe_processors(self) -> None:
+        """
+        Adds:
+            - ?step a ?processor .
+            - ?processor ?config .
+        """
+
+        processor_reader = self.input_reader.construct(
+            """
+                ?step a ?component . 
+                """,
+            """            
+                ?step prov:specializationOf ?component .
+                ?container tcs:instantiates ?component .
+                ?container tcs:instantiates rdfc:Orchestrator .
+                ?container tcs:runs ?step .
+            """,
+        )
+
+        self.rdfc_reader = self.rdfc_reader.add(processor_reader.graph)
+
+    def describe_configs(self) -> None:
+        """
+        Adds:
+            - ?processor ?config ... .
+        """
+
+        step_list = self.rdfc_reader.filter(pred="rdfc:processor").df["obj"].to_list()
+        config_df = self.output_reader.filter(
+            sub=step_list, pred="p-plan:hasInputVar"
+        ).df
+        config_list = config_df["obj"].to_list()
+
+        for config_id in config_list:
+            step_id = receive_first(
+                self.output_reader.filter(
+                    sub=step_list, pred="p-plan:hasInputVar", obj=config_id
+                ).df["sub"],
+            )
+            config_dict = extract_config(self.output_reader, config_id)
+            config_dict["@id"] = step_id
+            config_graph = GraphDict(
+                config_dict, prefix_store=self.input_reader.prefix_store
+            ).graph
+            self.rdfc_reader = self.rdfc_reader.add(config_graph)
+
+    def describe_channel_wiring(self) -> None:
+        """Fill in a step's reader/writer config key when it's unambiguous.
+
+        For each RDF-Connect step with exactly one ``tcs:readsFrom`` (or
+        ``tcs:writesTo``) channel, looks up its component's configShape
+        (the same ``dcat:qualifiedRelation`` / ``dcat:hadRole
+        tcs:configShape`` attachment used by ``rdfc:SPARQLIngest``) for
+        ``sh:property`` entries typed ``sh:class rdfc:Reader`` /
+        ``rdfc:Writer``. If exactly one candidate ``sh:path`` exists,
+        injects ``<path> <channel>`` into the step's config.
+        ``PipelineEnricher`` guarantees every step already has exactly
+        one config to write into by this point, so this compiler never
+        mints one itself.
+
+        Deliberately conservative: 0 or >1 candidate paths (e.g.
+        ``rdfc:Sdsify``'s two writer paths), or 0 or >1 channels on the
+        step (a branching producer/consumer), leave the step untouched
+        so it must stay explicitly authored — this compiler never
+        guesses which branch a step means.
+        """
+        steps = self.output_reader.select(
+            "?step ?component",
+            """
+            ?step prov:specializationOf ?component .
+            ?container tcs:instantiates ?component .
+            ?container tcs:instantiates rdfc:Orchestrator .
+            ?container tcs:runs ?step .
+            """,
+        )
+
+        for _, row in steps.iterrows():
+            step_id = row["step"]
+            component_id = row["component"]
+
+            self._inject_wiring_key(
+                step_id,
+                component_id,
+                channel_pred="tcs:readsFrom",
+                shape_class="rdfc:Reader",
+            )
+            self._inject_wiring_key(
+                step_id,
+                component_id,
+                channel_pred="tcs:writesTo",
+                shape_class="rdfc:Writer",
+            )
+
+    def _inject_wiring_key(
+        self,
+        step_id: str,
+        component_id: str,
+        channel_pred: str,
+        shape_class: str,
+    ) -> None:
+        """Inject ``step_id``'s single ``channel_pred`` channel into its
+        config under the component's declared reader/writer path, if
+        unambiguous and not already set — see :meth:`describe_channel_wiring`.
+        """
+        channels = (
+            self.output_reader.filter(sub=step_id, pred=channel_pred)
+            .df["obj"]
+            .to_list()
+        )
+        if len(channels) != 1:
+            # No channel, or an ambiguous branch (>1) — stays explicit.
+            return
+        channel_id = channels[0]
+
+        path = self._lookup_channel_predicate(component_id, shape_class)
+        if path is None:
+            # No declared wiring slot, or ambiguous (>1 candidate) —
+            # leave to manual authoring.
+            return
+
+        configs = (
+            self.output_reader.filter(sub=step_id, pred="p-plan:hasInputVar")
+            .df["obj"]
+            .to_list()
+        )
+        if len(configs) != 1:
+            # PipelineEnricher guarantees at least one; more than one is
+            # a modelling error the generic cardinality shape already
+            # flags — don't guess which one to use.
+            return
+        config_id = configs[0]
+
+        # Anchored through config_id (always a named IRI post
+        # PipelineExtractor.name_blind_nodes) rather than holding the
+        # tcs:embedded blank node directly — a blank node's label isn't
+        # stable across separate SPARQL query executions, so it can
+        # never be safely stringified into a query.
+        if self.output_reader.ask(f"{config_id} tcs:embedded/{path} ?x ."):
+            # Already explicit — never overwrite.
+            return
+
+        new_triples = self.output_reader.construct(
+            f"?embedded {path} {channel_id} .",
+            f"{config_id} tcs:embedded ?embedded .",
+        ).graph
+        self.output_reader = self.output_reader.add(new_triples)
+
+    def _lookup_channel_predicate(
+        self, component_id: str, shape_class: str
+    ) -> str | None:
+        """Return the component's single reader/writer predicate, or ``None``.
+
+        Looks up ``component_id``'s configShape (the same
+        ``dcat:qualifiedRelation`` / ``dcat:hadRole tcs:configShape``
+        attachment used by ``rdfc:SPARQLIngest``) for ``sh:property``
+        entries typed ``sh:class {shape_class}`` (``rdfc:Reader`` or
+        ``rdfc:Writer``) and returns the single candidate ``sh:path``.
+
+        Returns ``None`` if the component declares zero such paths (no
+        wiring slot for that role) or more than one (ambiguous — e.g.
+        ``rdfc:Sdsify``'s two writer paths) — either way the caller must
+        leave the step to manual authoring rather than guess.
+        """
+        paths = self.output_reader.select(
+            "?path",
+            f"""
+            {component_id} dcat:qualifiedRelation ?rel .
+            ?rel dcat:hadRole tcs:configShape .
+            ?rel dct:relation ?shape .
+            ?shape sh:property ?prop .
+            ?prop sh:path ?path ;
+                  sh:class {shape_class} .
+            """,
+        )["path"].to_list()
+        if len(paths) != 1:
+            return None
+        return paths[0]
+
+    def describe_channels(self) -> None:
+        """Emit the ``?channel a rdfc:Reader, rdfc:Writer`` boilerplate.
+
+        Concrete step→channel wiring (``?step rdfc:reader ?channel`` /
+        ``?step rdfc:writer ?channel`` / ``?step rdfc:memberStream
+        ?channel`` etc.) is the PipelineDefinition author's
+        responsibility: it lives in each step's ``tcs:embedded``
+        config and is emitted verbatim by :meth:`describe_configs`.
+        Only the author knows which framework predicate their step
+        expects — the compiler cannot guess it reliably.
+
+        What the compiler *can* do without ambiguity is add the
+        uniform type declaration every RDF-Connect channel needs.
+        Scope of "channel worth typing": any ``tcs:Channel`` already
+        referenced in the emitted pipeline graph (``self.rdfc_reader``).
+        ``describe_configs`` pulls in each config's ``tcs:embedded``
+        block via ``GraphDict``/``traverse``, which follows through
+        to every channel IRI referenced by the config and picks up
+        the ``?ch a tcs:Channel`` triple that ``inference_rules.yaml``
+        adds from ``tcs:readsFrom`` / ``tcs:writesTo``. Constraining
+        on those already-present triples means we emit boilerplate
+        exactly for the channels the pipeline.ttl uses — no dead
+        declarations for cross-framework channels whose RDFC-side
+        step has no wiring config referencing them (e.g., an LDIO→RDFC
+        boundary channel that only appears as a ``tcs:readsFrom``
+        annotation).
+        """
+        channel_types = self.rdfc_reader.construct(
+            "?ch a rdfc:Reader, rdfc:Writer .",
+            "?ch a tcs:Channel .",
+        ).graph
+        self.rdfc_reader = self.rdfc_reader.add(channel_types)

@@ -20,8 +20,17 @@ if TYPE_CHECKING:
 
 def bind_to_namespace(graph: Graph, store: "PrefixStore") -> None:
     """
-    Bind every (prefix → url) pair from ``store`` onto ``graph`` so the
+    Upsert every (prefix → url) pair from ``store`` onto ``graph`` so the
     rdflib serializer can emit compact IRIs.
+
+    ``override=True`` makes each call replace any existing binding that
+    collides with the pair being applied — either the prefix already
+    pointing elsewhere, or the url already claimed by a different
+    prefix (e.g. rdflib's own "core" default ``dcterms`` for the same
+    URL our catalogs bind as ``dct``). Bindings ``store`` doesn't
+    mention are left untouched. Callers that merge two stores onto one
+    graph (see ``GraphReader.add``/``remove``) must apply the
+    authoritative store last so its pairs are the ones left standing.
     """
     for prefix, url in store.prefixes.items():
         graph.bind(prefix, url, override=True)

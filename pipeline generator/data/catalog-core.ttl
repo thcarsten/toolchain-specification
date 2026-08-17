@@ -1,0 +1,190 @@
+
+#################################################################
+# Prefixes
+#################################################################
+
+@prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix nifi: <http://example.org/example/nifi/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix proc: <http://dishacled.example.org/processors#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix spdx: <http://spdx.org/rdf/terms#> .
+@prefix sw: <https://semantic.works/services/> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix tm: <https://w3id.org/rdf-connect/threshold-monitor#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+
+# Single canonical prefix-registry resource for every SHACL-AF
+# SPARQL-based constraint in the catalog (`sh:prefixes tcs:prefixes`).
+# Defined once here — in the common file every other catalog file is
+# loaded alongside — rather than duplicated per framework file. Covers
+# the union of prefixes actually used inside `sh:select`/`sh:construct`
+# query text across catalog-rdfc.ttl and catalog-application-profile-shapes.ttl.
+tcs:prefixes
+    sh:declare
+    [
+        sh:prefix "" ;
+        sh:namespace "http://example.org/example/" ;
+    ] ,
+    [
+        sh:prefix "dcat" ;
+        sh:namespace "http://www.w3.org/ns/dcat#" ;
+    ] ,
+    [
+        sh:prefix "dct" ;
+        sh:namespace "http://purl.org/dc/terms/" ;
+    ] ,
+    [
+        sh:prefix "ldio" ;
+        sh:namespace "http://example.org/example/ldio/" ;
+    ] ,
+    [
+        sh:prefix "nifi" ;
+        sh:namespace "http://example.org/example/nifi/" ;
+    ] ,
+    [
+        sh:prefix "owl" ;
+        sh:namespace "http://www.w3.org/2002/07/owl#" ;
+    ] ,
+    [
+        sh:prefix "p-plan" ;
+        sh:namespace "http://purl.org/net/p-plan#" ;
+    ] ,
+    [
+        sh:prefix "proc" ;
+        sh:namespace "http://dishacled.example.org/processors#" ;
+    ] ,
+    [
+        sh:prefix "prov" ;
+        sh:namespace "http://www.w3.org/ns/prov#" ;
+    ] ,
+    [
+        sh:prefix "rdf" ;
+        sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#" ;
+    ] ,
+    [
+        sh:prefix "rdfc" ;
+        sh:namespace "https://w3id.org/rdf-connect#" ;
+    ] ,
+    [
+        sh:prefix "rdfs" ;
+        sh:namespace "http://www.w3.org/2000/01/rdf-schema#" ;
+    ] ,
+    [
+        sh:prefix "sh" ;
+        sh:namespace "http://www.w3.org/ns/shacl#" ;
+    ] ,
+    [
+        sh:prefix "spdx" ;
+        sh:namespace "http://spdx.org/rdf/terms#" ;
+    ] ,
+    [
+        sh:prefix "tcs" ;
+        sh:namespace "https://w3id.org/toolchain#" ;
+    ] ,
+    [
+        sh:prefix "tm" ;
+        sh:namespace "https://w3id.org/rdf-connect/threshold-monitor#" ;
+    ] ,
+    [
+        sh:prefix "xsd" ;
+        sh:namespace "http://www.w3.org/2001/XMLSchema#" ;
+    ] .
+
+
+#################################################################
+# Package managers
+#################################################################
+
+# This is a stub
+:pip rdfs:label "pip" ;
+rdfs:comment "Python package manager. Packages annotated with this end up in pyproject.toml." .
+
+:npm rdfs:label "npm" ;
+rdfs:comment "Node.js package manager. Packages annotated with this end up in package.json." .
+
+
+#################################################################
+# Catalog
+#
+# The full `dcat:resource` list lives here in one place (component
+# definitions themselves live in the framework-specific catalog-ldio.ttl,
+# catalog-nifi.ttl, catalog-rdfc.ttl, and catalog-sw.ttl files).
+#################################################################
+
+:DishacledCatalog
+  a tcs:Catalog, dcat:Catalog;
+  dct:title "Catalog of Pipeline Components" ;
+  dcat:resource
+    # LDIO — Inputs
+    ldio:HttpInPoller,
+    ldio:HttpIn,
+    ldio:AmqpIn,
+    ldio:KafkaIn,
+    ldio:LdesClient,
+    ldio:LdesClientConnector,
+    # LDIO — Adapters
+    ldio:RmlAdapter,
+    ldio:RdfAdapter,
+    ldio:JsonToLdAdapter,
+    ldio:NgsiV2ToLdAdapter,
+    # LDIO — Transformers
+    ldio:SparqlConstructTransformer,
+    ldio:ChangeDetectionFilter,
+    ldio:GeoJsonToWktTransformer,
+    ldio:HttpEnricher,
+    ldio:VersionMaterialiser,
+    ldio:VersionObjectCreator,
+    # LDIO — Outputs
+    ldio:ConsoleOut,
+    ldio:HttpOut,
+    ldio:AmqpOut,
+    ldio:KafkaOut,
+    ldio:RepositoryMaterialiser,
+    # LDIO — Orchestrator
+    ldio:LinkedDataInteractionsOrchestrator,
+    ldio:LdioPipelineStarterService ,
+    # RDF Connect
+    rdfc:HttpFetch,
+    rdfc:HttpIn,
+    rdfc:HttpServer,
+    rdfc:Sdsify,
+    rdfc:SkolemizationProcessor,
+    rdfc:LogProcessorJs,
+    rdfc:thresholdMonitoringProcessor,
+    rdfc:SPARQLIngest,
+    rdfc:LogProcessorPy,
+    rdfc:HttpOut,
+    rdfc:NodeRunner,
+    rdfc:PyRunner,
+    rdfc:Orchestrator,
+    tm:ThresholdMonitorJs,
+    proc:JsonLdToNQuads ,
+    # Semantic.Works
+    sw:loket-error-alert-service,
+    sw:deliver-email-service ,
+    sw:triple-store,
+    sw:mu-identifier,
+    sw:mu-dispatcher,
+    sw:mu-cl-resources,
+    sw:mu-delta-notifier,
+    sw:mu-authorization,
+    # Apache NiFi
+    nifi:GenerateFlowFile,
+    nifi:FetchAzureBlobStorage_v12,
+    nifi:SplitText,
+    nifi:ExecuteGroovyScript,
+    nifi:CreateVersionObjectProcessor,
+    nifi:AzureStorageCredentialsControllerService_v12,
+    nifi:Funnel,
+    nifi:InvokeHTTP,
+    nifi:Orchestrator .

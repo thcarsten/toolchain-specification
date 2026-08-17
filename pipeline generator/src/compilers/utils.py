@@ -126,6 +126,23 @@ def _normalize_newlines(value):
     return value
 
 
+def read_literal(reader: GraphReader, config_id: str) -> str:
+    """Return the raw ``tcs:literal`` body of a ``tcs:Config`` node.
+
+    Bypasses :func:`extract_config`'s ``dct:format``-based dispatch
+    — useful when a compiler wants the bytes verbatim (e.g. to write
+    a JSON file whose original whitespace / formatting matters, or
+    for any config that does not need parsing).
+
+    Callers get a plain ``str``. If the config has no ``tcs:literal``
+    (only ``tcs:embedded``, or missing entirely), :func:`receive_first`
+    raises.
+    """
+    return str(
+        receive_first(reader.filter(sub=config_id, pred="tcs:literal").df["obj"])
+    )
+
+
 def extract_config(reader: GraphReader, config_id: str) -> Union[dict, str]:
     """Return the parsed body of a ``tcs:Config`` node.
 
@@ -149,7 +166,30 @@ def extract_config(reader: GraphReader, config_id: str) -> Union[dict, str]:
         config_id: The IRI of the ``tcs:Config`` to extract (compact
             form, e.g. ``':ldio_config_0'``).
     """
-    config_gd = GraphDict(reader.traverse(config_id).graph)
+    # Concise Bounded Description (https://www.w3.org/submissions/CBD/):
+    # a config's embedded values can be IRIs of real resources (e.g. a
+    # step's tcs:readsFrom channel), and a plain traversal would keep
+    # following *that* resource's own outgoing edges too — including
+    # any SHACL role attachment (ValidationReportCompiler's
+    # inputShape/outputShape/configShape relations) it happens to
+    # carry, silently leaking validation bookkeeping into the
+    # extracted config. stop_at_named_nodes still names the referenced
+    # resource but never chases its own description, while still
+    # descending into the config's own nested blank-node structure.
+    #
+    # dcat:qualifiedRelation is additionally excluded outright as a
+    # second, independent line of defense: stop_at_named_nodes alone
+    # is airtight only because every qualifiedRelation attachment today
+    # lives on a *named* node (a channel or component) reached as a
+    # config value. If a future change ever attaches one to a
+    # blank-node-reachable subject instead, or this call ever grows a
+    # direction/along/against override, this exclude keeps holding
+    # regardless.
+    config_gd = GraphDict(
+        reader.traverse(
+            config_id, stop_at_named_nodes=True, exclude="dcat:qualifiedRelation"
+        ).graph
+    )
     config_gd = config_gd.frame({"@id": config_id})
     return parse_config(config_gd.dict)[":config"]
 
@@ -306,6 +346,17 @@ def attach_file(
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", f"{filepath}_{filename}").strip("_")
     file_id = f":file_{slug}"
 
+    # Guard against two compilers (or a re-run) targeting the same output
+    # path — without this, a second call would silently add a second
+    # tcs:literal value on the same file node, and downstream readers
+    # picking one via ``receive_first`` would do so arbitrarily.
+    if reader.ask(f"{file_id} tcs:literal ?existing ."):
+        raise ValueError(
+            f"spdx:File {file_id!s} ({filepath}/{filename}) already has a "
+            "tcs:literal body — refusing to silently overwrite it with a "
+            "second compiler's output."
+        )
+
     rows = [
         {
             "sub": build_id,
@@ -379,7 +430,7 @@ def rewrite_compose_volume_host_path(
     than a no-op.
 
     The rewrite follows the same idiom as
-    :class:`SemanticWorksCompiler`: strip the existing
+    :class:`SemanticWorksEnvVarCompiler`: strip the existing
     ``tcs:literal`` / ``tcs:embedded`` triples off the config node
     and re-attach a fresh ``tcs:literal`` carrying the normalised
     JSON body. :func:`parse_docker_compose_config` re-parses that

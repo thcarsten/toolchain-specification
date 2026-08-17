@@ -1,0 +1,575 @@
+#################################################################
+# Prefixes
+#################################################################
+
+@prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix nifi: <http://example.org/example/nifi/> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix spdx: <http://spdx.org/rdf/terms#> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+
+#################################################################
+# Apache NiFi Components
+#################################################################
+
+nifi:GenerateFlowFile
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi GenerateFlowFile" ;
+    nifi:processorType "org.apache.nifi.processors.standard.GenerateFlowFile" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-standard-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:outgoingRelationship "success" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiGenerateFlowFileConfigShape
+    ] .
+
+:NifiGenerateFlowFileConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:GenerateFlowFile ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:customText ;
+        sh:name "Custom Text" ;
+        nifi:propertyName "Custom Text" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] .
+
+nifi:FetchAzureBlobStorage_v12
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi FetchAzureBlobStorage_v12" ;
+    nifi:processorType "org.apache.nifi.processors.azure.storage.FetchAzureBlobStorage_v12" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-azure-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:outgoingRelationship "success" ;
+    nifi:autoTerminatedRelationship "failure", "success" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiFetchAzureBlobStorageConfigShape
+    ] .
+
+:NifiFetchAzureBlobStorageConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:FetchAzureBlobStorage_v12 ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:containerName ;
+        sh:name "Container Name" ;
+        nifi:propertyName "Container Name" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:blobName ;
+        sh:name "Blob Name" ;
+        nifi:propertyName "Blob Name" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:storageCredentials ;
+        sh:name "Storage Credentials" ;
+        nifi:propertyName "Storage Credentials" ;
+        sh:class tcs:InstancePipelineComponent ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:clientSideEncryptionKeyType ;
+        sh:name "Client-Side Encryption Key Type" ;
+        nifi:propertyName "Client-Side Encryption Key Type" ;
+        sh:datatype xsd:string ;
+        sh:in ("NONE" "LOCAL") ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:rangeStart ;
+        sh:name "Range Start" ;
+        nifi:propertyName "Range Start" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:rangeLength ;
+        sh:name "Range Length" ;
+        nifi:propertyName "Range Length" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] .
+
+nifi:SplitText
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi SplitText" ;
+    nifi:processorType "org.apache.nifi.processors.standard.SplitText" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-standard-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:outgoingRelationship "splits" ;
+    nifi:autoTerminatedRelationship "failure", "original", "splits" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiSplitTextConfigShape
+    ] .
+
+:NifiSplitTextConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:SplitText ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:lineSplitCount ;
+        sh:name "Line Split Count" ;
+        nifi:propertyName "Line Split Count" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:headerLineCount ;
+        sh:name "Header Line Count" ;
+        nifi:propertyName "Header Line Count" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:headerLineMarkerCharacters ;
+        sh:name "Header Line Marker Characters" ;
+        nifi:propertyName "Header Line Marker Characters" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:maximumFragmentSize ;
+        sh:name "Maximum Fragment Size" ;
+        nifi:propertyName "Maximum Fragment Size" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:removeTrailingNewlines ;
+        sh:name "Remove Trailing Newlines" ;
+        nifi:propertyName "Remove Trailing Newlines" ;
+        sh:datatype xsd:string ;
+        sh:in ("true" "false") ;
+        sh:maxCount 1
+    ] .
+
+nifi:ExecuteGroovyScript
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi ExecuteGroovyScript" ;
+    nifi:processorType "org.apache.nifi.processors.groovyx.ExecuteGroovyScript" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-groovyx-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:outgoingRelationship "success" ;
+    nifi:autoTerminatedRelationship "failure", "success" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiExecuteGroovyScriptConfigShape
+    ] .
+
+:NifiExecuteGroovyScriptConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:ExecuteGroovyScript ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:scriptBody ;
+        sh:name "Script Body" ;
+        nifi:propertyName "Script Body" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:failureStrategy ;
+        sh:name "Failure Strategy" ;
+        nifi:propertyName "Failure Strategy" ;
+        sh:datatype xsd:string ;
+        sh:in ("rollback" "transfer to failure") ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:additionalClasspath ;
+        sh:name "Additional Classpath" ;
+        nifi:propertyName "Additional Classpath" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] .
+
+nifi:CreateVersionObjectProcessor
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Create Version Object Processor" ;
+    nifi:processorType "be.vlaanderen.informatievlaanderen.ldes.ldi.processors.CreateVersionObjectProcessor" ;
+    nifi:bundleGroup "be.vlaanderen.informatievlaanderen.ldes.ldi.nifi" ;
+    nifi:bundleArtifact "create-version-object-processor" ;
+    nifi:bundleVersion "2.12.0" ;
+    nifi:outgoingRelationship "data" ;
+    nifi:autoTerminatedRelationship "data", "valueNotFound", "unparseable" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiCreateVersionObjectConfigShape
+    ] .
+
+:NifiCreateVersionObjectConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:CreateVersionObjectProcessor ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:dateObservedValueRdfProperty ;
+        sh:name "RDF property to find the timestamp value" ;
+        nifi:propertyName "DATE_OBSERVED_VALUE_RDF_PROPERTY" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:generatedAtTimeProperty ;
+        sh:name "GeneratedAtTime property" ;
+        nifi:propertyName "GENERATED_AT_TIME_PROPERTY" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:dataDestinationFormat ;
+        sh:name "Data destination format" ;
+        nifi:propertyName "DATA_DESTINATION_FORMAT" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:memberRdfSyntaxType ;
+        sh:name "IRIs to member RDF syntax type" ;
+        nifi:propertyName "MEMBER_RDF_SYNTAX_TYPE" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:delimiter ;
+        sh:name "Delimiter" ;
+        nifi:propertyName "DELIMITER" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:versionOfKey ;
+        sh:name "VersionOf Property" ;
+        nifi:propertyName "VERSION_OF_KEY" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:dataInputFormat ;
+        sh:name "Data input format" ;
+        nifi:propertyName "DATA_INPUT_FORMAT" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] .
+
+nifi:AzureStorageCredentialsControllerService_v12
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi Azure Storage Credentials Controller Service v12" ;
+    nifi:controllerServiceType "org.apache.nifi.services.azure.storage.AzureStorageCredentialsControllerService_v12" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-azure-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:serviceApiType "org.apache.nifi.services.azure.storage.AzureStorageCredentialsService_v12" ;
+    nifi:serviceApiBundleGroup "org.apache.nifi" ;
+    nifi:serviceApiBundleArtifact "nifi-azure-services-api-nar" ;
+    nifi:serviceApiBundleVersion "2.10.0" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiAzureStorageCredentialsConfigShape
+    ] .
+
+:NifiAzureStorageCredentialsConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?service
+                    prov:specializationOf nifi:AzureStorageCredentialsControllerService_v12 ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:credentialsType ;
+        sh:name "Credentials Type" ;
+        nifi:propertyName "Credentials Type" ;
+        sh:datatype xsd:string ;
+        sh:in ("ACCOUNT_KEY" "SAS_TOKEN" "MANAGED_IDENTITY" "SERVICE_PRINCIPAL" "IDENTITY_FEDERATION") ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:endpointSuffix ;
+        sh:name "Endpoint Suffix" ;
+        nifi:propertyName "Endpoint Suffix" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:storageAccountName ;
+        sh:name "Storage Account Name" ;
+        nifi:propertyName "Storage Account Name" ;
+        nifi:sensitive true ;
+        sh:class tcs:SecretReference ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:accountKey ;
+        sh:name "Account Key" ;
+        nifi:propertyName "Account Key" ;
+        nifi:sensitive true ;
+        sh:class tcs:SecretReference ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:sasToken ;
+        sh:name "SAS Token" ;
+        nifi:propertyName "SAS Token" ;
+        nifi:sensitive true ;
+        sh:class tcs:SecretReference ;
+        sh:maxCount 1
+    ] .
+
+nifi:Funnel
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi Funnel" ;
+    nifi:componentType "FUNNEL" ;
+    dct:requires nifi:Orchestrator .
+
+nifi:InvokeHTTP
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi InvokeHTTP" ;
+    nifi:processorType "org.apache.nifi.processors.standard.InvokeHTTP" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-standard-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:outgoingRelationship "Response" ;
+    nifi:autoTerminatedRelationship
+        "Failure",
+        "No Retry",
+        "Original",
+        "Response",
+        "Retry" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiInvokeHTTPConfigShape
+    ] .
+
+:NifiInvokeHTTPConfigShape
+    a sh:NodeShape ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:InvokeHTTP ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path nifi:httpMethod ;
+        sh:name "HTTP method" ;
+        nifi:propertyName "HTTP Method" ;
+        sh:datatype xsd:string ;
+        sh:in ("GET" "POST" "PUT" "DELETE" "PATCH") ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+
+    sh:property [
+        sh:path nifi:httpUrl ;
+        sh:name "HTTP URL" ;
+        nifi:propertyName "HTTP URL" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] .
+
+nifi:Orchestrator
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Apache NiFi 2 Orchestrator" ;
+    spdx:versionInfo "2.10.0" ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiRemoteDeploymentConfigShape
+    ] ;
+    tcs:config
+        :NifiDefaultDockerComposeConfig,
+        :NifiDefaultDockerImageConfig .
+
+:NifiRemoteDeploymentConfigShape
+    a sh:NodeShape ;
+    rdfs:label "Existing NiFi deployment configuration" ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?pipeline nifi:deploymentMode "remote" ;
+                    nifi:deploymentConfig/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:dshUsername ;
+        sh:name "DSH username" ;
+        nifi:sensitive true ;
+        sh:class tcs:SecretReference ;
+        sh:minCount 1 ; sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:dshPassword ;
+        sh:name "DSH password" ;
+        nifi:sensitive true ;
+        sh:class tcs:SecretReference ;
+        sh:minCount 1 ; sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:dshGatewayUrl ;
+        sh:name "DSH gateway URL" ;
+        sh:datatype xsd:string ;
+        sh:minLength 1 ;
+        sh:minCount 1 ; sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:baseUrl ;
+        sh:name "NiFi base URL" ;
+        sh:datatype xsd:string ;
+        sh:minLength 1 ;
+        sh:minCount 1 ; sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:parentProcessGroupId ;
+        sh:name "Parent process group ID" ;
+        sh:description "When empty, the flow is deployed on the root canvas." ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] .
+
+
+:NifiDefaultDockerComposeConfig
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+                nifip:
+                    container_name: nifip
+                    image: dishacled/nifi:2.10.0-ldi-2.12.0
+                    build: ./nifi
+                    environment:
+                        SINGLE_USER_CREDENTIALS_USERNAME: root
+                        SINGLE_USER_CREDENTIALS_PASSWORD: rootrootrootroot
+                        NIFI_SENSITIVE_PROPS_KEY: dishacled-nifi-dev-key
+                    ports:
+                        - "8443:8443"
+                    volumes:
+                        - ./nifi/flow.json:/opt/nifi/bootstrap/flow.json:ro
+                    entrypoint:
+                        - /bin/bash
+                        - "-c"
+                        - |
+                            set -e
+                            gzip -c /opt/nifi/bootstrap/flow.json > /opt/nifi/nifi-current/conf/flow.json.gz
+                            exec /opt/nifi/scripts/start.sh
+                """ .
+
+:NifiDefaultDockerImageConfig
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerImageConfig ;
+    dct:format "text/x-dockerfile" ;
+    tcs:literal """
+                FROM maven:3.9-eclipse-temurin-21 AS nifi-extensions
+
+                ARG LDI_NIFI_VERSION=2.12.0
+
+                RUN mvn -B dependency:get \\
+                    -Dartifact=be.vlaanderen.informatievlaanderen.ldes.ldi.nifi:ldi-processors-bundle:${LDI_NIFI_VERSION} \\
+                && mkdir -p /out/nifi-ext \\
+                && find /root/.m2/repository/be/vlaanderen/informatievlaanderen/ldes/ldi/nifi \\
+                    -type f -name '*.nar' \\
+                    -exec cp {} /out/nifi-ext/ \\;
+
+                FROM apache/nifi:2.10.0
+
+                COPY --from=nifi-extensions --chown=nifi:nifi \\
+                    /out/nifi-ext/ \\
+                    /opt/nifi/nifi-current/nar_extensions/
+                """ .

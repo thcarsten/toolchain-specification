@@ -1,0 +1,1168 @@
+#################################################################
+# Catalog — LDIO components
+#
+# Every `ldio:*` `tcs:PipelineComponent` definition: types, labels,
+# `ldio:type`, `dcat:landingPage`, `dct:requires`, and their
+# `dcat:qualifiedRelation` configShapes. Also hosts the SHACL shapes
+# shared across multiple LDIO components (`ldio:HttpRequesterShape`,
+# `ldio:RdfWriterShape`, `ldio:StatePersistenceShape`,
+# `ldio:LdesClientShape`) and the LDIO `tcs:Config` docker-compose
+# bodies (`:LdioDefaultDockerComposeConfig`,
+# `:LdioPipelineStarterDockerComposeConfig`).
+#
+# Meant to be loaded together with catalog-core.ttl (which owns
+# `:DishacledCatalog`'s base declaration + the full `dcat:resource`
+# list), catalog-rdfc.ttl, catalog-sw.ttl and
+# catalog-application-profile-shapes.ttl.
+#################################################################
+
+
+#################################################################
+# Prefixes
+#################################################################
+
+@prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix spdx: <http://spdx.org/rdf/terms#> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+
+
+#################################################################
+# LDIO Components
+#################################################################
+
+
+ldio:HttpInPoller a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:HttpInPoller" ; 
+    rdfs:description "The LDIO Http In Poller is a basic Http Poller that will poll a target URL on a specified interval.";
+    ldio:type "Input" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-http-in-poller" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:node ldio:HttpRequesterShape;
+          sh:property [
+              sh:path ldio:url;
+              sh:name "url";
+              sh:description "Target URL to poll from.";
+              sh:datatype xsd:string;
+              sh:minCount 1; # Lists are supported
+          ], [
+            sh:path ldio:cron;
+            sh:name "cron";
+            sh:description "Cron expression to declare when the polling should take place. Schedules are in UTC timezone.";
+            sh:datatype xsd:string;
+            sh:minCount 1; # Required unless `interval` is used instead (interval is on a deprecation path per the docs)
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:interval;
+            sh:name "interval";
+            sh:description "Polling interval declared in ISO 8601 format.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:continueOnFail;
+            sh:name "continueOnFail";
+            sh:description "Indicates if polling should continue if a previous poll resulted in failure.";
+            sh:datatype xsd:boolean;
+            sh:maxCount 1;
+         ]
+        ]
+    ] ,
+    # The poller relays the raw HTTP response body verbatim — at this
+    # point in the pipeline it is not yet RDF (JSON bytes, unparsed), so
+    # no NodeShape constraint can meaningfully describe it. Trivial
+    # empty shape makes that "no known constraint" claim explicit rather
+    # than an undocumented gap.
+    [
+        a dcat:Relationship;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation [ a sh:NodeShape ]
+] .
+
+
+ldio:HttpIn a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:HttpIn" ;
+    rdfs:description "The LDIO Http In is a basic Http Listener. Data can be written to http://{hostname}:{port}/{pipeline name}." ;
+    rdfs:comment "This component has no config properties documented on the landing page." ;
+    ldio:type "Input" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-http-in" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator .
+
+
+ldio:AmqpIn a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:AmqpIn" ;
+    rdfs:description "The LDIO AMQP In listens to messages from an AMQP 1.0 queue." ;
+    ldio:type "Input" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-amqp-in" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:remote-url;
+              sh:name "remote-url";
+              sh:description "URI to the AMQP queue.";
+              sh:datatype xsd:string;
+              sh:minCount 1;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:queue;
+            sh:name "queue";
+            sh:description "Name of the queue.";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:username;
+            sh:name "username";
+            sh:description "Username used in authentication.";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:password;
+            sh:name "password";
+            sh:description "Password used in the authentication.";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:content-type;
+            sh:name "content-type";
+            sh:description "Content-type suggestion for received messages of the queue. Overridden by the message's own 'contentType' header when present. Defaults to application/n-quads.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ]
+        ]
+] .
+
+
+ldio:KafkaIn a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:KafkaIn" ;
+    rdfs:description "The LDIO Kafka In listens to messages from a Kafka topic." ;
+    ldio:type "Input" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-kafka-in" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:content-type;
+              sh:name "content-type";
+              sh:description "Any content type supported by Apache Jena.";
+              sh:datatype xsd:string;
+              sh:minCount 1;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:bootstrap-servers;
+            sh:name "bootstrap-servers";
+            sh:description "Comma separated list of uris of the bootstrap servers.";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:topics;
+            sh:name "topics";
+            sh:description "Names of the topics (comma separated).";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:group-id;
+            sh:name "group-id";
+            sh:description "Group identifier the consumer belongs to. Defaults to a generated value.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:security-protocol;
+            sh:name "security-protocol";
+            sh:description "Security protocol used to connect to the kafka broker. Defaults to NO_AUTH.";
+            sh:datatype xsd:string;
+            sh:in ( "NO_AUTH" "SASL_SSL_PLAIN" );
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:sasl-jaas-user;
+            sh:name "sasl-jaas-user";
+            sh:description "Username used in the security protocol.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:sasl-jaas-password;
+            sh:name "sasl-jaas-password";
+            sh:description "Password used in the security protocol.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ]
+        ]
+] .
+
+
+ldio:LdesClient a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:LdesClient" ;
+    rdfs:description "Replicates and synchronizes an LDES, keeping track of processed fragments/members; supports version materialisation, exactly-once/latest-state filtering and pluggable state persistence (memory/SQLite/Postgres)." ;
+    ldio:type "Input" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-ldes-client" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:node ldio:HttpRequesterShape, ldio:StatePersistenceShape, ldio:LdesClientShape;
+        ]
+] .
+
+
+ldio:LdesClientConnector a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:LdesClientConnector" ;
+    rdfs:description "An EDC (Eclipse Dataspace Connector) wrapper around Ldio:LdesClient. Exposes /transfer and /token endpoints and waits for an EDC token before starting; inherits the full Ldio:LdesClient configuration." ;
+    ldio:type "Input" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-ldes-client-connector" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:node ldio:HttpRequesterShape, ldio:StatePersistenceShape, ldio:LdesClientShape;
+          sh:property [
+              sh:path ldio:connector-transfer-url;
+              sh:name "connector-transfer-url";
+              sh:description "The transfer url of the EDC connector which has to be called to start a transfer.";
+              sh:datatype xsd:string;
+              sh:minCount 1;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:proxy-url-to-replace;
+            sh:name "proxy-url-to-replace";
+            sh:description "Part of the LDES url that should be replaced when proxying (temporary workaround until client/server support relative urls). Defaults to an empty string.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:proxy-url-replacement;
+            sh:name "proxy-url-replacement";
+            sh:description "The replacement url part used when proxying.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ]
+        ]
+] .
+
+
+
+# The source-a API serves JSON-LD bodies with `Content-Type: application/json`.
+# `ldio:RdfAdapter` refuses that content-type; `ldio:JsonToLdAdapter` accepts
+# it when `force-content-type: true` is set and applies an inline JSON-LD
+# `context` to re-expand terms.
+ldio:JsonToLdAdapter a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Ldio:JsonToLdAdapter" ;
+    rdfs:description "The json-to-ld-adapter receives json messages and adds a linked data context to transform the messages to json-ld.";
+    ldio:type "Adapter" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.13.0/ldio/ldio-adapters/ldio-json-to-json-ld" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:context;
+              sh:name "context";
+              sh:description "URI of a JSON-LD context, or an inline JSON-LD context object.";
+              sh:minCount 1;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:force-content-type;
+            sh:name "force-content-type";
+            sh:description "Flag that indicates if application/json should be forced as the mime type.";
+            sh:datatype xsd:boolean;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:max-jsonld-cache-capacity;
+            sh:name "max-jsonld-cache-capacity";
+            sh:description "After retrieving an external JSON-LD context, it is cached for reuse. This property allows specifying the size of this cache (number of stored contexts).";
+            sh:datatype xsd:integer;
+            sh:maxCount 1;
+         ]
+        ]
+    ] ,
+    # The output shape fully depends on the @context supplied per
+    # instance (see ldio:context above), so no generic claim holds
+    # across every possible configuration. Trivial empty shape at the
+    # component level; a pipeline that knows its own @context should
+    # override this at the instance level (see demo:JsonLdParse in
+    # pipeline_definition.ttl).
+    [
+        a dcat:Relationship;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation [ a sh:NodeShape ]
+] .
+
+
+
+ldio:RdfAdapter a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:RdfAdapter" ; 
+    rdfs:description "As the most basic adapter, the RDF Adapter will take in an RDF string and convert it into an internal Linked Data model based on the given content type.";
+    ldio:type "Adapter" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-adapters/ldio-rdf-adapter" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:max-jsonld-cache-capacity;
+              sh:name "max-jsonld-cache-capacity";
+              sh:description "After retrieving an external JSON-LD context, it is cached for reuse. This property allows specifying the size of this cache (number of stored contexts).";
+              sh:datatype xsd:integer;
+              sh:maxCount 1;
+          ]
+        ]
+] .
+
+
+ldio:RmlAdapter a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:RmlAdapter" ;
+    rdfs:description "The RML Adapter allows a user to transform a non-LD object (json/CSV/XML) to an RDF object by providing an RML mapping file." ;
+    ldio:type "Adapter" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-adapters/ldio-rml-adapter" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:mapping;
+              sh:name "mapping";
+              sh:description "Path to content of RML mapping, or the content of the RML mapping itself.";
+              sh:datatype xsd:string;
+              sh:minCount 1;
+              sh:maxCount 1;
+          ]
+        ]
+] .
+
+
+ldio:NgsiV2ToLdAdapter a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:NgsiV2ToLdAdapter" ;
+    rdfs:description "Transforms an NGSI-v2 (JSON) input into NGSI-LD." ;
+    ldio:type "Adapter" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-adapters/ldio-ngsiv2-to-ld" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:core-context;
+              sh:name "core-context";
+              sh:description "URI of a core JSON-LD context.";
+              sh:datatype xsd:string;
+              sh:minCount 1;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:ld-context;
+            sh:name "ld-context";
+            sh:description "URI of a custom JSON-LD context.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:data-identifier;
+            sh:name "data-identifier";
+            sh:description "Identifier that points to the data in the provided json.";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+            sh:maxCount 1;
+         ]
+        ]
+] .
+
+
+ldio:SparqlConstructTransformer 
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Ldio:SparqlConstructTransformer" ; 
+    ldio:type "Transformer" ;
+    rdfs:description "The SPARQL Construct Transformer will modify the model based on the given SPARQL Construct Query.";
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-sparql-construct" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:query;
+              sh:name "query";
+              sh:description "Path to content of SPARQL Query, or the content of the SPARQL query itself.";
+              sh:datatype xsd:string;
+              sh:minCount 1;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:infer;
+            sh:name "infer";
+            sh:description "Include original model in end result.";
+            sh:datatype xsd:boolean;
+            sh:minCount 0;
+            sh:maxCount 1;
+         ]
+        ]
+] .
+
+
+ldio:ChangeDetectionFilter a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:ChangeDetectionFilter" ;
+    rdfs:description "Keeps track of the last-seen model hash per subject and drops a member if its content hasn't changed since the previous member with the same subject (avoids spamming downstream with duplicate state objects)." ;
+    ldio:type "Transformer" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-change-detection-filter" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:node ldio:StatePersistenceShape;
+        ]
+] .
+
+
+ldio:GeoJsonToWktTransformer a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:GeoJsonToWktTransformer" ;
+    rdfs:description "Transforms GeoJSON geometry statements (https://purl.org/geojson/vocab#geometry) into WKT literals, optionally in RDF+WKT format." ;
+    ldio:type "Transformer" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-geojson-to-wkt" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path <http://example.org/example/ldio/transform-to-rdf+wkt-enabled>;
+              sh:name "transform-to-rdf+wkt-enabled";
+              sh:description "Transform GeoJSON to RDF+WKT format. Defaults to false, in which case plain WKT is used.";
+              sh:datatype xsd:boolean;
+              sh:maxCount 1;
+          ]
+        ]
+] .
+
+
+ldio:HttpEnricher a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:HttpEnricher" ;
+    rdfs:description "Fires a GET or POST HTTP request to a URL taken from the model, converts the response via a configurable nested LDIO Adapter, and merges the result back into the model." ;
+    ldio:type "Transformer" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-http-enricher" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:node ldio:HttpRequesterShape;
+          sh:property [
+              sh:path ldio:adapter;
+              sh:name "adapter";
+              sh:description "The nested LDIO Adapter used to convert the http response into a linked data model.";
+              sh:minCount 1;
+              sh:maxCount 1;
+              sh:node [
+                  a sh:NodeShape;
+                  sh:property [
+                      sh:path ldio:name;
+                      sh:name "name";
+                      sh:description "The name of the LDIO Adapter to use, e.g. Ldio:RdfAdapter.";
+                      sh:minCount 1;
+                      sh:maxCount 1;
+                  ], [
+                      sh:path ldio:config;
+                      sh:name "config";
+                      sh:description "Optional config required by the nested adapter.";
+                      sh:maxCount 1;
+                  ]
+              ]
+          ], [
+            sh:path ldio:url-property-path;
+            sh:name "url-property-path";
+            sh:description "Property path defining the url that needs to be selected on the model for the http request.";
+            sh:minCount 1;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:header-property-path;
+            sh:name "header-property-path";
+            sh:description "Property path defining the headers that need to be selected on the model for the http request.";
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:body-property-path;
+            sh:name "body-property-path";
+            sh:description "Property path defining the body that needs to be selected on the model, added when a POST http request is used.";
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:http-method-property-path;
+            sh:name "http-method-property-path";
+            sh:description "Property path defining the http method (GET or POST) that needs to be selected on the model for the http request. Defaults to GET.";
+            sh:maxCount 1;
+         ]
+        ]
+] .
+
+
+ldio:VersionMaterialiser a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:VersionMaterialiser" ;
+    rdfs:description "Transforms a Version Object back into a State Object, removing the versionOf statement." ;
+    ldio:type "Transformer" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-version-materializer" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:versionOf-property;
+              sh:name "versionOf-property";
+              sh:description "Property that points to the versionOf path.";
+              sh:datatype xsd:string;
+              sh:minCount 1;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:restrict-to-members;
+            sh:name "restrict-to-members";
+            sh:description "Only return the statements of the node containing the versionOf property, including potential nested blank nodes. Defaults to false.";
+            sh:datatype xsd:boolean;
+            sh:maxCount 1;
+         ]
+        ]
+] .
+
+
+ldio:VersionObjectCreator a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:VersionObjectCreator" ;
+    rdfs:description "Transforms a State Object into a Version Object by minting a unique member IRI and adding timestamp/versionOf statements." ;
+    ldio:type "Transformer" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-version-object-creator" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:date-observed-property;
+              sh:name "date-observed-property";
+              sh:description "Property path pointing to a literal used as the timestamp path. Defaults to the current timestamp.";
+              sh:datatype xsd:string;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:member-type;
+            sh:name "member-type";
+            sh:description "The RDF type(s) of the object to transform into a version object.";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+         ], [
+            sh:path ldio:delimiter;
+            sh:name "delimiter";
+            sh:description "Defines how the version object id is constructed: versionOf + delimiter + dateObserved. Defaults to '/'.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:generatedAt-property;
+            sh:name "generatedAt-property";
+            sh:description "Property used for the generatedAt statement added to the model. Defaults to http://www.w3.org/ns/prov#generatedAtTime.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:versionOf-property;
+            sh:name "versionOf-property";
+            sh:description "Property used for the versionOf statement added to the model. Defaults to http://purl.org/dc/terms/isVersionOf.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ]
+        ]
+] .
+
+
+ldio:HttpOut a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:HttpOut" ; 
+    rdfs:description "The LDIO HTTP Out is a basic Http Client that will send the given Linked Data model to a target url.";
+    ldio:type "Output" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-outputs/ldio-http-out" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:node ldio:HttpRequesterShape;
+          sh:property [
+              sh:path ldio:endpoint;
+              sh:name "endpoint";
+              sh:description "Target url.";
+              sh:datatype xsd:string;
+              sh:minCount 1;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:rdf-writer;
+            sh:name "rdf-writer";
+            sh:description "RDF Writer properties, controlling how the model is serialized before it is sent.";
+            sh:maxCount 1;
+            sh:node ldio:RdfWriterShape;
+         ]
+        ]
+    ] ,
+    # Ldio:HttpOut serializes the incoming model and POSTs it verbatim.
+    # At the RDF level (ignoring byte serialization) it is a pure passthrough:
+    # the outgoing HTTP body encodes the same triples that were read from
+    # upstream. Trivial NodeShape — no constraint on what may flow through.
+    # Instance-level passthroughShapes in a PipelineDefinition may override
+    # this with a pipeline-specific shape.
+    [
+        a dcat:Relationship;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation [ a sh:NodeShape ]
+] .
+
+
+# Shared "RDF Writer properties" shape. `Ldio:HttpOut` and `Ldio:ConsoleOut`
+# both document an identical `rdf-writer.content-type` / `rdf-writer.frame`
+# config block. Modeled once here and pulled into both components' configs
+# via `sh:node`.
+ldio:RdfWriterShape a sh:NodeShape ;
+    rdfs:comment "Shared RDF Writer config properties, used by both Ldio:HttpOut and Ldio:ConsoleOut." ;
+    sh:property [
+        sh:path ldio:content-type;
+        sh:name "content-type";
+        sh:description "Target content type. Defaults to text/turtle; any type supported by Apache Jena is accepted.";
+        sh:datatype xsd:string;
+        sh:maxCount 1;
+    ], [
+        sh:path ldio:frame;
+        sh:name "frame";
+        sh:description "Additional JSON-LD Frame to format the outputted JSON-LD Object.";
+        sh:maxCount 1;
+    ] .
+
+
+ldio:ConsoleOut a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:ConsoleOut" ;
+    rdfs:description "The LDIO Console Out will output its given model to the console." ;
+    ldio:type "Output" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-outputs/ldio-console-out" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:rdf-writer;
+              sh:name "rdf-writer";
+              sh:description "RDF Writer properties, controlling how the model is serialized to the console.";
+              sh:maxCount 1;
+              sh:node ldio:RdfWriterShape;
+          ]
+        ]
+] .
+
+
+# Shared "LDIO Http Requester properties" shape. `Ldio:HttpInPoller` and
+# `Ldio:HttpOut` are both built on the same underlying Http Requester
+# client library — their landing pages document byte-identical
+# `auth.*` / `retries.*` / `rate-limit.*` / `http.headers` config
+# sections. Modeled once here and pulled into both components' root
+# configShape via `sh:node`.
+ldio:HttpRequesterShape a sh:NodeShape ;
+    rdfs:comment "Shared config properties of the LDIO Http Requester client, used by both Ldio:HttpInPoller and Ldio:HttpOut." ;
+    sh:property [
+        sh:path ldio:auth;
+        sh:name "auth";
+        sh:description "Authentication properties for the http client.";
+        sh:maxCount 1;
+        sh:node [
+            a sh:NodeShape;
+            sh:property [
+                sh:path ldio:type;
+                sh:name "type";
+                sh:description "The type of authentication required by the LDES server. Defaults to NO_AUTH.";
+                sh:datatype xsd:string;
+                sh:in ( "NO_AUTH" "API_KEY" "OAUTH2_CLIENT_CREDENTIALS" );
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:api-key;
+                sh:name "api-key";
+                sh:description "The api key when using auth.type 'API_KEY'.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:api-key-header;
+                sh:name "api-key-header";
+                sh:description "The header for the api key when using auth.type 'API_KEY'. Defaults to X-API-KEY.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:client-id;
+                sh:name "client-id";
+                sh:description "The client identifier when using auth.type 'OAUTH2_CLIENT_CREDENTIALS'.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:client-secret;
+                sh:name "client-secret";
+                sh:description "The client secret when using auth.type 'OAUTH2_CLIENT_CREDENTIALS'.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:token-endpoint;
+                sh:name "token-endpoint";
+                sh:description "The token endpoint when using auth.type 'OAUTH2_CLIENT_CREDENTIALS'.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:scope;
+                sh:name "scope";
+                sh:description "The Oauth2 scope when using auth.type 'OAUTH2_CLIENT_CREDENTIALS'.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ]
+        ]
+    ], [
+        sh:path ldio:retries;
+        sh:name "retries";
+        sh:description "Retry properties for the http client.";
+        sh:maxCount 1;
+        sh:node [
+            a sh:NodeShape;
+            sh:property [
+                sh:path ldio:enabled;
+                sh:name "enabled";
+                sh:description "Indicates if the http client should retry http requests when the server cannot be reached. Defaults to true.";
+                sh:datatype xsd:boolean;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:max;
+                sh:name "max";
+                sh:description "Max number of retries the http client should do when retries.enabled = true. Defaults to 5.";
+                sh:datatype xsd:integer;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:statuses-to-retry;
+                sh:name "statuses-to-retry";
+                sh:description "Custom comma-separated list of http status codes that can trigger a retry in the http client. Note: 429 and 5xx are always retried regardless of this setting.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ]
+        ]
+    ], [
+        sh:path ldio:rate-limit;
+        sh:name "rate-limit";
+        sh:description "Rate limit properties for the http client.";
+        sh:maxCount 1;
+        sh:node [
+            a sh:NodeShape;
+            sh:property [
+                sh:path ldio:enabled;
+                sh:name "enabled";
+                sh:description "Indicates if the http client should limit http requests when calling the server. Defaults to false.";
+                sh:datatype xsd:boolean;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:limit;
+                sh:name "limit";
+                sh:description "Limit of requests per period (see `period`) that the http client should do when rate-limit.enabled = true. Defaults to 500.";
+                sh:datatype xsd:integer;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:period;
+                sh:name "period";
+                sh:description "Period, in ISO 8601 Duration format, in which the configured `limit` of requests can be reached when rate-limit.enabled = true. Defaults to PT1M.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ]
+        ]
+    ], [
+        sh:path ldio:http;
+        sh:name "http";
+        sh:description "Additional http client properties.";
+        sh:maxCount 1;
+        sh:node [
+            a sh:NodeShape;
+            sh:property [
+                sh:path ldio:headers;
+                sh:name "headers";
+                sh:description "A list of custom http headers. A key and value has to be provided for every header.";
+                sh:node [
+                    a sh:NodeShape;
+                    sh:property [
+                        sh:path ldio:key;
+                        sh:name "key";
+                        sh:datatype xsd:string;
+                        sh:maxCount 1;
+                    ], [
+                        sh:path ldio:value;
+                        sh:name "value";
+                        sh:datatype xsd:string;
+                        sh:maxCount 1;
+                    ]
+                ]
+            ]
+        ]
+    ] .
+
+
+# Shared "state persistence" shape. `Ldio:LdesClient` and
+# `Ldio:ChangeDetectionFilter` both document an identical `state` /
+# `keep-state` / `sqlite.*` / `postgres.*` config block for choosing how
+# processed-member state is persisted. Modeled once here and pulled into
+# both components' configs via `sh:node`.
+ldio:StatePersistenceShape a sh:NodeShape ;
+    rdfs:comment "Shared state-persistence config properties, used by both Ldio:LdesClient and Ldio:ChangeDetectionFilter." ;
+    sh:property [
+        sh:path ldio:state;
+        sh:name "state";
+        sh:description "'memory', 'sqlite' or 'postgres' to indicate how the state should be persisted. Defaults to memory.";
+        sh:datatype xsd:string;
+        sh:in ( "memory" "sqlite" "postgres" );
+        sh:maxCount 1;
+    ], [
+        sh:path ldio:keep-state;
+        sh:name "keep-state";
+        sh:description "Indicates if the state should be persisted on shutdown (n/a for in-memory states). Defaults to false.";
+        sh:datatype xsd:boolean;
+        sh:maxCount 1;
+    ], [
+        sh:path ldio:sqlite;
+        sh:name "sqlite";
+        sh:description "SQLite persistence properties, used when state = 'sqlite'.";
+        sh:maxCount 1;
+        sh:node [
+            a sh:NodeShape;
+            sh:property [
+                sh:path ldio:directory;
+                sh:name "directory";
+                sh:description "Directory wherein the .db file can be saved.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ]
+        ]
+    ], [
+        sh:path ldio:postgres;
+        sh:name "postgres";
+        sh:description "Postgres persistence properties, used when state = 'postgres'.";
+        sh:maxCount 1;
+        sh:node [
+            a sh:NodeShape;
+            sh:property [
+                sh:path ldio:url;
+                sh:name "url";
+                sh:description "JDBC URL of the Postgres database.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:username;
+                sh:name "username";
+                sh:description "Username used to connect to the Postgres database.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:password;
+                sh:name "password";
+                sh:description "Password used to connect to the Postgres database.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ]
+        ]
+    ] .
+
+
+# `Ldio:LdesClient`'s own general + version-materialisation properties,
+# factored into a named shape so `Ldio:LdesClientConnector` — which wraps
+# the LDES Client with EDC support and inherits its entire configuration
+# per the landing page — can pull them in via `sh:node` alongside its own
+# connector-specific properties, instead of duplicating them.
+ldio:LdesClientShape a sh:NodeShape ;
+    rdfs:comment "General + version-materialisation config properties of Ldio:LdesClient, reused by Ldio:LdesClientConnector." ;
+    sh:property [
+        sh:path ldio:urls;
+        sh:name "urls";
+        sh:description "List of URLs of the LDES data sources. If more than one is configured, they must be part of the same LDES.";
+        sh:datatype xsd:string;
+        sh:minCount 1;
+    ], [
+        sh:path ldio:source-format;
+        sh:name "source-format";
+        sh:description "The 'Content-Type' that should be requested from the server. Defaults to text/turtle.";
+        sh:datatype xsd:string;
+        sh:maxCount 1;
+    ], [
+        sh:path ldio:timestamp-path;
+        sh:name "timestamp-path";
+        sh:description "The property-path used to determine the timestamp on which members are ordered, and used for the latest-state-filter when enabled.";
+        sh:datatype xsd:string;
+        sh:maxCount 1;
+    ], [
+        sh:path ldio:enable-exactly-once;
+        sh:name "enable-exactly-once";
+        sh:description "Indicates whether a member must be sent exactly once or at least once. Defaults to true.";
+        sh:datatype xsd:boolean;
+        sh:maxCount 1;
+    ], [
+        sh:path ldio:materialisation;
+        sh:name "materialisation";
+        sh:description "Version materialisation properties.";
+        sh:maxCount 1;
+        sh:node [
+            a sh:NodeShape;
+            sh:property [
+                sh:path ldio:enabled;
+                sh:name "enabled";
+                sh:description "Indicates if the client should return state-objects (true) or version-objects (false). Defaults to false.";
+                sh:datatype xsd:boolean;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:version-of-property;
+                sh:name "version-of-property";
+                sh:description "Property that points to the versionOfPath. Defaults to http://purl.org/dc/terms/isVersionOf.";
+                sh:datatype xsd:string;
+                sh:maxCount 1;
+            ], [
+                sh:path ldio:enable-latest-state;
+                sh:name "enable-latest-state";
+                sh:description "Indicates whether all state or only the latest state must be sent. Defaults to true.";
+                sh:datatype xsd:boolean;
+                sh:maxCount 1;
+            ]
+        ]
+    ] .
+
+
+ldio:AmqpOut a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:AmqpOut" ;
+    rdfs:description "Sends messages to an AMQP 1.0 queue. The configured rdf-writer.content-type is added as a 'contentType' message header." ;
+    ldio:type "Output" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-outputs/ldio-amqp-out" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:remote-url;
+              sh:name "remote-url";
+              sh:description "URI to the AMQP queue.";
+              sh:datatype xsd:string;
+              sh:minCount 1;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:queue;
+            sh:name "queue";
+            sh:description "Name of the queue.";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:username;
+            sh:name "username";
+            sh:description "Username used in authentication.";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:password;
+            sh:name "password";
+            sh:description "Password used in the authentication.";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:rdf-writer;
+            sh:name "rdf-writer";
+            sh:description "RDF Writer properties, controlling how the model is serialized before it is sent.";
+            sh:maxCount 1;
+            sh:node ldio:RdfWriterShape;
+         ]
+        ]
+] .
+
+
+ldio:KafkaOut a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:KafkaOut" ;
+    rdfs:description "Sends messages to a Kafka topic." ;
+    ldio:type "Output" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-outputs/ldio-kafka-out" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:bootstrap-servers;
+              sh:name "bootstrap-servers";
+              sh:description "Comma separated list of uris of the bootstrap servers.";
+              sh:datatype xsd:string;
+              sh:minCount 1;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:topic;
+            sh:name "topic";
+            sh:description "Name of the topic.";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:key-property-path;
+            sh:name "key-property-path";
+            sh:description "Optional property path to extract the kafka message key from the data model.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:security-protocol;
+            sh:name "security-protocol";
+            sh:description "Security protocol used to connect to the kafka broker. Defaults to NO_AUTH.";
+            sh:datatype xsd:string;
+            sh:in ( "NO_AUTH" "SASL_SSL_PLAIN" );
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:sasl-jaas-user;
+            sh:name "sasl-jaas-user";
+            sh:description "Username used in the security protocol.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:sasl-jaas-password;
+            sh:name "sasl-jaas-password";
+            sh:description "Password used in the security protocol.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:frame-type;
+            sh:name "frame-type";
+            sh:description "RDF type of the objects that need to be included for JSON-LD framing.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:rdf-writer;
+            sh:name "rdf-writer";
+            sh:description "RDF Writer properties, controlling how the model is serialized before it is sent.";
+            sh:maxCount 1;
+            sh:node ldio:RdfWriterShape;
+         ]
+        ]
+] .
+
+
+ldio:RepositoryMaterialiser a tcs:PipelineComponent, dcat:Resource;
+    rdfs:label "Ldio:RepositoryMaterialiser" ;
+    rdfs:description "Materialises an LDES stream directly into an RDF4J-compatible triplestore, with configurable batching." ;
+    ldio:type "Output" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-outputs/ldio-repository-materialiser" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship;
+        dcat:hadRole tcs:configShape ;
+        dct:relation [
+          a sh:NodeShape;
+          sh:property [
+              sh:path ldio:sparql-host;
+              sh:name "sparql-host";
+              sh:description "The url of the server hosting the repository.";
+              sh:datatype xsd:string;
+              sh:minCount 1;
+              sh:maxCount 1;
+          ], [
+            sh:path ldio:repository-id;
+            sh:name "repository-id";
+            sh:description "The RDF4J repository id.";
+            sh:datatype xsd:string;
+            sh:minCount 1;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:named-graph;
+            sh:name "named-graph";
+            sh:description "If set, the triples will be written to this named graph.";
+            sh:datatype xsd:string;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:batch-size;
+            sh:name "batch-size";
+            sh:description "Number of members or models that will be committed at once. Defaults to 500.";
+            sh:datatype xsd:integer;
+            sh:maxCount 1;
+         ], [
+            sh:path ldio:batch-timeout;
+            sh:name "batch-timeout";
+            sh:description "If the batch size has not been reached within this number of milliseconds, the members will be committed anyway. Defaults to 120000.";
+            sh:datatype xsd:integer;
+            sh:maxCount 1;
+         ]
+        ]
+] .
+
+
+ldio:LinkedDataInteractionsOrchestrator
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Linked Data Interactions Orchestrator" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
+    spdx:versionInfo "2.8.0-SNAPSHOT";
+    tcs:config :LdioDefaultDockerComposeConfig ;
+    dct:requires ldio:LdioPipelineStarterService .
+
+
+ldio:LdioPipelineStarterService 
+    a tcs:PipelineComponent, dcat:Resource ;
+    rdfs:label "Ldio Pipeline Starter Service" ;
+    tcs:config :LdioPipelineStarterDockerComposeConfig . 
+
+
+#################################################################
+# LDIO configs
+#################################################################
+
+:LdioDefaultDockerComposeConfig
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+ldio-workbench:
+    container_name: ldio-workbench
+    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
+    ports:
+      - "8080:8080"
+""" .
+
+
+:LdioPipelineStarterDockerComposeConfig
+    a tcs:Config, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal '''
+ldio-pipeline-starter:
+    image: curlimages/curl
+    volumes:
+      - ./ldio_pipeline.yml:/pipeline.yml:ro
+    command: >
+      sh -c "
+      sleep 30 &&
+      curl -X POST
+      -H 'content-type: application/yaml'
+      http://ldio-workbench:8080/admin/api/v1/pipeline
+      --data-binary @/pipeline.yml
+      "         
+''' .
+
+

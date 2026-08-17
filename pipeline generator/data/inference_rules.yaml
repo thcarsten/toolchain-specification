@@ -41,24 +41,6 @@ rules:
       ?sub a tcs:InstancePipelineComponent .
   - 
     construct: | 
-      ?sub a tcs:InstancePipelineComponent .
-      ?obj a tcs:PipelineComponent .
-    where: |
-      ?sub prov:specializationOf ?obj .
-  - 
-    construct: | 
-      ?obj a tcs:PipelineComponent .
-    where: |
-      ?sub dct:requires ?obj .
-      ?sub a tcs:PipelineComponent .
-  - 
-    construct: | 
-      ?sub a tcs:PipelineComponent .
-    where: |
-      ?sub dct:requires ?obj .
-      ?obj a tcs:PipelineComponent .
-  - 
-    construct: | 
       ?obj a tcs:Config .
     where: |
       ?sub tcs:config ?obj .
@@ -78,4 +60,43 @@ rules:
       ?sub a tcs:Config .
     where: |
       ?sub a tcs:DockerComposeConfig .
-    
+  -
+    # Mirrors PipelineEnricher.synthesize_channels' "neither side wired"
+    # case, so pre-compile SHACL shapes (LdioStepOrderingShape,
+    # AcyclicGraphShape, ...) see the same channel graph the compiler
+    # will build from p-plan:isPrecededBy. The "reuse one already-wired
+    # side" cases are handled by the two rules below; deliberately not
+    # replicated here is the compiler's ambiguity guard (>1 channel on
+    # either side leaves the edge untouched) — that case already has no
+    # channel to construct from, so these rules simply don't match it.
+    construct: |
+      ?successor tcs:readsFrom _:synthesizedChannel .
+      ?predecessor tcs:writesTo _:synthesizedChannel .
+    where: |
+      ?successor p-plan:isPrecededBy ?predecessor .
+      FILTER NOT EXISTS { ?successor tcs:readsFrom ?existingReader }
+      FILTER NOT EXISTS { ?predecessor tcs:writesTo ?existingWriter }
+  -
+    # Predecessor already has a single explicit tcs:writesTo — reuse it.
+    construct: |
+      ?successor tcs:readsFrom ?w .
+    where: |
+      ?successor p-plan:isPrecededBy ?predecessor .
+      ?predecessor tcs:writesTo ?w .
+      FILTER NOT EXISTS { ?successor tcs:readsFrom ?existingReader }
+      FILTER NOT EXISTS {
+        ?predecessor tcs:writesTo ?otherW .
+        FILTER (?otherW != ?w)
+      }
+  -
+    # Successor already has a single explicit tcs:readsFrom — reuse it.
+    construct: |
+      ?predecessor tcs:writesTo ?r .
+    where: |
+      ?successor p-plan:isPrecededBy ?predecessor .
+      ?successor tcs:readsFrom ?r .
+      FILTER NOT EXISTS { ?predecessor tcs:writesTo ?existingWriter }
+      FILTER NOT EXISTS {
+        ?successor tcs:readsFrom ?otherR .
+        FILTER (?otherR != ?r)
+      }

@@ -1,9 +1,33 @@
 pipeline generator/resources/rdfc-docker/
 
+# IDE's
 .vscode/
-.venv/
+
+# Python build and cache artifacts.
+#
+# __pycache__ and *.egg-info were previously tracked, which meant that
+# merely running the code (or the test suite) dirtied the working tree
+# and produced spurious diffs in every branch. They are regenerated on
+# import, so there is nothing to preserve.
 __pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+
+# Virtual environments.
+.venv/
+venv/
+
+# Local environments
 .env
 
-pipeline generator/data/*.secrets.ttl
-pipeline generator/out/nifi_testing/
+# Jupyter
+.ipynb_checkpoints/
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+

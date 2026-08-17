@@ -41,3 +41,11 @@ dev = [
 [tool.setuptools]
 packages = ["rdfine"]
 package-dir = { "rdfine" = "." }
+
+# Scoped to this package's own tests — run with `pytest` from this
+# directory. Kept separate from the compilers/generator suite (which
+# has its own pytest.ini one level up) since the two are different
+# scopes: rdfine is an independently installable package and should be
+# testable without the compilers package or its dependencies.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
