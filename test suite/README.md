@@ -350,23 +350,7 @@ Roughly speaking, this `ValidationReportCompiler` consists of the following meth
 8. **generate_validation_report**
 - Attach a validation report combining the results of `validate_normal_shapes` and `validate_throughput_shapes` to the `PipelineBuild` via `attach_file()`. For the demonstrator pipeline this is written to [`pipeline generator/out/dishacled-full/validation/validation-report.ttl`](../pipeline%20generator/out/dishacled-full/validation/validation-report.ttl) — a plain SHACL validation report (`sh:conforms`, `sh:result`) combined with one `tcs:ThroughputMatchResult` per `tcs:Channel`.
 
-All steps above, including shape-matching, can be executed natively in Python. **Update (2026-08-18):** the earlier plan below — a bridge to the [Typescript library](https://github.com/DiSHACLed/query-shape-matching-algorithm) via a `qsm-service` HTTP service — is superseded. A colleague is writing a shape-matching library in Python from scratch, so `ValidationReportCompiler.match_shapes()` will call directly into that library in-process once it exists, with no bridge, no service, and no RDF-over-HTTP serialization step. Until that library lands, `match_shapes()` remains the documented, overridable stub described in [Architecture](#architecture) — it returns `None` ("unverified") for every pair.
-
-<details>
-<summary>Superseded: original TypeScript bridge design</summary>
-
-Shape-matching was originally planned around a [Typescript library](https://github.com/DiSHACLed/query-shape-matching-algorithm), requiring a bridge between the `ValidationReportCompiler` and an external service responsible for shape-matching, with the `ValidationReportCompiler` talking to a small long-lived Node service over HTTP+JSON.
-
-Bridge:
-- `qsm-service` would have been a thin Node process (Fastify) run in a Docker Container that exposes a containment-checking endpoint.
-- The Python side would ship a small client that serializes shapes as RDF strings (via `rdflib`) and calls the service with `httpx`.
-
-**Why a service, not in-process:** the Typescript library's transitive dependencies (Traqula parsers, n3.js, rdf-data-factory) are ESM and rely on Node
-built-ins that a Python-embedded JS engine does not provide, so any in-process option would require a bundle-and-polyfill layer per dependency
-upgrade. A separate service would keep 100 % Node compatibility, matching the docker-compose idiom used everywhere else in DiSHACLed, at the cost of
-an HTTP round-trip per call. Moot now that shape-matching is being written in Python directly.
-
-</details>
+All steps above, including shape-matching, can be executed natively in Python. Shape-matching is being written as a Python library from scratch by a colleague; `ValidationReportCompiler.match_shapes()` calls directly into it in-process once it exists, with no bridge, no service, and no RDF-over-HTTP serialization step. Until that library lands, `match_shapes()` remains the documented, overridable stub described in [Architecture](#architecture) — it returns `None` ("unverified") for every pair. See `AGENTS.md`'s session log for the earlier TypeScript-bridge design this superseded.
 
 ## Future directions
 

@@ -145,7 +145,7 @@ Every concrete compiler inherits from `Compiler` and must satisfy a small contra
 
 Intermediate state that the compile process produces (e.g. partial DataFrames, accumulated readers) is declared as instance attributes in `__init__` and populated by `compile()`. This makes the inspection surface explicit and lets the user poke at `compiler.df_steps`, `compiler.output_reader`, etc. after `compile()` returns — useful for debugging.
 
-### 4.2.1. Method naming & single-responsibility splitting (2026-08-18)
+### 4.2.1. Method naming & single-responsibility splitting
 
 `compile()` must be a thin, ordered list of calls to the compiler's own *public* methods and nothing else — no inline SPARQL queries, loops, dict-building, or conditionals of its own. Each public method is one traceable step/concern of the compile process, e.g.:
 
@@ -333,7 +333,7 @@ The pipeline generator is not fully implemented yet, it is a work in progress. W
 - [x] CompilerAssigner: It may be necessary at some point to provide a lookup which compilers need to be called depending on information contained in the graph. So that compilers can be called dynamically based on need. Implemented as a registry on `Compiler._registry` (auto-populated via `__init_subclass__`) combined with a per-compiler `applies_to(graph_reader) -> bool` classmethod that declares the triggering pattern.
 - [ ] SemanticModelVersionMapper: Can map from one version of the semantic model to the internal model that is used by the pipeline generator. Allows decoupling versioning of the official semantic model and the internal model used for implementation.
 - [ ] Pipeline-level config override mechanism: let a `tcs:PipelineDefinition` shadow a catalog-level `tcs:DefaultConfig` with a pipeline-specific body. Prerequisite for cleanly moving the demonstrator-specific bodies (see [§5.1](#51-no-override-mechanism-for-tcsdefaultconfig-bodies)) out of `catalog-sw.ttl` and into `pipeline_definition.ttl`.
-- [ ] Cross-framework `tcs:Channel`: extend the channel model to describe transports that span framework boundaries (LDIO → RDFC HTTP hop, RDFC → sw SPARQL push, sw delta-notifier subscriptions). Prerequisite for synthesising the `oslc:Error` rule in `delta/rules.js` from the pipeline definition rather than shipping it as boilerplate.
+- [ ] Cross-framework `tcs:Channel`: extend the channel model to describe transports that span framework boundaries (LDIO → RDFC HTTP hop, RDFC → sw SPARQL push, sw delta-notifier subscriptions). Prerequisite for synthesising the `oslc:Error` rule in `delta/rules.js` from the pipeline definition rather than shipping it as boilerplate. See [`docs/pipeline-segments-plan.md`](docs/pipeline-segments-plan.md)'s "Framework / compiler contract" and "Compiling cross-container bridges" sections for the concrete design (container/multi-tenancy contract every framework's compiler must satisfy, and a `BridgeTransportCompiler` proposal for the LDIO → RDFC hop specifically).
 - [x] RdfcDockerFileCompiler: Creates an adhoc Dockerfile for RDF-Connect. This allows to include only those dependencies in a docker container which are actually used in the pipeline.
 - [ ] NifiCompiler: Compiler for [Nifi 2](https://nifi.apache.org/). 
 - [x] PipelineGenerator: Uses all previously described compilers to route the compilation flow for generating a pipeline project folder based on a Pipeline Definition. Routing is done via the registry + `applies_to` mechanism described above; producing the project folder on disk is handled by `ProjectBuilder`.

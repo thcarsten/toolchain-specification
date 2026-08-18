@@ -37,36 +37,28 @@ class ValidationReportCompiler(Compiler):
     triggering explicitly on ``<build> dct:creator tcs:PipelineEnricher``
     - the provenance triple ``PipelineGenerator`` writes immediately
     after any compiler runs - rather than a coarser signal both
-    compilers would happen to share. First use of this pattern in the
-    codebase; elsewhere two compilers' relative order has so far either
-    not mattered or fallen out of graph state each needs anyway.
+    compilers would happen to share.
 
     Side effect worth knowing: fixpoint eligibility is snapshotted once
     per iteration, and ``PipelineEnricher``'s ``dct:creator`` triple
     only exists *after* it finishes - so this compiler can't be
     eligible in the same iteration Enricher runs in, only the next one.
     ``PipelineAssembler`` has no such dependency and is already eligible
-    in Enricher's own iteration, so it runs first. Verified empirically:
-    compile order is ``..., PipelineEnricher, PipelineAssembler,
-    ValidationReportCompiler, ...`` - not strictly between the two as
-    an earlier version of this docstring claimed. Harmless for
-    correctness (``PipelineAssembler`` only adds container/``tcs:runs``
-    triples, nothing this compiler inspects), but worth a second look if
-    that ordering ever needs to be tightened back up.
+    in Enricher's own iteration, so it runs first: compile order is
+    ``..., PipelineEnricher, PipelineAssembler, ValidationReportCompiler,
+    ...``. Harmless for correctness (``PipelineAssembler`` only adds
+    container/``tcs:runs`` triples, nothing this compiler inspects).
 
-    Known limitation (resolved): :class:`PipelineExtractor` used to
-    shrink the graph down to only what is reachable from the one
-    pipeline being compiled, dropping the generic application-profile
-    shapes in ``catalog-application-profile-shapes.ttl`` (e.g.
-    ``tcs:RdfcProcessorShape``, ``tcs:PipelineComponentShape``) since
-    they float independently via ``sh:targetClass``/``sh:target`` with
-    no graph edge from the pipeline to reach them. Fixed by having
-    ``PipelineExtractor`` separately collect the forward-reachable
-    subgraph of every ``sh:NodeShape`` in the source graph and re-add
-    it after the pipeline traversal. Verified empirically:
-    ``tcs:RdfcProcessorShape`` and ``tcs:PipelineComponentShape`` both
-    now survive into the build graph alongside component-attached
-    configShapes, so ``validate_normal_shapes`` sees both kinds.
+    Generic application-profile shapes in
+    ``catalog-application-profile-shapes.ttl`` (e.g.
+    ``tcs:RdfcProcessorShape``, ``tcs:PipelineComponentShape``) float
+    independently via ``sh:targetClass``/``sh:target`` with no graph
+    edge from the pipeline reaching them; ``PipelineExtractor`` keeps
+    them in the build graph by separately collecting the
+    forward-reachable subgraph of every ``sh:NodeShape`` in the source
+    graph and re-adding it after the pipeline traversal, so
+    :meth:`validate_normal_shapes` sees both these and
+    component-attached configShapes.
     """
 
     #: Override on a subclass to change where the report is attached.
@@ -187,10 +179,9 @@ class ValidationReportCompiler(Compiler):
         (``gen.compilers[ValidationReportCompiler].validated_shapes``);
         :meth:`generate_validation_report` additionally asserts a
         ``tcs:passed`` triple per shape in this list into the attached
-        report itself (explicit sign-off obtained 2026-08-18 — the
-        standard SHACL validation report has no vocabulary for "this
-        shape was checked and passed", it only ever reports violations
-        that were found).
+        report itself — the standard SHACL validation report has no
+        vocabulary for "this shape was checked and passed", it only
+        ever reports violations that were found.
         """
         report = self.output_reader.validate(advanced=True, inference="rdfs")
         self.conforms = report.ask("?r sh:conforms true")
@@ -526,15 +517,13 @@ class ValidationReportCompiler(Compiler):
         8 in ``test suite/README.md``.
 
         The attached report is a plain SHACL validation report
-        (``sh:conforms``, ``sh:result``) plus, per user sign-off
-        (2026-08-18): one ``tcs:passed`` boolean and a copy of the
-        shape's own catalog-authored ``sh:message`` for every shape in
-        :attr:`validated_shapes` (i.e. every shape that actually had a
-        ``sh:target`` and was therefore evaluated — untargeted shapes
-        are not listed at all, there is no use in reporting on a shape
-        that was never checked), plus one ``tcs:ThroughputMatchResult``
-        per ``tcs:Channel``. No other vocabulary is added without
-        explicit sign-off first.
+        (``sh:conforms``, ``sh:result``) plus one ``tcs:passed`` boolean
+        and a copy of the shape's own catalog-authored ``sh:message``
+        for every shape in :attr:`validated_shapes` (i.e. every shape
+        that actually had a ``sh:target`` and was therefore evaluated —
+        untargeted shapes are not listed at all, there is no use in
+        reporting on a shape that was never checked), plus one
+        ``tcs:ThroughputMatchResult`` per ``tcs:Channel``.
 
         ``tcs:passed`` is derived from ``sh:sourceShape`` — a shape
         counts as passed iff no ``sh:ValidationResult`` in the pySHACL
