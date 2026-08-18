@@ -49,6 +49,7 @@ ldio:HttpInPoller a tcs:PipelineComponent, dcat:Resource;
         dcat:hadRole tcs:configShape ;
         dct:relation [
           a sh:NodeShape;
+          sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed.";
           sh:node ldio:HttpRequesterShape;
           sh:property [
               sh:path ldio:url;
@@ -86,7 +87,7 @@ ldio:HttpInPoller a tcs:PipelineComponent, dcat:Resource;
     [
         a dcat:Relationship;
         dcat:hadRole tcs:outputShape ;
-        dct:relation [ a sh:NodeShape ]
+        dct:relation [ a sh:NodeShape ; sh:message "HttpInPoller relays the raw HTTP response body verbatim — not yet RDF at this point, so no constraint can be asserted." ]
 ] .
 
 
@@ -279,6 +280,7 @@ ldio:JsonToLdAdapter a tcs:PipelineComponent, dcat:Resource ;
         dcat:hadRole tcs:configShape ;
         dct:relation [
           a sh:NodeShape;
+          sh:message "Checks that ldio:JsonToLdAdapter's wiring (context/force-content-type/max-jsonld-cache-capacity) is well-typed.";
           sh:property [
               sh:path ldio:context;
               sh:name "context";
@@ -309,7 +311,7 @@ ldio:JsonToLdAdapter a tcs:PipelineComponent, dcat:Resource ;
     [
         a dcat:Relationship;
         dcat:hadRole tcs:outputShape ;
-        dct:relation [ a sh:NodeShape ]
+        dct:relation [ a sh:NodeShape ; sh:message "JsonToLdAdapter's output fully depends on the @context supplied per instance — no generic claim holds across every possible configuration." ]
 ] .
 
 
@@ -407,6 +409,7 @@ ldio:SparqlConstructTransformer
         dcat:hadRole tcs:configShape ;
         dct:relation [
           a sh:NodeShape;
+          sh:message "Checks that ldio:SparqlConstructTransformer's wiring (query/infer) is well-typed.";
           sh:property [
               sh:path ldio:query;
               sh:name "query";
@@ -609,6 +612,7 @@ ldio:HttpOut a tcs:PipelineComponent, dcat:Resource;
         dcat:hadRole tcs:configShape ;
         dct:relation [
           a sh:NodeShape;
+          sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed.";
           sh:node ldio:HttpRequesterShape;
           sh:property [
               sh:path ldio:endpoint;
@@ -635,7 +639,7 @@ ldio:HttpOut a tcs:PipelineComponent, dcat:Resource;
     [
         a dcat:Relationship;
         dcat:hadRole tcs:passthroughShape ;
-        dct:relation [ a sh:NodeShape ]
+        dct:relation [ a sh:NodeShape ; sh:message "HttpOut serializes and POSTs the incoming model verbatim — a pure passthrough at the RDF level, no constraint on its shape." ]
 ] .
 
 

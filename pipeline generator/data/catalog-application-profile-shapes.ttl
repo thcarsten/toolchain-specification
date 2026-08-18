@@ -88,6 +88,7 @@ tcs:DockerImageConfig     rdfs:subClassOf tcs:Config .
 
 tcs:PipelineComponentShape a sh:NodeShape ;
     rdfs:label "PipelineComponent application-profile shape" ;
+    sh:message "Checks that a PipelineComponent's tcs:config/dct:requires are well-typed, it has at most one DefaultConfig per Config subtype, and it is transitively deployable via dct:requires+." ;
     sh:targetClass tcs:PipelineComponent ;
 
     sh:property [
@@ -158,6 +159,7 @@ tcs:PipelineComponentShape a sh:NodeShape ;
 
 tcs:InstancePipelineComponentShape a sh:NodeShape ;
     rdfs:label "InstancePipelineComponent application-profile shape" ;
+    sh:message "Checks that a step belongs to exactly one PipelineDefinition, specializes exactly one PipelineComponent, has at most one hasInputVar, and that any readsFrom/writesTo point at a tcs:Channel." ;
     sh:targetClass tcs:InstancePipelineComponent ;
 
     sh:property [
@@ -208,6 +210,7 @@ tcs:InstancePipelineComponentShape a sh:NodeShape ;
 # not just within one framework's segment (e.g. LDIO).
 tcs:AcyclicGraphShape a sh:NodeShape ;
     rdfs:label "Acyclic channel graph shape" ;
+    sh:message "Checks that no step transitively reads from a channel it also writes to (no cycles in the readsFrom/writesTo channel graph)." ;
     sh:targetClass tcs:InstancePipelineComponent ;
 
     sh:sparql [
@@ -233,6 +236,7 @@ tcs:AcyclicGraphShape a sh:NodeShape ;
 # be undeployable through any catalog-driven tooling).
 tcs:SpecializedComponentIsCatalogedShape a sh:NodeShape ;
     rdfs:label "Specialized component is catalogued shape" ;
+    sh:message "Checks that every step's specialized component is listed as a dcat:resource of some tcs:Catalog." ;
     sh:targetClass tcs:InstancePipelineComponent ;
 
     sh:sparql [
@@ -261,6 +265,7 @@ tcs:SpecializedComponentIsCatalogedShape a sh:NodeShape ;
 
 tcs:PipelineDefinitionShape a sh:NodeShape ;
     rdfs:label "PipelineDefinition application-profile shape" ;
+    sh:message "Checks that a PipelineDefinition has at least one step referencing it via p-plan:isStepOfPlan." ;
     sh:targetClass tcs:PipelineDefinition ;
 
     sh:sparql [
@@ -286,6 +291,7 @@ tcs:PipelineDefinitionShape a sh:NodeShape ;
 
 tcs:ConfigShape a sh:NodeShape ;
     rdfs:label "Config application-profile shape" ;
+    sh:message "Checks that a Config carries exactly one of tcs:embedded/tcs:literal, and that a tcs:literal body also declares dct:format." ;
     sh:targetClass tcs:Config ;
 
     sh:xone (
@@ -312,6 +318,7 @@ tcs:ConfigShape a sh:NodeShape ;
 
 tcs:CatalogShape a sh:NodeShape ;
     rdfs:label "Catalog application-profile shape" ;
+    sh:message "Checks that every dcat:resource of a Catalog is a tcs:PipelineComponent." ;
     sh:targetClass tcs:Catalog ;
 
     sh:property [
@@ -333,6 +340,7 @@ tcs:CatalogShape a sh:NodeShape ;
 
 tcs:PipelineBuildShape a sh:NodeShape ;
     rdfs:label "PipelineBuild application-profile shape" ;
+    sh:message "Checks that a PipelineBuild links to exactly one PipelineDefinition, and that dct:hasPart/tcs:compiledFile point at a DockerContainer/spdx:File respectively." ;
     sh:targetClass tcs:PipelineBuild ;
 
     sh:property [
@@ -365,6 +373,7 @@ tcs:PipelineBuildShape a sh:NodeShape ;
 
 tcs:DockerContainerShape a sh:NodeShape ;
     rdfs:label "DockerContainer application-profile shape" ;
+    sh:message "Checks that a DockerContainer instantiates at least one PipelineComponent and that tcs:runs points at an InstancePipelineComponent." ;
     sh:targetClass tcs:DockerContainer ;
 
     sh:property [
@@ -396,6 +405,7 @@ tcs:DockerContainerShape a sh:NodeShape ;
 
 tcs:SpdxPackageShape a sh:NodeShape ;
     rdfs:label "spdx:Package application-profile shape" ;
+    sh:message "Checks that an spdx:Package declares both spdx:name and an IRI spdx:suppliedBy, needed to emit it into pyproject.toml/package.json." ;
     sh:targetClass spdx:Package ;
 
     sh:property [
@@ -442,6 +452,7 @@ tcs:SpdxPackageShape a sh:NodeShape ;
 # requirement.
 tcs:RdfcProcessorShape a sh:NodeShape ;
     rdfs:label "RDF-Connect processor shape" ;
+    sh:message "Checks that every RDF-Connect processor declares owl:imports pointing at its processor.ttl." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -477,6 +488,7 @@ tcs:RdfcProcessorShape a sh:NodeShape ;
 # sh:property with both sh:class rdfc:Reader and sh:minCount >= 1.
 tcs:RdfcMandatoryReaderWiringShape a sh:NodeShape ;
     rdfs:label "RDF-Connect mandatory reader wiring shape" ;
+    sh:message "Checks that a step whose component declares a mandatory rdfc:Reader config path actually has tcs:readsFrom wiring." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -510,6 +522,7 @@ tcs:RdfcMandatoryReaderWiringShape a sh:NodeShape ;
 # both marked sh:minCount 1 in catalog-rdfc.ttl.
 tcs:RdfcMandatoryWriterWiringShape a sh:NodeShape ;
     rdfs:label "RDF-Connect mandatory writer wiring shape" ;
+    sh:message "Checks that a step whose component declares a mandatory rdfc:Writer config path actually has tcs:writesTo wiring." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -544,6 +557,7 @@ tcs:RdfcMandatoryWriterWiringShape a sh:NodeShape ;
 # with an empty env in the generated pipeline.ttl.
 tcs:RdfcRunnerShape a sh:NodeShape ;
     rdfs:label "RDF-Connect runner shape" ;
+    sh:message "Checks that every rdfc:Runner declares dct:requires rdfc:Orchestrator." ;
     sh:targetClass rdfc:Runner ;
 
     sh:property [
@@ -561,6 +575,7 @@ tcs:RdfcRunnerShape a sh:NodeShape ;
 # is missing.
 tcs:RdfcOrchestratorConfigShape a sh:NodeShape ;
     rdfs:label "RDF-Connect orchestrator config shape" ;
+    sh:message "Checks that rdfc:Orchestrator carries both a tcs:DockerComposeConfig and a tcs:DockerImageConfig." ;
     sh:targetNode rdfc:Orchestrator ;
 
     sh:sparql [
@@ -602,6 +617,7 @@ tcs:RdfcOrchestratorConfigShape a sh:NodeShape ;
 # required by rdfc:*Runner, and packages required by RDFC processors.
 tcs:RdfcPackageManagerShape a sh:NodeShape ;
     rdfs:label "RDF-Connect package manager shape" ;
+    sh:message "Checks that every spdx:Package in the RDF-Connect dependency closure declares spdx:suppliedBy as :pip or :npm." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -639,6 +655,7 @@ tcs:RdfcPackageManagerShape a sh:NodeShape ;
 # exempt: they are infrastructure, not processing steps.
 tcs:LdioComponentTypeShape a sh:NodeShape ;
     rdfs:label "LDIO component type shape" ;
+    sh:message "Checks that every LDIO processing component declares exactly one ldio:type (Input/Adapter/Transformer/Output) and an rdfs:label." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -679,6 +696,7 @@ tcs:LdioComponentTypeShape a sh:NodeShape ;
 # carries `ldio:type` (i.e., is an LDIO processing component).
 tcs:LdioStepSerialityShape a sh:NodeShape ;
     rdfs:label "LDIO step seriality shape" ;
+    sh:message "Checks that every LDIO step has at most one upstream and one downstream channel (LDIO pipelines are strictly serial)." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -720,6 +738,7 @@ tcs:LdioStepSerialityShape a sh:NodeShape ;
 # not caught here) doesn't accidentally validate.
 tcs:LdioStepOrderingShape a sh:NodeShape ;
     rdfs:label "LDIO step ordering shape" ;
+    sh:message "Checks that an LDIO Output step is terminal and an LDIO Input step is initial within its LDIO segment." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -774,6 +793,7 @@ tcs:LdioStepOrderingShape a sh:NodeShape ;
 # schema.
 tcs:LdioSingularStepShape a sh:NodeShape ;
     rdfs:label "LDIO singular Input/Adapter shape" ;
+    sh:message "Checks that a pipeline has at most one LDIO Input step and at most one LDIO Adapter step (LDIO's input:/input.adapter: YAML keys are singular)." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -845,6 +865,7 @@ tcs:LdioSingularStepShape a sh:NodeShape ;
 # reaching a DockerComposeConfig transitively via dct:requires+.
 tcs:SwComponentDockerConfigShape a sh:NodeShape ;
     rdfs:label "Semantic.works component DockerComposeConfig shape" ;
+    sh:message "Checks that every semantic.works component directly carries a tcs:DockerComposeConfig." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -885,6 +906,7 @@ tcs:SwComponentDockerConfigShape a sh:NodeShape ;
 # type triple is harmless boilerplate the compiler ignores.
 tcs:SwStepEnvValueShape a sh:NodeShape ;
     rdfs:label "Semantic.works step env-value literal shape" ;
+    sh:message "Checks that semantic.works step config values are RDF literals, not IRIs or blank nodes." ;
 
     sh:target [
         a sh:SPARQLTarget ;

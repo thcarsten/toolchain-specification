@@ -301,7 +301,7 @@ The LDIO workbench service is currently declared with an outdated image tag (`ld
 
 ### 5.5. Test-suite runner
 
-Static SHACL validation of a pipeline definition against the tcs application profile can be run today via `GraphReader.validate()` on the merged catalog + pipeline graph — the demo notebook does exactly this. What is not yet built is the pre-generator runner design captured in [`test suite/README.md`](../../test%20suite/README.md), including the bridge to the external shape-matching algorithm for input/output shape validation.
+Static SHACL validation of a pipeline definition against the tcs application profile can be run today via `GraphReader.validate()` on the merged catalog + pipeline graph — the demo notebook does exactly this. What is not yet built is the pre-generator runner design captured in [`test suite/README.md`](../../test%20suite/README.md), including the native Python shape-matching library (in development by a colleague) for input/output shape validation.
 
 ## 6. Future directions
 The pipeline generator is not fully implemented yet, it is a work in progress. We have the following goals for the year 2026:

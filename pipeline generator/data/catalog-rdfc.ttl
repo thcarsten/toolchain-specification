@@ -59,6 +59,7 @@ rdfc:SPARQLIngest a tcs:PipelineComponent, dcat:Resource;
         dcat:hadRole tcs:configShape ;
         dct:relation [
             a sh:NodeShape ;
+            sh:message "Checks that rdfc:SPARQLIngest's wiring (memberStream/ingestConfig/sparqlWriter) is well-typed." ;
             sh:property [
                 sh:path rdfc:memberStream;
                 sh:name "memberStream";
@@ -156,6 +157,7 @@ rdfc:HttpFetch a tcs:PipelineComponent, dcat:Resource ;
         dcat:hadRole tcs:configShape ;
         dct:relation [
             a sh:NodeShape ;
+            sh:message "Checks that rdfc:HttpFetch's wiring (writer/url/options) is well-typed." ;
             sh:property [
                 sh:path rdfc:writer ;
                 sh:name "writer" ;
@@ -177,6 +179,7 @@ rdfc:HttpFetch a tcs:PipelineComponent, dcat:Resource ;
 
 :HttpFetchOptionsShape a sh:NodeShape;
   sh:targetObjectsOf rdfc:options;
+  sh:message "Checks that rdfc:HttpFetch's rdfc:options body is well-typed.";
   sh:property [
     sh:path rdfc:HttpFetchAuth;
     sh:name "auth";
@@ -234,6 +237,7 @@ rdfc:HttpFetch a tcs:PipelineComponent, dcat:Resource ;
 
 :HttpFetchAuthShape a sh:NodeShape;
   sh:targetObjectsOf rdfc:HttpFetchAuth;
+  sh:message "Checks that rdfc:HttpFetch's auth config body is well-typed.";
   sh:property [
     sh:path rdfc:type;
     sh:name "type";
@@ -267,6 +271,7 @@ rdfc:HttpServer a tcs:PipelineComponent, dcat:Resource ;
         dcat:hadRole tcs:configShape ;
         dct:relation [
             a sh:NodeShape ;
+            sh:message "Checks that rdfc:HttpServer's wiring (port/writer/options) is well-typed." ;
             sh:property [
               sh:path rdfc:port;
               sh:name "port";
@@ -294,11 +299,12 @@ rdfc:HttpServer a tcs:PipelineComponent, dcat:Resource ;
     [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
-        dct:relation [ a sh:NodeShape ]
+        dct:relation [ a sh:NodeShape ; sh:message "HttpServer forwards every incoming request body unchanged — no constraint on its shape." ]
     ] .
 
 :HttpServerOptionsShape a sh:NodeShape;
   sh:targetObjectsOf rdfc:options;
+  sh:message "Checks that rdfc:HttpServer's rdfc:options body is well-typed.";
   sh:property [
     sh:path rdfc:host;
     sh:name "host";
@@ -353,6 +359,7 @@ rdfc:Sdsify a tcs:PipelineComponent, dcat:Resource ;
         dcat:hadRole tcs:configShape ;
         dct:relation [
             a sh:NodeShape ;
+            sh:message "Checks that rdfc:Sdsify's wiring (input/output/metadataOutput/metadataConfig/typeFilter/shape/readAsStream) is well-typed." ;
             sh:property [
               sh:class rdfc:Reader;
               sh:path rdfc:input;
@@ -410,12 +417,13 @@ rdfc:Sdsify a tcs:PipelineComponent, dcat:Resource ;
     [
         a dcat:Relationship ;
         dcat:hadRole tcs:outputShape ;
-        dct:relation [ a sh:NodeShape ]
+        dct:relation [ a sh:NodeShape ; sh:message "Sdsify wraps whatever matched rdfc:typeFilter as a CBD-per-record SDS member — no non-trivial content schema can be asserted at the component level." ]
     ] .
 
 
 :MetadataConfigShape a sh:NodeShape;
   sh:targetObjectsOf rdfc:metadataConfig;
+  sh:message "Checks that rdfc:Sdsify's metadataConfig body is well-typed.";
   sh:property [
     sh:nodeKind sh:IRI;
     sh:path rdfc:streamId;
@@ -472,6 +480,7 @@ rdfc:SkolemizationProcessor a tcs:PipelineComponent, dcat:Resource ;
         dcat:hadRole tcs:configShape ;
         dct:relation [
             a sh:NodeShape ;
+            sh:message "Checks that rdfc:SkolemizationProcessor's wiring (incoming/outgoing/mime) is well-typed." ;
             sh:property [
                 sh:path rdfc:incoming ;
                 sh:name "incoming" ;
@@ -496,7 +505,7 @@ rdfc:SkolemizationProcessor a tcs:PipelineComponent, dcat:Resource ;
     [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
-        dct:relation [ a sh:NodeShape ]
+        dct:relation [ a sh:NodeShape ; sh:message "SkolemizationProcessor rewrites blank-node subjects to named IRIs but preserves the star pattern per subject — no constraint on its shape." ]
     ] .
 
 
@@ -521,6 +530,7 @@ rdfc:LogProcessorJs a tcs:PipelineComponent, dcat:Resource ;
         dcat:hadRole tcs:configShape ;
         dct:relation [
             a sh:NodeShape ;
+            sh:message "Checks that rdfc:LogProcessorJs's wiring (reader/writer/label/level/raw/readAsStream) is well-typed." ;
             sh:property [
                 sh:path rdfc:reader ;
                 sh:name "reader" ;
@@ -579,6 +589,7 @@ rdfc:LogProcessorPy a tcs:PipelineComponent, dcat:Resource ;
         dcat:hadRole tcs:configShape ;
         dct:relation [
             a sh:NodeShape ;
+            sh:message "Checks that rdfc:LogProcessorPy's wiring (reader/writer/label/level/raw) is well-typed." ;
             sh:property [
                 sh:path rdfc:reader ;
                 sh:name "reader" ;
@@ -636,6 +647,7 @@ tm:ThresholdMonitorJs a tcs:PipelineComponent, dcat:Resource ;
         dcat:hadRole tcs:configShape ;
         dct:relation [
             a sh:NodeShape ;
+            sh:message "Checks that tm:ThresholdMonitorJs's wiring (reader/writer/label/creator/max/min/path/stream) is well-typed." ;
             sh:property [
                 sh:path rdfc:reader ;
                 sh:name "reader" ;
@@ -712,6 +724,7 @@ proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource ;
         dcat:hadRole tcs:configShape ;
         dct:relation [
             a sh:NodeShape ;
+            sh:message "Checks that proc:JsonLdToNQuads's wiring (reader/writer) is well-typed." ;
             sh:property [
                 sh:path rdfc:reader ;
                 sh:name "reader" ;
@@ -733,7 +746,7 @@ proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource ;
     [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
-        dct:relation [ a sh:NodeShape ]
+        dct:relation [ a sh:NodeShape ; sh:message "JsonLdToNQuads changes serialization only — the same graph flows through, just re-encoded as N-Quads." ]
     ] .
 
 :RdfcOrchestratorDockerCompose
@@ -823,6 +836,7 @@ CMD ["/bin/bash"]
 
 :IngestConfigShape a sh:NodeShape;
   sh:targetObjectsOf rdfc:ingestConfig;
+  sh:message "Checks that rdfc:SPARQLIngest's ingestConfig body is well-typed.";
   sh:property [
     sh:path rdfc:operationMode;
     sh:datatype xsd:string;
@@ -885,6 +899,7 @@ CMD ["/bin/bash"]
 
 :PerformanceConfigShape a sh:NodeShape;
   sh:targetObjectsOf rdfc:measurePerformance;
+  sh:message "Checks that rdfc:measurePerformance's config body is well-typed.";
   sh:property [
     sh:path rdfc:name;
     sh:datatype xsd:string;
@@ -913,6 +928,7 @@ CMD ["/bin/bash"]
 
 :ChangeSemanticsShape a sh:NodeShape;
   sh:targetObjectsOf rdfc:changeSemantics;
+  sh:message "Checks that rdfc:changeSemantics's config body is well-typed.";
   sh:property [
     sh:path rdfc:changeTypePath;
     sh:datatype xsd:string;
@@ -941,6 +957,7 @@ CMD ["/bin/bash"]
 
 :TransactionConfigShape a sh:NodeShape;
   sh:targetObjectsOf rdfc:transactionConfig;
+  sh:message "Checks that rdfc:transactionConfig's config body is well-typed.";
   sh:property [
     sh:path rdfc:transactionIdPath;
     sh:datatype xsd:string;

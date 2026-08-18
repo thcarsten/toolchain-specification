@@ -1,213 +1,205 @@
 @base <file:///workspace/pipeline/> .
 @prefix : <http://example.org/example/> .
 @prefix demo: <http://example.org/example/demonstrator/> .
-@prefix ldio: <http://example.org/example/ldio/> .
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix tcs: <https://w3id.org/toolchain#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-:ChangeSemanticsShape a tcs:ValidatedShape .
+:ChangeSemanticsShape sh:message "Checks that rdfc:changeSemantics's config body is well-typed." ;
+    tcs:passed true .
 
-:HttpFetchAuthShape a tcs:ValidatedShape .
+:HttpFetchAuthShape sh:message "Checks that rdfc:HttpFetch's auth config body is well-typed." ;
+    tcs:passed true .
 
-:HttpFetchOptionsShape a tcs:ValidatedShape .
+:HttpFetchOptionsShape sh:message "Checks that rdfc:HttpFetch's rdfc:options body is well-typed." ;
+    tcs:passed true .
 
-:HttpServerOptionsShape a tcs:ValidatedShape .
+:HttpServerOptionsShape sh:message "Checks that rdfc:HttpServer's rdfc:options body is well-typed." ;
+    tcs:passed true .
 
-:IngestConfigShape a tcs:ValidatedShape .
+:IngestConfigShape sh:message "Checks that rdfc:SPARQLIngest's ingestConfig body is well-typed." ;
+    tcs:passed true .
 
-:MetadataConfigShape a tcs:ValidatedShape .
+:MetadataConfigShape sh:message "Checks that rdfc:Sdsify's metadataConfig body is well-typed." ;
+    tcs:passed true .
 
-:PerformanceConfigShape a tcs:ValidatedShape .
+:PerformanceConfigShape sh:message "Checks that rdfc:measurePerformance's config body is well-typed." ;
+    tcs:passed true .
 
-:TransactionConfigShape a tcs:ValidatedShape .
-
-demo:PlaceShape a tcs:UntargetedShape .
-
-demo:QuantityValueShape a tcs:UntargetedShape .
-
-ldio:HttpRequesterShape a tcs:UntargetedShape .
-
-ldio:LdesClientShape a tcs:UntargetedShape .
-
-ldio:RdfWriterShape a tcs:UntargetedShape .
-
-ldio:StatePersistenceShape a tcs:UntargetedShape .
-
-:nodeshape_0 a tcs:UntargetedShape .
-
-:nodeshape_1 a tcs:ValidatedShape .
-
-:nodeshape_11 a tcs:UntargetedShape .
-
-:nodeshape_13 a tcs:ValidatedShape .
-
-:nodeshape_16 a tcs:UntargetedShape .
-
-:nodeshape_18 a tcs:ValidatedShape .
-
-:nodeshape_20 a tcs:ValidatedShape .
-
-:nodeshape_27 a tcs:UntargetedShape .
-
-:nodeshape_28 a tcs:UntargetedShape .
-
-:nodeshape_33 a tcs:ValidatedShape .
-
-:nodeshape_35 a tcs:UntargetedShape .
-
-:nodeshape_37 a tcs:ValidatedShape .
-
-:nodeshape_40 a tcs:ValidatedShape .
-
-:nodeshape_42 a tcs:ValidatedShape .
-
-:nodeshape_48 a tcs:UntargetedShape .
-
-:nodeshape_52 a tcs:UntargetedShape .
-
-:nodeshape_57 a tcs:UntargetedShape .
-
-:nodeshape_58 a tcs:ValidatedShape .
-
-:nodeshape_59 a tcs:UntargetedShape .
-
-:nodeshape_64 a tcs:UntargetedShape .
-
-:nodeshape_65 a tcs:ValidatedShape .
-
-:nodeshape_67 a tcs:ValidatedShape .
-
-:nodeshape_68 a tcs:UntargetedShape .
-
-:nodeshape_7 a tcs:UntargetedShape .
+:TransactionConfigShape sh:message "Checks that rdfc:transactionConfig's config body is well-typed." ;
+    tcs:passed true .
 
 :throughputresult_0 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_62 ;
+    tcs:forChannel :channel_0 ;
+    tcs:inputShape demo:SosaWaterLevelObservationShape ;
+    tcs:matches "unknown" ;
+    tcs:outputShape demo:SosaWaterLevelObservationShape .
+
+:throughputresult_1 a tcs:ThroughputMatchResult ;
+    tcs:forChannel demo:sdsViolationsMeta ;
+    tcs:inputShape _:Nf8792284a55a470c8163805293e25ad8 ;
+    tcs:matches "unknown" ;
+    tcs:outputShape [ ] .
+
+:throughputresult_10 a tcs:ThroughputMatchResult ;
+    tcs:forChannel demo:sdsMeasurementsMeta ;
+    tcs:inputShape _:Nf8792284a55a470c8163805293e25ad8 ;
+    tcs:matches "unknown" ;
+    tcs:outputShape [ ] .
+
+:throughputresult_11 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_12 ;
     tcs:inputShape demo:WaterLevelPropertyValueShape ;
     tcs:matches "unknown" ;
     tcs:outputShape demo:WaterLevelPropertyValueShape .
 
-:throughputresult_1 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_12 ;
-    tcs:inputShape :emptyshape_0 ;
-    tcs:matches "unknown" ;
-    tcs:outputShape :nodeshape_19 .
-
-:throughputresult_10 a tcs:ThroughputMatchResult ;
-    tcs:forChannel demo:sdsMeasurements ;
-    tcs:inputShape :nodeshape_53 ;
-    tcs:matches "unknown" ;
-    tcs:outputShape demo:SosaWaterLevelObservationShape .
-
-:throughputresult_11 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_39 ;
-    tcs:inputShape :nodeshape_61 ;
-    tcs:matches "unknown" ;
-    tcs:outputShape :emptyshape_8 .
-
 :throughputresult_2 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_31 ;
-    tcs:inputShape demo:SosaWaterLevelObservationShape ;
+    tcs:forChannel :channel_32 ;
+    tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
-    tcs:outputShape demo:SosaWaterLevelObservationShape .
+    tcs:outputShape [ ] .
 
 :throughputresult_3 a tcs:ThroughputMatchResult ;
-    tcs:forChannel demo:sdsMeasurementsMeta ;
-    tcs:inputShape :nodeshape_53 ;
+    tcs:forChannel :channel_26 ;
+    tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
-    tcs:outputShape :emptyshape_10 .
+    tcs:outputShape [ ] .
 
 :throughputresult_4 a tcs:ThroughputMatchResult ;
-    tcs:forChannel demo:sdsViolations ;
-    tcs:inputShape :nodeshape_53 ;
+    tcs:forChannel :channel_29 ;
+    tcs:inputShape demo:SosaWaterLevelObservationShape ;
     tcs:matches "unknown" ;
-    tcs:outputShape :emptyshape_12 .
+    tcs:outputShape demo:SosaWaterLevelObservationShape .
 
 :throughputresult_5 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_44 ;
-    tcs:inputShape demo:SosaWaterLevelObservationShape ;
+    tcs:forChannel demo:sdsMeasurements ;
+    tcs:inputShape _:Nf8792284a55a470c8163805293e25ad8 ;
     tcs:matches "unknown" ;
     tcs:outputShape demo:SosaWaterLevelObservationShape .
 
 :throughputresult_6 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_24 ;
+    tcs:forChannel :channel_21 ;
     tcs:inputShape demo:SosaWaterLevelObservationShape ;
     tcs:matches "unknown" ;
     tcs:outputShape demo:SosaWaterLevelObservationShape .
 
 :throughputresult_7 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_5 ;
+    tcs:forChannel :channel_38 ;
     tcs:inputShape demo:SosaWaterLevelObservationShape ;
     tcs:matches "unknown" ;
     tcs:outputShape demo:SosaWaterLevelObservationShape .
 
 :throughputresult_8 a tcs:ThroughputMatchResult ;
-    tcs:forChannel demo:sdsViolationsMeta ;
-    tcs:inputShape :nodeshape_53 ;
+    tcs:forChannel :channel_61 ;
+    tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
-    tcs:outputShape :emptyshape_15 .
+    tcs:outputShape [ ] .
 
 :throughputresult_9 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_38 ;
-    tcs:inputShape :emptyshape_4 ;
+    tcs:forChannel demo:sdsViolations ;
+    tcs:inputShape _:Nf8792284a55a470c8163805293e25ad8 ;
     tcs:matches "unknown" ;
-    tcs:outputShape :emptyshape_6 .
+    tcs:outputShape [ ] .
 
-tcs:AcyclicGraphShape a tcs:ValidatedShape .
+tcs:AcyclicGraphShape sh:message "Checks that no step transitively reads from a channel it also writes to (no cycles in the readsFrom/writesTo channel graph)." ;
+    tcs:passed true .
 
-tcs:CatalogShape a tcs:ValidatedShape .
+tcs:CatalogShape sh:message "Checks that every dcat:resource of a Catalog is a tcs:PipelineComponent." ;
+    tcs:passed true .
 
-tcs:ConfigShape a tcs:ValidatedShape .
+tcs:ConfigShape sh:message "Checks that a Config carries exactly one of tcs:embedded/tcs:literal, and that a tcs:literal body also declares dct:format." ;
+    tcs:passed true .
 
-tcs:DockerContainerShape a tcs:ValidatedShape .
+tcs:DockerContainerShape sh:message "Checks that a DockerContainer instantiates at least one PipelineComponent and that tcs:runs points at an InstancePipelineComponent." ;
+    tcs:passed true .
 
-tcs:InstancePipelineComponentShape a tcs:ValidatedShape .
+tcs:InstancePipelineComponentShape sh:message "Checks that a step belongs to exactly one PipelineDefinition, specializes exactly one PipelineComponent, has at most one hasInputVar, and that any readsFrom/writesTo point at a tcs:Channel." ;
+    tcs:passed true .
 
-tcs:LdioComponentTypeShape a tcs:ValidatedShape .
+tcs:LdioComponentTypeShape sh:message "Checks that every LDIO processing component declares exactly one ldio:type (Input/Adapter/Transformer/Output) and an rdfs:label." ;
+    tcs:passed true .
 
-tcs:LdioSingularStepShape a tcs:ValidatedShape .
+tcs:LdioSingularStepShape sh:message "Checks that a pipeline has at most one LDIO Input step and at most one LDIO Adapter step (LDIO's input:/input.adapter: YAML keys are singular)." ;
+    tcs:passed true .
 
-tcs:LdioStepOrderingShape a tcs:ValidatedShape .
+tcs:LdioStepOrderingShape sh:message "Checks that an LDIO Output step is terminal and an LDIO Input step is initial within its LDIO segment." ;
+    tcs:passed true .
 
-tcs:LdioStepSerialityShape a tcs:ValidatedShape .
+tcs:LdioStepSerialityShape sh:message "Checks that every LDIO step has at most one upstream and one downstream channel (LDIO pipelines are strictly serial)." ;
+    tcs:passed true .
 
-tcs:PipelineBuildShape a tcs:ValidatedShape .
+tcs:PipelineBuildShape sh:message "Checks that a PipelineBuild links to exactly one PipelineDefinition, and that dct:hasPart/tcs:compiledFile point at a DockerContainer/spdx:File respectively." ;
+    tcs:passed true .
 
-tcs:PipelineComponentShape a tcs:ValidatedShape .
+tcs:PipelineComponentShape sh:message "Checks that a PipelineComponent's tcs:config/dct:requires are well-typed, it has at most one DefaultConfig per Config subtype, and it is transitively deployable via dct:requires+." ;
+    tcs:passed true .
 
-tcs:PipelineDefinitionShape a tcs:ValidatedShape .
+tcs:PipelineDefinitionShape sh:message "Checks that a PipelineDefinition has at least one step referencing it via p-plan:isStepOfPlan." ;
+    tcs:passed true .
 
-tcs:RdfcMandatoryReaderWiringShape a tcs:ValidatedShape .
+tcs:RdfcMandatoryReaderWiringShape sh:message "Checks that a step whose component declares a mandatory rdfc:Reader config path actually has tcs:readsFrom wiring." ;
+    tcs:passed true .
 
-tcs:RdfcMandatoryWriterWiringShape a tcs:ValidatedShape .
+tcs:RdfcMandatoryWriterWiringShape sh:message "Checks that a step whose component declares a mandatory rdfc:Writer config path actually has tcs:writesTo wiring." ;
+    tcs:passed true .
 
-tcs:RdfcOrchestratorConfigShape a tcs:ValidatedShape .
+tcs:RdfcOrchestratorConfigShape sh:message "Checks that rdfc:Orchestrator carries both a tcs:DockerComposeConfig and a tcs:DockerImageConfig." ;
+    tcs:passed true .
 
-tcs:RdfcPackageManagerShape a tcs:ValidatedShape .
+tcs:RdfcPackageManagerShape sh:message "Checks that every spdx:Package in the RDF-Connect dependency closure declares spdx:suppliedBy as :pip or :npm." ;
+    tcs:passed true .
 
-tcs:RdfcProcessorShape a tcs:ValidatedShape .
+tcs:RdfcProcessorShape sh:message "Checks that every RDF-Connect processor declares owl:imports pointing at its processor.ttl." ;
+    tcs:passed true .
 
-tcs:RdfcRunnerShape a tcs:ValidatedShape .
+tcs:RdfcRunnerShape sh:message "Checks that every rdfc:Runner declares dct:requires rdfc:Orchestrator." ;
+    tcs:passed true .
 
-tcs:SpdxPackageShape a tcs:ValidatedShape .
+tcs:SpdxPackageShape sh:message "Checks that an spdx:Package declares both spdx:name and an IRI spdx:suppliedBy, needed to emit it into pyproject.toml/package.json." ;
+    tcs:passed true .
 
-tcs:SpecializedComponentIsCatalogedShape a tcs:ValidatedShape .
+tcs:SpecializedComponentIsCatalogedShape sh:message "Checks that every step's specialized component is listed as a dcat:resource of some tcs:Catalog." ;
+    tcs:passed true .
 
-tcs:SwComponentDockerConfigShape a tcs:ValidatedShape .
+tcs:SwComponentDockerConfigShape sh:message "Checks that every semantic.works component directly carries a tcs:DockerComposeConfig." ;
+    tcs:passed true .
 
-tcs:SwStepEnvValueShape a tcs:ValidatedShape .
+tcs:SwStepEnvValueShape sh:message "Checks that semantic.works step config values are RDF literals, not IRIs or blank nodes." ;
+    tcs:passed true .
 
-:nodeshape_19 a tcs:UntargetedShape .
+[] sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed." ;
+    tcs:passed true .
 
-:nodeshape_61 a tcs:UntargetedShape .
+[] sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed." ;
+    tcs:passed true .
 
-demo:WaterLevelPropertyValueShape a tcs:UntargetedShape .
+[] sh:message "Checks that tm:ThresholdMonitorJs's wiring (reader/writer/label/creator/max/min/path/stream) is well-typed." ;
+    tcs:passed true .
 
-:nodeshape_53 a tcs:UntargetedShape .
-
-demo:SosaWaterLevelObservationShape a tcs:UntargetedShape .
+[] sh:message "Checks that rdfc:LogProcessorJs's wiring (reader/writer/label/level/raw/readAsStream) is well-typed." ;
+    tcs:passed true .
 
 [] a sh:ValidationReport ;
     sh:conforms true .
+
+[] sh:message "Checks that rdfc:Sdsify's wiring (input/output/metadataOutput/metadataConfig/typeFilter/shape/readAsStream) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that rdfc:HttpServer's wiring (port/writer/options) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that rdfc:SkolemizationProcessor's wiring (incoming/outgoing/mime) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that proc:JsonLdToNQuads's wiring (reader/writer) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that ldio:SparqlConstructTransformer's wiring (query/infer) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that rdfc:SPARQLIngest's wiring (memberStream/ingestConfig/sparqlWriter) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that ldio:JsonToLdAdapter's wiring (context/force-content-type/max-jsonld-cache-capacity) is well-typed." ;
+    tcs:passed true .
 
