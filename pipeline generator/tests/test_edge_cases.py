@@ -555,8 +555,11 @@ def test_config_neither_embedded_nor_literal_triggers_shape(catalog_with_shapes)
         demo:BadConfig a tcs:Config .
     """,
     )
+    # ConfigShape's own top-level sh:message (added 2026-08-18) now wins
+    # over pySHACL's default sh:xone message for any violation inside it.
     assert_shacl_violation(
-        catalog_with_shapes, message_contains="must conform to exactly one shape"
+        catalog_with_shapes,
+        message_contains="carries exactly one of tcs:embedded/tcs:literal",
     )
 
 
@@ -569,8 +572,10 @@ def test_config_both_embedded_and_literal_triggers_shape(catalog_with_shapes):
             tcs:literal "x" ; dct:format "text/plain" .
     """,
     )
+    # Same shape-level sh:message override as above.
     assert_shacl_violation(
-        catalog_with_shapes, message_contains="must conform to exactly one shape"
+        catalog_with_shapes,
+        message_contains="carries exactly one of tcs:embedded/tcs:literal",
     )
 
 

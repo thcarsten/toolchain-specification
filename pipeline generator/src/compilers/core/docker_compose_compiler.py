@@ -16,6 +16,12 @@ class DockerComposeCompiler(Compiler):
     to the graph.
     """
 
+    def __init__(self, graph: Graph) -> None:
+        super().__init__(graph)
+        # Intermediate state — populated in ``compile``.
+        self.compose_file: dict = {"services": {}}
+        self.config_service_name: dict[str, str] = {}
+
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
         """Triggered once ``tcs:isFinishing true`` is set on the build and
@@ -28,6 +34,7 @@ class DockerComposeCompiler(Compiler):
 
     def compile(self) -> Graph:
         self.merge_docker_compose_configs()
+        self.fold_in_depends_on()
         self.attach_docker_compose_file()
         return self.output_reader.graph
 
@@ -35,7 +42,9 @@ class DockerComposeCompiler(Compiler):
         """Aggregate every ``tcs:DockerComposeConfig`` in the build graph
         into one normalized compose-file dict, stashed on
         :attr:`compose_file` for :meth:`attach_docker_compose_file` to
-        serialize.
+        serialize. Also records, on :attr:`config_service_name`, the
+        compose service name each config normalized to — reused by
+        :meth:`fold_in_depends_on` instead of re-parsing.
         """
         # Sorted for reproducibility — SPARQL SELECT row order isn't
         # guaranteed stable, and this loop's order determines which
@@ -59,8 +68,11 @@ class DockerComposeCompiler(Compiler):
         # clobber the other.
         compose_file: dict = {"services": {}}
         contributed_by: dict[str, str] = {}
+        config_service_name: dict[str, str] = {}
         for config_id in config_list:
             normalized = parse_docker_compose_config(self.output_reader, config_id)
+            if normalized.get("services"):
+                config_service_name[config_id] = next(iter(normalized["services"]))
             for key, val in normalized.items():
                 if isinstance(compose_file.get(key), dict) and isinstance(val, dict):
                     for name in val:
@@ -78,6 +90,115 @@ class DockerComposeCompiler(Compiler):
                     compose_file[key] = val
 
         self.compose_file = compose_file
+        self.config_service_name = config_service_name
+
+    def fold_in_depends_on(self) -> None:
+        """Add a ``depends_on`` list to every service in :attr:`compose_file`
+        that has one, combining two sources of container-to-container
+        dependency:
+
+        1. **Explicit** — a ``dct:requires`` edge between two components
+           that each already live in a *different* ``tcs:DockerContainer``
+           (see :meth:`_lookup_explicit_container_dependencies`).
+        2. **Flow-order fallback** — a ``tcs:Channel`` crossing two
+           different containers, only for container pairs the explicit
+           source above has no opinion about (see
+           :meth:`_lookup_floworder_container_dependencies`).
+
+        Neither source is itself queried for containers that don't own a
+        compose service (e.g. a processor folded into its orchestrator's
+        container by ``PipelineAssembler``) — :meth:`_lookup_container_service_names`
+        maps a container to ``None`` in that case, and such pairs are
+        dropped rather than turned into a self-depends_on or an entry
+        pointing at a nonexistent service.
+        """
+        container_service = self._lookup_container_service_names()
+        explicit = self._lookup_explicit_container_dependencies()
+        floworder = self._lookup_floworder_container_dependencies(explicit)
+
+        depends_on: dict[str, set[str]] = {}
+        for container1, container2 in explicit | floworder:
+            name1 = container_service.get(container1)
+            name2 = container_service.get(container2)
+            if name1 is None or name2 is None or name1 == name2:
+                continue
+            depends_on.setdefault(name1, set()).add(name2)
+
+        for name, deps in depends_on.items():
+            if name in self.compose_file["services"]:
+                self.compose_file["services"][name]["depends_on"] = sorted(deps)
+
+    def _lookup_container_service_names(self) -> dict[str, str]:
+        """Map each ``tcs:DockerContainer`` to the compose service name it
+        corresponds to, via whichever component it instantiates owns a
+        ``tcs:DockerComposeConfig`` (``PipelineAssembler`` builds exactly
+        one container per such component). Reuses
+        :attr:`config_service_name` — the names :meth:`merge_docker_compose_configs`
+        already derived — instead of re-parsing configs a second time.
+        """
+        rows = self.output_reader.select(
+            "?container ?config",
+            """
+            ?container a tcs:DockerContainer ; tcs:instantiates ?component .
+            ?component tcs:config ?config .
+            ?config a tcs:DockerComposeConfig .
+            """,
+        )
+        return {
+            container: self.config_service_name[config]
+            for container, config in zip(rows["container"], rows["config"])
+            if config in self.config_service_name
+        }
+
+    def _lookup_explicit_container_dependencies(self) -> set[tuple[str, str]]:
+        """Phase 1: container pairs ``(c1, c2)`` meaning c1 depends_on c2,
+        from an explicit ``dct:requires`` edge between two components that
+        each already live in a *different* ``tcs:DockerContainer``. A
+        ``dct:requires`` edge between a component and the microservice
+        ``PipelineAssembler`` folds it into never crosses containers, so
+        this only ever fires for genuine cross-container software
+        dependencies (e.g. ``sw:loket-error-alert-service dct:requires
+        sw:mu-delta-notifier``).
+        """
+        rows = self.output_reader.select(
+            "?c1 ?c2",
+            """
+            ?c1 a tcs:DockerContainer ; tcs:instantiates ?comp1 .
+            ?comp1 dct:requires ?comp2 .
+            ?c2 a tcs:DockerContainer ; tcs:instantiates ?comp2 .
+            FILTER (?c1 != ?c2)
+            """,
+        )
+        return set(zip(rows["c1"], rows["c2"]))
+
+    def _lookup_floworder_container_dependencies(
+        self, explicit_pairs: set[tuple[str, str]]
+    ) -> set[tuple[str, str]]:
+        """Phase 2 (fallback): for a ``tcs:Channel`` crossing two different
+        containers, the producing container depends_on the consuming
+        container — mirrors the demonstrator's hand-written
+        ``ldio-workbench -> rdfc`` edge, which has no ``dct:requires``
+        counterpart at all. Skipped for any container pair Phase 1
+        already has an opinion about, in either direction — avoids both a
+        duplicate and a 2-cycle (docker-compose rejects mutual
+        depends_on).
+        """
+        covered = {frozenset(pair) for pair in explicit_pairs}
+        rows = self.output_reader.select(
+            "?cProd ?cCons",
+            """
+            ?prodStep tcs:writesTo ?ch .
+            ?consStep tcs:readsFrom ?ch .
+            ?cProd tcs:runs ?prodStep .
+            ?cCons tcs:runs ?consStep .
+            FILTER (?cProd != ?cCons)
+            """,
+        )
+        return {
+            (c_prod, c_cons)
+            for c_prod, c_cons in zip(rows["cProd"], rows["cCons"])
+            if frozenset((c_prod, c_cons)) not in covered
+        }
 
     def attach_docker_compose_file(self) -> None:
         """Serialize :attr:`compose_file` to YAML and attach it as

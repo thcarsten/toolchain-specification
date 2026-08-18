@@ -30,76 +30,76 @@
     tcs:passed true .
 
 :throughputresult_0 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_0 ;
+    tcs:forChannel :channel_22 ;
     tcs:inputShape demo:SosaWaterLevelObservationShape ;
     tcs:matches "unknown" ;
     tcs:outputShape demo:SosaWaterLevelObservationShape .
 
 :throughputresult_1 a tcs:ThroughputMatchResult ;
-    tcs:forChannel demo:sdsViolationsMeta ;
-    tcs:inputShape _:Nf8792284a55a470c8163805293e25ad8 ;
+    tcs:forChannel :channel_14 ;
+    tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
 :throughputresult_10 a tcs:ThroughputMatchResult ;
     tcs:forChannel demo:sdsMeasurementsMeta ;
-    tcs:inputShape _:Nf8792284a55a470c8163805293e25ad8 ;
+    tcs:inputShape _:Neaa44aab594b4fc2ad40cabf176eabf5 ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
 :throughputresult_11 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_12 ;
-    tcs:inputShape demo:WaterLevelPropertyValueShape ;
+    tcs:forChannel demo:sdsMeasurements ;
+    tcs:inputShape _:Neaa44aab594b4fc2ad40cabf176eabf5 ;
     tcs:matches "unknown" ;
-    tcs:outputShape demo:WaterLevelPropertyValueShape .
+    tcs:outputShape demo:SosaWaterLevelObservationShape .
 
 :throughputresult_2 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_32 ;
-    tcs:inputShape [ ] ;
+    tcs:forChannel :channel_56 ;
+    tcs:inputShape demo:SosaWaterLevelObservationShape ;
     tcs:matches "unknown" ;
-    tcs:outputShape [ ] .
+    tcs:outputShape demo:SosaWaterLevelObservationShape .
 
 :throughputresult_3 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_26 ;
+    tcs:forChannel :channel_11 ;
     tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
 :throughputresult_4 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_29 ;
-    tcs:inputShape demo:SosaWaterLevelObservationShape ;
-    tcs:matches "unknown" ;
-    tcs:outputShape demo:SosaWaterLevelObservationShape .
-
-:throughputresult_5 a tcs:ThroughputMatchResult ;
-    tcs:forChannel demo:sdsMeasurements ;
-    tcs:inputShape _:Nf8792284a55a470c8163805293e25ad8 ;
-    tcs:matches "unknown" ;
-    tcs:outputShape demo:SosaWaterLevelObservationShape .
-
-:throughputresult_6 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_21 ;
-    tcs:inputShape demo:SosaWaterLevelObservationShape ;
-    tcs:matches "unknown" ;
-    tcs:outputShape demo:SosaWaterLevelObservationShape .
-
-:throughputresult_7 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_38 ;
-    tcs:inputShape demo:SosaWaterLevelObservationShape ;
-    tcs:matches "unknown" ;
-    tcs:outputShape demo:SosaWaterLevelObservationShape .
-
-:throughputresult_8 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_61 ;
+    tcs:forChannel :channel_39 ;
     tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
-:throughputresult_9 a tcs:ThroughputMatchResult ;
+:throughputresult_5 a tcs:ThroughputMatchResult ;
     tcs:forChannel demo:sdsViolations ;
-    tcs:inputShape _:Nf8792284a55a470c8163805293e25ad8 ;
+    tcs:inputShape _:Neaa44aab594b4fc2ad40cabf176eabf5 ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
+
+:throughputresult_6 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_44 ;
+    tcs:inputShape demo:WaterLevelPropertyValueShape ;
+    tcs:matches "unknown" ;
+    tcs:outputShape demo:WaterLevelPropertyValueShape .
+
+:throughputresult_7 a tcs:ThroughputMatchResult ;
+    tcs:forChannel demo:sdsViolationsMeta ;
+    tcs:inputShape _:Neaa44aab594b4fc2ad40cabf176eabf5 ;
+    tcs:matches "unknown" ;
+    tcs:outputShape [ ] .
+
+:throughputresult_8 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_57 ;
+    tcs:inputShape demo:SosaWaterLevelObservationShape ;
+    tcs:matches "unknown" ;
+    tcs:outputShape demo:SosaWaterLevelObservationShape .
+
+:throughputresult_9 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_52 ;
+    tcs:inputShape demo:SosaWaterLevelObservationShape ;
+    tcs:matches "unknown" ;
+    tcs:outputShape demo:SosaWaterLevelObservationShape .
 
 tcs:AcyclicGraphShape sh:message "Checks that no step transitively reads from a channel it also writes to (no cycles in the readsFrom/writesTo channel graph)." ;
     tcs:passed true .
@@ -167,20 +167,14 @@ tcs:SwComponentDockerConfigShape sh:message "Checks that every semantic.works co
 tcs:SwStepEnvValueShape sh:message "Checks that semantic.works step config values are RDF literals, not IRIs or blank nodes." ;
     tcs:passed true .
 
-[] sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed." ;
-    tcs:passed true .
-
-[] sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed." ;
-    tcs:passed true .
-
-[] sh:message "Checks that tm:ThresholdMonitorJs's wiring (reader/writer/label/creator/max/min/path/stream) is well-typed." ;
-    tcs:passed true .
-
-[] sh:message "Checks that rdfc:LogProcessorJs's wiring (reader/writer/label/level/raw/readAsStream) is well-typed." ;
+[] sh:message "Checks that ldio:SparqlConstructTransformer's wiring (query/infer) is well-typed." ;
     tcs:passed true .
 
 [] a sh:ValidationReport ;
     sh:conforms true .
+
+[] sh:message "Checks that rdfc:SkolemizationProcessor's wiring (incoming/outgoing/mime) is well-typed." ;
+    tcs:passed true .
 
 [] sh:message "Checks that rdfc:Sdsify's wiring (input/output/metadataOutput/metadataConfig/typeFilter/shape/readAsStream) is well-typed." ;
     tcs:passed true .
@@ -188,18 +182,24 @@ tcs:SwStepEnvValueShape sh:message "Checks that semantic.works step config value
 [] sh:message "Checks that rdfc:HttpServer's wiring (port/writer/options) is well-typed." ;
     tcs:passed true .
 
-[] sh:message "Checks that rdfc:SkolemizationProcessor's wiring (incoming/outgoing/mime) is well-typed." ;
+[] sh:message "Checks that rdfc:SPARQLIngest's wiring (memberStream/ingestConfig/sparqlWriter) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed." ;
     tcs:passed true .
 
 [] sh:message "Checks that proc:JsonLdToNQuads's wiring (reader/writer) is well-typed." ;
     tcs:passed true .
 
-[] sh:message "Checks that ldio:SparqlConstructTransformer's wiring (query/infer) is well-typed." ;
-    tcs:passed true .
-
-[] sh:message "Checks that rdfc:SPARQLIngest's wiring (memberStream/ingestConfig/sparqlWriter) is well-typed." ;
-    tcs:passed true .
-
 [] sh:message "Checks that ldio:JsonToLdAdapter's wiring (context/force-content-type/max-jsonld-cache-capacity) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that rdfc:LogProcessorJs's wiring (reader/writer/label/level/raw/readAsStream) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that tm:ThresholdMonitorJs's wiring (reader/writer/label/creator/max/min/path/stream) is well-typed." ;
     tcs:passed true .
 
