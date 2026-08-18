@@ -32,6 +32,7 @@ class LdioConfigCompiler(Compiler):
         self.df_steps: pd.DataFrame = pd.DataFrame()
         self.dict_configs: dict = {}
         self.output: dict = {}
+        self.config_yaml: str = ""
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
@@ -42,6 +43,16 @@ class LdioConfigCompiler(Compiler):
         ).df.empty
 
     def compile(self) -> Graph:
+        self.initialize_output()
+        self.fetch_steps()
+        self.fetch_configs()
+        self.fill_in_components()
+        self.serialize_config_yaml()
+        self.attach_ldio_config_file()
+        return self.output_reader.graph
+
+    def initialize_output(self) -> None:
+        """Seed the empty LDIO pipeline-YAML skeleton on :attr:`output`."""
         self.output = {
             "name": "",
             "description": "",
@@ -49,28 +60,8 @@ class LdioConfigCompiler(Compiler):
             "transformers": [],
             "outputs": [],
         }
-        self.df_steps = self.fetch_steps()
-        self.dict_configs = self.fetch_configs()
-        self.fill_in_components()
-        self.output = drop_empty(self.output)
-        yaml_string = yaml.dump(self.output, sort_keys=False)
 
-        self.output_reader = attach_file(
-            self.output_reader,
-            filename="config.yml",
-            filepath="ldio",
-            content=yaml_string,
-        )
-
-        self.output_reader = rewrite_compose_volume_host_path(
-            self.output_reader,
-            component_iri="ldio:LdioPipelineStarterService",
-            container_path=_LDIO_STARTER_CONTAINER_PATH,
-            host_path=_LDIO_STARTER_HOST_PATH,
-        )
-        return self.output_reader.graph
-
-    def fetch_steps(self) -> pd.DataFrame:
+    def fetch_steps(self) -> None:
 
         # One row per LDIO *step instance* — not per catalog component,
         # so two steps specializing the same component (e.g. two
@@ -134,7 +125,7 @@ class LdioConfigCompiler(Compiler):
 
             list_records += [dict_component]
 
-        return pd.DataFrame.from_records(list_records)
+        self.df_steps = pd.DataFrame.from_records(list_records)
 
     @staticmethod
     def _order_by_channel_chain(df_raw: pd.DataFrame) -> list:
@@ -177,7 +168,7 @@ class LdioConfigCompiler(Compiler):
 
         return ordered
 
-    def fetch_configs(self) -> dict:
+    def fetch_configs(self) -> None:
 
         config_list = self.df_steps["config"].to_list()
         config_list = [config for config in config_list if isinstance(config, str)]
@@ -187,7 +178,7 @@ class LdioConfigCompiler(Compiler):
             config_dict = extract_config(self.output_reader, config_id)
             config_dict = self.output_reader.prefix_store.drop(config_dict)
             output_dict.update({config_id: config_dict})
-        return output_dict
+        self.dict_configs = output_dict
 
     def fill_in_components(self) -> None:
         """
@@ -209,3 +200,30 @@ class LdioConfigCompiler(Compiler):
                 self.output["transformers"].append(dict_processor)
             elif processor_type == "Output":
                 self.output["outputs"].append(dict_processor)
+
+    def serialize_config_yaml(self) -> None:
+        """Drop empty keys from :attr:`output` and render it as YAML,
+        stashed on :attr:`config_yaml` for :meth:`attach_ldio_config_file`.
+        """
+        self.output = drop_empty(self.output)
+        self.config_yaml = yaml.dump(self.output, sort_keys=False)
+
+    def attach_ldio_config_file(self) -> None:
+        """Attach :attr:`config_yaml` as ``ldio/config.yml`` and repoint
+        ``ldio:LdioPipelineStarterService``'s compose volume mount at
+        that same host path (it curls the file from inside its
+        container at :data:`_LDIO_STARTER_CONTAINER_PATH`).
+        """
+        self.output_reader = attach_file(
+            self.output_reader,
+            filename="config.yml",
+            filepath="ldio",
+            content=self.config_yaml,
+        )
+
+        self.output_reader = rewrite_compose_volume_host_path(
+            self.output_reader,
+            component_iri="ldio:LdioPipelineStarterService",
+            container_path=_LDIO_STARTER_CONTAINER_PATH,
+            host_path=_LDIO_STARTER_HOST_PATH,
+        )

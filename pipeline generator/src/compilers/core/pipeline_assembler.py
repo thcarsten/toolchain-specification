@@ -36,14 +36,21 @@ class PipelineAssembler(Compiler):
         ).df.empty
 
     def compile(self) -> Graph:
+        self.lookup_pipeline_id()
+        self.describe_docker_container()
+        self.describe_step()
+        return self.output_reader.graph
+
+    def lookup_pipeline_id(self) -> None:
+        """Locate the single ``tcs:PipelineDefinition`` node in the build
+        graph (guaranteed to exist and be unique by :meth:`applies_to`)
+        and stash it on :attr:`pipeline_id` for the other steps to use.
+        """
         self.pipeline_id = receive_first(
             self.output_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
                 "sub"
             ],
         )
-        self.describe_docker_container()
-        self.describe_step()
-        return self.output_reader.graph
 
     def describe_docker_container(self) -> None:
         """

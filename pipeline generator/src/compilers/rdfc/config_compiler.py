@@ -36,6 +36,7 @@ class RdfcConfigCompiler(Compiler):
         # :attr:`output_reader` through :func:`compilers.utils.attach_file`.
         self.rdfc_reader: GraphReader = GraphReader(Graph())
         self.pipeline_id: str = ""
+        self.pipeline_ttl: str = ""
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
@@ -45,47 +46,36 @@ class RdfcConfigCompiler(Compiler):
         ).df.empty
 
     def compile(self) -> Graph:
-        self.rdfc_reader = self.input_reader.construct(
-            "?pipeline a rdfc:Pipeline .",
-            "?pipeline a tcs:PipelineDefinition",
-        )
-        self.pipeline_id = receive_first(
-            self.input_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
-                "sub"
-            ],
-        )
-
+        self.initialize_rdfc_reader()
+        self.lookup_pipeline_id()
         self.describe_pipeline()
         self.describe_processors()
         self.describe_channel_wiring()
         self.describe_configs()
         self.describe_channels()
-
-        ttl_string = self.rdfc_reader.serialize("ttl")
-        # RDF Connect requires the pipeline to be named ``<>``. A plain
-        # string replace would also corrupt any other IRI that happens
-        # to have the pipeline's compact name as a prefix (e.g. a
-        # channel ``demo:TestArchive`` when the pipeline is
-        # ``demo:Test``) — the lookahead/lookbehind keep the match
-        # anchored to the whole token.
-        ttl_string = re.sub(
-            rf"(?<![\w:]){re.escape(self.pipeline_id)}(?!\w)", "<>", ttl_string
-        )
-
-        self.output_reader = attach_file(
-            self.output_reader,
-            filename="pipeline.ttl",
-            filepath="rdfc",
-            content=ttl_string,
-        )
-
-        self.output_reader = rewrite_compose_volume_host_path(
-            self.output_reader,
-            component_iri="rdfc:Orchestrator",
-            container_path=_RDFC_PIPELINE_CONTAINER_PATH,
-            host_path=_RDFC_PIPELINE_HOST_PATH,
-        )
+        self.serialize_pipeline_ttl()
+        self.attach_rdfc_pipeline_file()
         return self.output_reader.graph
+
+    def initialize_rdfc_reader(self) -> None:
+        """Seed :attr:`rdfc_reader` with the ``rdfc:Pipeline`` typing
+        triple every ``describe_*`` step below adds to.
+        """
+        self.rdfc_reader = self.input_reader.construct(
+            "?pipeline a rdfc:Pipeline .",
+            "?pipeline a tcs:PipelineDefinition",
+        )
+
+    def lookup_pipeline_id(self) -> None:
+        """Locate the single ``tcs:PipelineDefinition`` node being
+        compiled, needed both by the ``describe_*`` steps and to
+        anchor the ``<>`` self-reference in :meth:`serialize_pipeline_ttl`.
+        """
+        self.pipeline_id = receive_first(
+            self.input_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
+                "sub"
+            ],
+        )
 
     def describe_pipeline(self) -> None:
         """
@@ -333,3 +323,37 @@ class RdfcConfigCompiler(Compiler):
             "?ch a tcs:Channel .",
         ).graph
         self.rdfc_reader = self.rdfc_reader.add(channel_types)
+
+    def serialize_pipeline_ttl(self) -> None:
+        """Serialize :attr:`rdfc_reader` to Turtle, stashed on
+        :attr:`pipeline_ttl` for :meth:`attach_rdfc_pipeline_file`.
+        """
+        ttl_string = self.rdfc_reader.serialize("ttl")
+        # RDF Connect requires the pipeline to be named ``<>``. A plain
+        # string replace would also corrupt any other IRI that happens
+        # to have the pipeline's compact name as a prefix (e.g. a
+        # channel ``demo:TestArchive`` when the pipeline is
+        # ``demo:Test``) — the lookahead/lookbehind keep the match
+        # anchored to the whole token.
+        self.pipeline_ttl = re.sub(
+            rf"(?<![\w:]){re.escape(self.pipeline_id)}(?!\w)", "<>", ttl_string
+        )
+
+    def attach_rdfc_pipeline_file(self) -> None:
+        """Attach :attr:`pipeline_ttl` as ``rdfc/pipeline.ttl`` and
+        repoint ``rdfc:Orchestrator``'s compose volume mount at that
+        same host path.
+        """
+        self.output_reader = attach_file(
+            self.output_reader,
+            filename="pipeline.ttl",
+            filepath="rdfc",
+            content=self.pipeline_ttl,
+        )
+
+        self.output_reader = rewrite_compose_volume_host_path(
+            self.output_reader,
+            component_iri="rdfc:Orchestrator",
+            container_path=_RDFC_PIPELINE_CONTAINER_PATH,
+            host_path=_RDFC_PIPELINE_HOST_PATH,
+        )

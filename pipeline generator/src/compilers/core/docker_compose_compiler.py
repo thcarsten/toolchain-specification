@@ -27,7 +27,16 @@ class DockerComposeCompiler(Compiler):
         ).df.empty
 
     def compile(self) -> Graph:
+        self.merge_docker_compose_configs()
+        self.attach_docker_compose_file()
+        return self.output_reader.graph
 
+    def merge_docker_compose_configs(self) -> None:
+        """Aggregate every ``tcs:DockerComposeConfig`` in the build graph
+        into one normalized compose-file dict, stashed on
+        :attr:`compose_file` for :meth:`attach_docker_compose_file` to
+        serialize.
+        """
         # Sorted for reproducibility — SPARQL SELECT row order isn't
         # guaranteed stable, and this loop's order determines which
         # config the collision guard below blames second.
@@ -68,9 +77,14 @@ class DockerComposeCompiler(Compiler):
                 else:
                     compose_file[key] = val
 
-        # Serializing the output in the expected format
+        self.compose_file = compose_file
+
+    def attach_docker_compose_file(self) -> None:
+        """Serialize :attr:`compose_file` to YAML and attach it as
+        ``./docker-compose.yml`` on the build.
+        """
         yaml_string = GraphDict(
-            compose_file, prefix_store=self.output_reader.prefix_store
+            self.compose_file, prefix_store=self.output_reader.prefix_store
         ).serialize("yml", "drop")
 
         self.output_reader = attach_file(
@@ -79,4 +93,3 @@ class DockerComposeCompiler(Compiler):
             filepath=".",
             content=yaml_string,
         )
-        return self.output_reader.graph

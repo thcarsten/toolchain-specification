@@ -37,7 +37,13 @@ class Compiler(ABC):
       build graph). May extend with additional positional arguments via
       ``super().__init__(graph)``.
     - Implements :meth:`compile`, which mutates :attr:`output_reader`
-      and returns ``self.output_reader.graph``.
+      and returns ``self.output_reader.graph``. ``compile()`` itself must
+      stay a thin, ordered list of calls to the compiler's own *public*
+      methods — no inline logic. Each public method is one traceable,
+      verb-named step (``lookup_``, ``fold_in_``, ``normalize_``,
+      ``attach_``, …); private (``_``-prefixed) methods are helpers
+      subsumed by exactly one public step and are never called directly
+      from ``compile()``.
     - Overrides :meth:`applies_to` to declare the graph-state
       condition under which the compiler should run. The default
       returns ``False``, so every concrete compiler must declare its

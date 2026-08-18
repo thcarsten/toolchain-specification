@@ -121,7 +121,7 @@ class RdfcDockerFileCompiler(Compiler):
         collect packages for, and without the image config on
         ``rdfc:Orchestrator`` there is no Dockerfile body for this
         compiler to attach. Anchoring on ``rdfc:Orchestrator`` here
-        mirrors the SPARQL used in :meth:`_extract_dockerfile` and
+        mirrors the SPARQL used in :meth:`extract_dockerfile` and
         :meth:`_patch_paired_compose_build_path`, so a future
         ``tcs:DockerImageConfig`` attached to some other framework's
         component does not spuriously trigger this compiler.
@@ -137,32 +137,12 @@ class RdfcDockerFileCompiler(Compiler):
         ).empty
 
     def compile(self) -> Graph:
-        self.dockerfile_body = self._extract_dockerfile()
-        self.df_packages = self._collect_packages()
-
-        self.output_reader = attach_file(
-            self.output_reader,
-            filename="Dockerfile",
-            filepath="rdfc",
-            content=self.dockerfile_body,
-        )
-        self.output_reader = attach_file(
-            self.output_reader,
-            filename="pyproject.toml",
-            filepath="rdfc",
-            content=self._render_pyproject(),
-        )
-        self.output_reader = attach_file(
-            self.output_reader,
-            filename="package.json",
-            filepath="rdfc",
-            content=self._render_package_json(),
-        )
-
-        self._patch_paired_compose_build_path()
+        self.extract_dockerfile()
+        self.collect_packages()
+        self.attach_rdfc_docker_files()
         return self.output_reader.graph
 
-    def _extract_dockerfile(self) -> str:
+    def extract_dockerfile(self) -> None:
         """Read the Dockerfile body off the ``tcs:DockerImageConfig`` on
         ``rdfc:Orchestrator``.
 
@@ -193,9 +173,9 @@ class RdfcDockerFileCompiler(Compiler):
                 f"tcs:DockerImageConfig {config_id!s} did not yield a string body; "
                 "check its dct:format annotation."
             )
-        return body
+        self.dockerfile_body = body
 
-    def _collect_packages(self) -> pd.DataFrame:
+    def collect_packages(self) -> None:
         """One row per ``spdx:Package`` reachable from an rdfc container.
 
         Deduplicates on ``(name, manager)`` so the same package
@@ -221,7 +201,8 @@ class RdfcDockerFileCompiler(Compiler):
             """,
         )
         if df.empty:
-            return df
+            self.df_packages = df
+            return
 
         df = df.drop_duplicates().reset_index(drop=True)
         conflicting = (
@@ -240,15 +221,41 @@ class RdfcDockerFileCompiler(Compiler):
                 f"for the same package across components: {details}. Align "
                 "the catalog's spdx:Package declarations before compiling."
             )
-        return df.drop_duplicates(subset=["name", "manager"]).reset_index(drop=True)
+        self.df_packages = df.drop_duplicates(subset=["name", "manager"]).reset_index(
+            drop=True
+        )
+
+    def attach_rdfc_docker_files(self) -> None:
+        """Attach Dockerfile/pyproject.toml/package.json under ``rdfc/``
+        and patch the paired compose config's ``build:`` path to match.
+        """
+        self.output_reader = attach_file(
+            self.output_reader,
+            filename="Dockerfile",
+            filepath="rdfc",
+            content=self.dockerfile_body,
+        )
+        self.output_reader = attach_file(
+            self.output_reader,
+            filename="pyproject.toml",
+            filepath="rdfc",
+            content=self._render_pyproject(),
+        )
+        self.output_reader = attach_file(
+            self.output_reader,
+            filename="package.json",
+            filepath="rdfc",
+            content=self._render_package_json(),
+        )
+        self._patch_paired_compose_build_path()
 
     def _render_pyproject(self) -> str:
         """Fill the pyproject.toml template with the ``:pip`` packages."""
-        deps = self._dependency_lines_pip()
+        deps = self._render_pip_dependency_lines()
         formatted = ",\n".join(f'    "{line}"' for line in deps)
         return _PYPROJECT_TEMPLATE.format(dependencies=formatted)
 
-    def _dependency_lines_pip(self) -> list[str]:
+    def _render_pip_dependency_lines(self) -> list[str]:
         """Turn each ``:pip`` row into a PEP 508 dependency string.
 
         Local packages (those with ``spdx:downloadLocation``) use the
@@ -288,6 +295,9 @@ class RdfcDockerFileCompiler(Compiler):
 
     def _patch_paired_compose_build_path(self) -> None:
         """Rewrite ``build:`` on ``rdfc:Orchestrator``'s compose config.
+
+        Called only from :meth:`attach_rdfc_docker_files`, the public
+        step that owns it.
 
         Anchored explicitly on ``rdfc:Orchestrator`` — this compiler
         only ever owns that component's compose fragment. Every

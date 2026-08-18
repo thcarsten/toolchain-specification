@@ -259,8 +259,8 @@ class ValidationReportCompiler(Compiler):
         ).iterrows():
             own_shape.setdefault((row["node"], row["role"]), row["shape"])
 
-        input_shape = self._effective_role_shapes("tcs:inputShape")
-        output_shape = self._effective_role_shapes("tcs:outputShape")
+        input_shape = self._lookup_effective_role_shapes("tcs:inputShape")
+        output_shape = self._lookup_effective_role_shapes("tcs:outputShape")
 
         next_index = 0
         for channel_id in sorted(channels):
@@ -309,7 +309,7 @@ class ValidationReportCompiler(Compiler):
           is known.
 
         Regularization runs once, in dataflow order
-        (:meth:`_instances_in_dataflow_order`, writers before readers),
+        (:meth:`_order_instances_by_dataflow`, writers before readers),
         so a downstream passthrough sees an upstream passthrough's
         freshly-regularized ``outputShape`` once it has been propagated
         onto their shared channel — the same bidirectional propagation
@@ -325,12 +325,12 @@ class ValidationReportCompiler(Compiler):
         the current catalog, but "more specific info wins" is the safer
         default.
         """
-        passthrough_shape = self._effective_role_shapes("tcs:passthroughShape")
+        passthrough_shape = self._lookup_effective_role_shapes("tcs:passthroughShape")
         if not passthrough_shape:
             return
 
-        input_shape = self._effective_role_shapes("tcs:inputShape")
-        output_shape = self._effective_role_shapes("tcs:outputShape")
+        input_shape = self._lookup_effective_role_shapes("tcs:inputShape")
+        output_shape = self._lookup_effective_role_shapes("tcs:outputShape")
 
         reads_from = self.output_reader.select(
             "?instance ?channel", "?instance tcs:readsFrom ?channel ."
@@ -361,7 +361,7 @@ class ValidationReportCompiler(Compiler):
         }
 
         next_index = 0
-        for instance in self._instances_in_dataflow_order(reads_from, writes_to):
+        for instance in self._order_instances_by_dataflow(reads_from, writes_to):
             shape = passthrough_shape.get(instance)
             if shape is None:
                 continue
@@ -649,7 +649,7 @@ class ValidationReportCompiler(Compiler):
         report.prefix_store.bind_to_namespace(new_graph)
         return type(report)(new_graph)
 
-    def _effective_role_shapes(self, role: str) -> dict[str, str]:
+    def _lookup_effective_role_shapes(self, role: str) -> dict[str, str]:
         """Tier-2 (own ``dcat:qualifiedRelation`` attachment) over
         tier-3 (falls back to the shape attached to the
         ``tcs:PipelineComponent`` an instance specializes) resolution
@@ -687,7 +687,7 @@ class ValidationReportCompiler(Compiler):
 
         return effective
 
-    def _instances_in_dataflow_order(self, reads_from, writes_to) -> list[str]:
+    def _order_instances_by_dataflow(self, reads_from, writes_to) -> list[str]:
         """Topologically order every step that participates in channel
         wiring, upstream (writers) before downstream (readers) of the
         same channel — the order :meth:`normalize_passthrough_shapes`

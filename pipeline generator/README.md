@@ -145,6 +145,25 @@ Every concrete compiler inherits from `Compiler` and must satisfy a small contra
 
 Intermediate state that the compile process produces (e.g. partial DataFrames, accumulated readers) is declared as instance attributes in `__init__` and populated by `compile()`. This makes the inspection surface explicit and lets the user poke at `compiler.df_steps`, `compiler.output_reader`, etc. after `compile()` returns — useful for debugging.
 
+### 4.2.1. Method naming & single-responsibility splitting (2026-08-18)
+
+`compile()` must be a thin, ordered list of calls to the compiler's own *public* methods and nothing else — no inline SPARQL queries, loops, dict-building, or conditionals of its own. Each public method is one traceable step/concern of the compile process, e.g.:
+
+```python
+def compile(self) -> Graph:
+    self.normalize_config_shapes()
+    self.validate_normal_shapes()
+    self.gather_throughput_shapes()
+    ...
+    return self.output_reader.graph
+```
+
+(`ValidationReportCompiler`'s real 8-method shape — see [`core/validation_report_compiler.py`](src/compilers/core/validation_report_compiler.py).) Public methods stay public specifically so a compiled build's intermediate steps are inspectable/steppable after the fact, matching the "intermediate state as instance attributes" convention above.
+
+Private (`_`-prefixed) methods are helpers subsumed by exactly *one* public step and must never be called directly from `compile()` itself — only from the one public method that owns them.
+
+Every method name — public or private — must contain a verb true to what it does: `lookup_`, `fold_in_`, `normalize_`, `validate_`, `gather_`, `fill_`, `list_`, `generate_`, `attach_`, `describe_`, `extract_`, `seed_`, etc. are all in active use across the codebase. A noun-only name (e.g. a method literally called `container_service_names`) must be renamed to include a verb (`lookup_container_service_names`).
+
 ### 4.3. Auto-registration
 
 `Compiler` keeps a class-level `_registry: list[type[Compiler]]`. On every subclass definition `__init_subclass__` appends the new class (skipping abstract intermediates):

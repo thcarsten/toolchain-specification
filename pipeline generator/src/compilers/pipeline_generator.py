@@ -128,7 +128,7 @@ class PipelineGenerator:
     # Small graph-side helpers used by ``compile``.
     # ------------------------------------------------------------------
 
-    def _build_id(self) -> str:
+    def _lookup_build_id(self) -> str:
         """Locate the ``tcs:PipelineBuild`` node currently in the graph."""
         reader = GraphReader(self.build)
         return receive_first(
@@ -143,7 +143,7 @@ class PipelineGenerator:
         which compilers have already run by querying ``dct:creator``
         on the build.
         """
-        build_id = self._build_id()
+        build_id = self._lookup_build_id()
         iri = cls.compiler_iri()
         reader = GraphReader(self.build)
         rows = [
@@ -175,7 +175,7 @@ class PipelineGenerator:
         removed first so the flag always has a single value.
         """
         reader = GraphReader(self.build)
-        build_id = self._build_id()
+        build_id = self._lookup_build_id()
         existing = reader.filter(sub=build_id, pred="tcs:isFinishing").graph
         reader = reader.remove(existing)
         rows = [

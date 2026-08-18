@@ -36,11 +36,7 @@ class SemanticWorksEnvVarCompiler(Compiler):
 
     def compile(self) -> Graph:
         self.fetch_components()
-        # One call per *step*, not per component — two steps sharing
-        # one sw: component each fold their own env vars in, rather
-        # than a component-keyed lookup arbitrarily picking one.
-        for _, row in self.component_df.iterrows():
-            self.update_docker_config(row["step_config"], row["docker_config"])
+        self.fold_in_step_env_vars()
         return self.output_reader.graph
 
     def fetch_components(self) -> None:
@@ -64,7 +60,15 @@ class SemanticWorksEnvVarCompiler(Compiler):
         component_df = component_df.loc[component_df["component"].str.startswith("sw:")]
         self.component_df = component_df
 
-    def update_docker_config(self, step_config_id: str, docker_config_id: str) -> None:
+    def fold_in_step_env_vars(self) -> None:
+        """One call per *step*, not per component — two steps sharing
+        one sw: component each fold their own env vars in, rather
+        than a component-keyed lookup arbitrarily picking one.
+        """
+        for _, row in self.component_df.iterrows():
+            self._update_docker_config(row["step_config"], row["docker_config"])
+
+    def _update_docker_config(self, step_config_id: str, docker_config_id: str) -> None:
         """
         The strategy here is surprisingly simple:
         - fetch the DockerComposeConfig via the shared parser, which
