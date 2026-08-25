@@ -115,7 +115,7 @@ def test_validated_shapes_is_python_only_not_asserted_into_report(demonstrator_g
 
 
 def test_real_pipeline_components_are_not_flagged_as_dangling(demonstrator_graph):
-    # PipelineExtractor's narrowing must preserve the catalog's own
+    # GraphReducer's narrowing must preserve the catalog's own
     # dcat:resource membership assertion for every component this
     # pipeline's steps actually specialize — otherwise every real, valid
     # step looks identical to a genuinely dangling/mistyped

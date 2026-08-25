@@ -8,7 +8,6 @@
     "@rdfc/skolemization-processor-ts": "^1.0.0",
     "@rdfc/sparql-ingest-processor-ts": "^2.1.7",
     "@rdfc/threshold-monitor-processor-ts": "^0.0.1-alpha.2",
-    "jsonld": "^9.0.0",
-    "jsonld-to-nquads": "*"
+    "jsonld": "^9.0.0"
   }
 }

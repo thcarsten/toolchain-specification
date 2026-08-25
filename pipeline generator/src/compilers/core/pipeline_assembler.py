@@ -20,9 +20,10 @@ class PipelineAssembler(Compiler):
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
         """Runs once there is exactly one ``tcs:PipelineDefinition`` with at
-        least one step (a ``p-plan:isStepOfPlan`` edge pointing at it) —
-        i.e. once ``PipelineExtractor`` has narrowed the graph down to a
-        single pipeline and populated its steps.
+        least one step (a ``p-plan:isStepOfPlan`` edge pointing at it).
+        Does not depend on the graph having been narrowed to just this
+        pipeline — component scoping is done internally via
+        :meth:`_lookup_relevant_components`.
         """
         pipelines = (
             graph_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition")
@@ -65,10 +66,16 @@ class PipelineAssembler(Compiler):
         this method only fills in containers that are still missing.
         """
 
+        relevant_components = self._lookup_relevant_components()
+
         # Create an overview df listing all components and their reliance on other components
         df_requirements = self.output_reader.select(
             "?component ?requirement",
-            "?component a tcs:PipelineComponent. OPTIONAL {{?component dct:requires ?requirement .}}",
+            f"""
+            VALUES ?component {{ {" ".join(relevant_components)} }}
+            ?component a tcs:PipelineComponent .
+            OPTIONAL {{ ?component dct:requires ?requirement . }}
+            """,
         )
 
         # Identifying the components which are microservices
@@ -113,7 +120,7 @@ class PipelineAssembler(Compiler):
         # Only incremented when a new blank container is minted, and
         # checked against the graph so it never collides with a name
         # already in use — same idiom as
-        # PipelineExtractor.name_blind_nodes.
+        # PipelineSeeder.name_blind_nodes.
         next_index = 0
 
         # For each docker container, add the respective statements to the graph
@@ -161,3 +168,37 @@ class PipelineAssembler(Compiler):
             "?microservice tcs:runs ?step .", step_description
         ).graph
         self.output_reader = self.output_reader.add(new_triples)
+
+    def _lookup_relevant_components(self) -> list[str]:
+        """
+        Components actually specialized by an ``InstancePipelineComponent``
+        of this pipeline, plus every component transitively reachable
+        from them via ``dct:requires`` — exactly the components this
+        pipeline could ever need a container for. Scoping to this
+        (rather than every ``tcs:PipelineComponent`` present in the
+        graph) means this compiler doesn't depend on the graph having
+        already been narrowed down to just this pipeline elsewhere.
+        """
+        used_components = (
+            self.output_reader.select(
+                "?component",
+                f"""
+                ?step p-plan:isStepOfPlan {self.pipeline_id} ;
+                      prov:specializationOf ?component .
+                """,
+            )["component"]
+            .drop_duplicates()
+            .to_list()
+        )
+
+        return (
+            self.output_reader.select(
+                "?component",
+                f"""
+                VALUES ?used {{ {" ".join(used_components)} }}
+                ?used dct:requires* ?component .
+                """,
+            )["component"]
+            .drop_duplicates()
+            .to_list()
+        )

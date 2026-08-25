@@ -10,16 +10,11 @@ services:
     image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
     ports:
     - 8080:8080
-    depends_on:
-    - ldio-pipeline-starter
-    - rdfc
-  ldio-pipeline-starter:
-    image: curlimages/curl
     volumes:
-    - ./ldio/config.yml:/pipeline.yml:ro
-    command: 'sh -c " sleep 30 && curl -X POST -H ''content-type: application/yaml''
-      http://ldio-workbench:8080/admin/api/v1/pipeline --data-binary @/pipeline.yml
-      "'
+    - ./ldio/application.yml:/ldio/application.yml:ro
+    - ./ldio/pipelines/:/ldio/pipelines/:ro
+    depends_on:
+    - rdfc
   error-alert:
     image: lblod/loket-error-alert-service:1.0.2
     volumes:
@@ -70,6 +65,7 @@ services:
     build: ./rdfc
     volumes:
     - ./rdfc/pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro
+    - ./rdfc/processors:/workspace/pipeline/processors:ro
     environment:
       LOG_LEVEL: debug
     command: npx rdfc /workspace/pipeline/pipeline.ttl

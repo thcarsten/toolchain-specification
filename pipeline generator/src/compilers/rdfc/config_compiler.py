@@ -1,4 +1,4 @@
-from rdflib import Graph
+from rdflib import Graph, URIRef
 from rdfine import GraphReader, GraphDict, receive_first
 import re
 
@@ -246,7 +246,7 @@ class RdfcConfigCompiler(Compiler):
         config_id = configs[0]
 
         # Anchored through config_id (always a named IRI post
-        # PipelineExtractor.name_blind_nodes) rather than holding the
+        # PipelineSeeder.name_blind_nodes) rather than holding the
         # tcs:embedded blank node directly — a blank node's label isn't
         # stable across separate SPARQL query executions, so it can
         # never be safely stringified into a query.
@@ -302,27 +302,35 @@ class RdfcConfigCompiler(Compiler):
         Only the author knows which framework predicate their step
         expects — the compiler cannot guess it reliably.
 
-        What the compiler *can* do without ambiguity is add the
-        uniform type declaration every RDF-Connect channel needs.
-        Scope of "channel worth typing": any ``tcs:Channel`` already
-        referenced in the emitted pipeline graph (``self.rdfc_reader``).
-        ``describe_configs`` pulls in each config's ``tcs:embedded``
-        block via ``GraphDict``/``traverse``, which follows through
-        to every channel IRI referenced by the config and picks up
-        the ``?ch a tcs:Channel`` triple that ``inference_rules.yaml``
-        adds from ``tcs:readsFrom`` / ``tcs:writesTo``. Constraining
-        on those already-present triples means we emit boilerplate
-        exactly for the channels the pipeline.ttl uses — no dead
-        declarations for cross-framework channels whose RDFC-side
-        step has no wiring config referencing them (e.g., an LDIO→RDFC
-        boundary channel that only appears as a ``tcs:readsFrom``
-        annotation).
+        Every ``tcs:Channel`` in the build graph is typed as both
+        ``rdfc:Reader`` and ``rdfc:Writer`` so downstream SHACL
+        shapes checking ``sh:class rdfc:Reader``/``rdfc:Writer`` on
+        catalog configShapes pass on every channel the pipeline
+        touches. In the emitted ``pipeline.ttl`` (``rdfc_reader``)
+        only channels the RDFC step wiring actually references pick
+        up the typing — this keeps ``pipeline.ttl`` free of dead
+        declarations for channels other framework compilers care
+        about but the RDFC runner never sees.
         """
-        channel_types = self.rdfc_reader.construct(
-            "?ch a rdfc:Reader, rdfc:Writer .",
-            "?ch a tcs:Channel .",
+        channel_types = self.output_reader.construct(
+            "?channel a rdfc:Reader, rdfc:Writer .",
+            "?channel a tcs:Channel .",
         ).graph
-        self.rdfc_reader = self.rdfc_reader.add(channel_types)
+        self.output_reader = self.output_reader.add(channel_types)
+
+        # Restrict the pipeline.ttl-facing typing to channels the RDFC
+        # step wiring actually references. Compare in expanded URI
+        # form because ``.df`` compaction uses a graph-derived
+        # PrefixStore rather than ``self.prefix_store`` (see
+        # ``/memories/repo/rdfine-gotchas.md``).
+        rdfc_object_uris = {
+            str(o) for _, _, o in self.rdfc_reader.graph if isinstance(o, URIRef)
+        }
+        referenced_types = Graph()
+        for s, p, o in channel_types:
+            if str(s) in rdfc_object_uris:
+                referenced_types.add((s, p, o))
+        self.rdfc_reader = self.rdfc_reader.add(referenced_types)
 
     def serialize_pipeline_ttl(self) -> None:
         """Serialize :attr:`rdfc_reader` to Turtle, stashed on

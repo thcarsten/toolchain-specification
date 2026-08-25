@@ -13,11 +13,12 @@ Provenance (``dct:creator`` on the build) is written by
 :class:`PipelineGenerator` immediately after each compiler runs — the
 compiler itself does not need to concern itself with it.
 
-For compilers that must run only after other shaping compilers have
-finished (for example :class:`DockerComposeCompiler`), the generator
-maintains a temporary triple ``<build> tcs:isFinishing true`` while
-the shaping loop is settling; such compilers can gate their
-:meth:`applies_to` on the presence of that flag.
+For compilers that must run only after the fixpoint loop has
+terminated (for example :class:`DockerComposeCompiler` and
+:class:`ValidationReportCompiler`), set ``is_explicit_call = True``
+on the subclass. Such compilers are excluded from the registry and
+invoked directly by :class:`PipelineGenerator` at fixed positions
+after the loop settles.
 """
 
 import inspect
@@ -76,11 +77,21 @@ class Compiler(ABC):
 
     _registry: ClassVar[list[type["Compiler"]]] = []
 
+    #: Set to True on subclasses that PipelineGenerator invokes
+    #: directly (not via the registry fixpoint loop) — e.g.
+    #: DockerComposeCompiler, ValidationReportCompiler. Excludes the
+    #: class from ``_registry`` at __init_subclass__ time.
+    is_explicit_call: ClassVar[bool] = False
+
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         # Skip abstract intermediates; only concrete compilers register.
-        if not inspect.isabstract(cls):
-            Compiler._registry.append(cls)
+        # Explicit-call compilers stay Compiler subclasses (for the
+        # shared compile/applies_to/output_reader contract) but are
+        # deliberately kept out of the registry loop.
+        if inspect.isabstract(cls) or cls.is_explicit_call:
+            return
+        Compiler._registry.append(cls)
 
     def __init__(self, graph: Graph) -> None:
         # ``input_reader`` is the immutable "before" snapshot, stored
@@ -118,11 +129,11 @@ class Compiler(ABC):
         triggers it — typically by looking for the presence (or
         absence) of a specific node type or predicate in the graph.
 
-        Compilers that must run only after other shaping compilers
-        have finished may additionally gate on the presence of
-        ``<build> tcs:isFinishing true``, which
-        :class:`PipelineGenerator` maintains while the shaping loop is
-        settling.
+        Compilers that must run only after the fixpoint loop has
+        settled (e.g. :class:`GraphReducer`,
+        :class:`ValidationReportCompiler`, :class:`DockerComposeCompiler`)
+        instead set ``is_explicit_call = True`` on the class, which
+        excludes them from the registry loop entirely.
         """
         return False
 

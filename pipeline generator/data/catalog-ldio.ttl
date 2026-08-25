@@ -91,7 +91,8 @@ ldio:HttpInPoller a tcs:PipelineComponent, dcat:Resource;
 ] .
 
 
-ldio:HttpIn a tcs:PipelineComponent, dcat:Resource;
+ldio:HttpIn a tcs:PipelineComponent, dcat:Resource, tcs:EntryBoundaryComponent;
+    tcs:channelType tcs:HttpChannel ;
     rdfs:label "Ldio:HttpIn" ;
     rdfs:description "The LDIO Http In is a basic Http Listener. Data can be written to http://{hostname}:{port}/{pipeline name}." ;
     rdfs:comment "This component has no config properties documented on the landing page." ;
@@ -601,7 +602,8 @@ ldio:VersionObjectCreator a tcs:PipelineComponent, dcat:Resource;
 ] .
 
 
-ldio:HttpOut a tcs:PipelineComponent, dcat:Resource;
+ldio:HttpOut a tcs:PipelineComponent, dcat:Resource, tcs:ExitBoundaryComponent;
+    tcs:channelType tcs:HttpChannel ;
     rdfs:label "Ldio:HttpOut" ; 
     rdfs:description "The LDIO HTTP Out is a basic Http Client that will send the given Linked Data model to a target url.";
     ldio:type "Output" ;
@@ -1125,14 +1127,7 @@ ldio:LinkedDataInteractionsOrchestrator
     rdfs:label "Linked Data Interactions Orchestrator" ;
     dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
     spdx:versionInfo "2.8.0-SNAPSHOT";
-    tcs:config :LdioDefaultDockerComposeConfig ;
-    dct:requires ldio:LdioPipelineStarterService .
-
-
-ldio:LdioPipelineStarterService 
-    a tcs:PipelineComponent, dcat:Resource ;
-    rdfs:label "Ldio Pipeline Starter Service" ;
-    tcs:config :LdioPipelineStarterDockerComposeConfig . 
+    tcs:config :LdioDefaultDockerComposeConfig .
 
 
 #################################################################
@@ -1148,25 +1143,9 @@ ldio-workbench:
     image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
     ports:
       - "8080:8080"
-""" .
-
-
-:LdioPipelineStarterDockerComposeConfig
-    a tcs:Config, tcs:DockerComposeConfig ;
-    dct:format "text/yaml" ;
-    tcs:literal '''
-ldio-pipeline-starter:
-    image: curlimages/curl
     volumes:
-      - ./ldio_pipeline.yml:/pipeline.yml:ro
-    command: >
-      sh -c "
-      sleep 30 &&
-      curl -X POST
-      -H 'content-type: application/yaml'
-      http://ldio-workbench:8080/admin/api/v1/pipeline
-      --data-binary @/pipeline.yml
-      "         
-''' .
+      - ./ldio/application.yml:/ldio/application.yml:ro
+      - ./ldio/pipelines/:/ldio/pipelines/:ro
+""" .
 
 

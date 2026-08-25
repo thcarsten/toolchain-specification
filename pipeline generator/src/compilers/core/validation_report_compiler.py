@@ -32,34 +32,25 @@ from ..utils import attach_file
 
 class ValidationReportCompiler(Compiler):
     """
-    Runs once :class:`PipelineEnricher` has actually finished (channels
-    synthesized, configs seeded), guaranteed by :meth:`applies_to`
-    triggering explicitly on ``<build> dct:creator tcs:PipelineEnricher``
-    - the provenance triple ``PipelineGenerator`` writes immediately
-    after any compiler runs - rather than a coarser signal both
-    compilers would happen to share.
-
-    Side effect worth knowing: fixpoint eligibility is snapshotted once
-    per iteration, and ``PipelineEnricher``'s ``dct:creator`` triple
-    only exists *after* it finishes - so this compiler can't be
-    eligible in the same iteration Enricher runs in, only the next one.
-    ``PipelineAssembler`` has no such dependency and is already eligible
-    in Enricher's own iteration, so it runs first: compile order is
-    ``..., PipelineEnricher, PipelineAssembler, ValidationReportCompiler,
-    ...``. Harmless for correctness (``PipelineAssembler`` only adds
-    container/``tcs:runs`` triples, nothing this compiler inspects).
+    Invoked explicitly by :class:`PipelineGenerator` after the fixpoint
+    loop terminates and before :class:`DockerComposeCompiler`. Not
+    registry-triggered — kept out via ``is_explicit_call``, since it
+    must see every shaping compiler's contribution and would otherwise
+    race with them for eligibility in the loop.
 
     Generic application-profile shapes in
     ``catalog-application-profile-shapes.ttl`` (e.g.
     ``tcs:RdfcProcessorShape``, ``tcs:PipelineComponentShape``) float
     independently via ``sh:targetClass``/``sh:target`` with no graph
-    edge from the pipeline reaching them; ``PipelineExtractor`` keeps
+    edge from the pipeline reaching them; :class:`GraphReducer` keeps
     them in the build graph by separately collecting the
     forward-reachable subgraph of every ``sh:NodeShape`` in the source
     graph and re-adding it after the pipeline traversal, so
     :meth:`validate_normal_shapes` sees both these and
     component-attached configShapes.
     """
+
+    is_explicit_call = True
 
     #: Override on a subclass to change where the report is attached.
     filename = "validation-report.ttl"
@@ -74,18 +65,6 @@ class ValidationReportCompiler(Compiler):
         # Populated by validate_normal_shapes(); consumed by
         # generate_validation_report() at the end of the pipeline.
         self._shacl_report: GraphReader | None = None
-
-    @classmethod
-    def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Triggered once ``PipelineEnricher`` has actually run —
-        checked via the ``<build> dct:creator tcs:PipelineEnricher``
-        provenance triple ``PipelineGenerator`` writes right after any
-        compiler finishes, rather than a coarser signal both compilers
-        would happen to share.
-        """
-        return not graph_reader.filter(
-            pred="dct:creator", obj="tcs:PipelineEnricher"
-        ).df.empty
 
     def compile(self) -> Graph:
         self.normalize_config_shapes()
@@ -536,7 +515,7 @@ class ValidationReportCompiler(Compiler):
         Shape identifiers that are catalog-normative (an author-given
         IRI) are kept as-is. Identifiers auto-minted during compilation
         for a catalog-authored *blank-node* shape (``:nodeshape_N`` from
-        ``PipelineExtractor.name_blind_nodes``) or for a channel with no
+        ``PipelineSeeder.name_blind_nodes``) or for a channel with no
         producer at all (``:emptyshape_N`` from :meth:`_mint_empty_shape`)
         are not catalog-normative — :meth:`_unblank_synthetic_shape_ids`
         turns them back into blank nodes in the attached report only,
@@ -609,7 +588,7 @@ class ValidationReportCompiler(Compiler):
         attached report, so only catalog-normative shape URIs show up
         as named resources there.
 
-        ``PipelineExtractor.name_blind_nodes`` renames every anonymous
+        ``PipelineSeeder.name_blind_nodes`` renames every anonymous
         ``sh:NodeShape`` in the catalog to a stable ``:nodeshape_N`` IRI
         (needed so downstream compilers can reference it in a SPARQL
         query string — blank-node labels aren't safely reusable across
@@ -730,7 +709,7 @@ class ValidationReportCompiler(Compiler):
         same ``dcat:qualifiedRelation`` idiom used everywhere else,
         minting a named relation IRI the same way ``normalize_config_shapes``
         mints its target IRIs. ``shape_id`` is always a named IRI here —
-        ``PipelineExtractor.name_blind_nodes`` renames every blank-node
+        ``PipelineSeeder.name_blind_nodes`` renames every blank-node
         ``sh:NodeShape`` (e.g. a component's trivial passthrough/output
         shape) before this compiler ever runs.
         """

@@ -64,6 +64,11 @@ tcs:PipelineConfig        rdfs:subClassOf tcs:Config .
 tcs:DockerComposeConfig   rdfs:subClassOf tcs:Config .
 tcs:DockerImageConfig     rdfs:subClassOf tcs:Config .
 
+tcs:EntryBoundaryComponent  rdfs:subClassOf tcs:PipelineComponent .
+tcs:ExitBoundaryComponent   rdfs:subClassOf tcs:PipelineComponent .
+tcs:HttpChannel             rdfs:subClassOf tcs:Channel .
+tcs:SparqlUpdateChannel     rdfs:subClassOf tcs:HttpChannel .
+
 
 #################################################################
 # Prefix declarations for SHACL-AF SPARQL targets
@@ -421,6 +426,134 @@ tcs:SpdxPackageShape a sh:NodeShape ;
         sh:minCount 1 ;
         sh:name "suppliedBy" ;
         sh:message "spdx:Package must declare spdx:suppliedBy (an IRI) — the pipeline generator routes packages to the right manifest file based on this value."
+    ] .
+
+
+#################################################################
+# tcs:EntryBoundaryComponent / tcs:ExitBoundaryComponent
+#
+# tcs:channelType on a boundary component is optional metadata used
+# by BridgeTransportCompiler to pick auto-insertion candidates for a
+# default HTTP bridge. Boundary components without a channelType are
+# valid — they simply won't be considered for auto-insertion. When
+# declared, at most one channelType may be given (a component
+# provides one transport).
+#################################################################
+
+tcs:BoundaryChannelTypeShape a sh:NodeShape ;
+    rdfs:label "BoundaryChannelType application-profile shape" ;
+    sh:message "Checks that a boundary component declares at most one tcs:channelType." ;
+    sh:targetClass tcs:EntryBoundaryComponent ;
+    sh:targetClass tcs:ExitBoundaryComponent ;
+
+    sh:property [
+        sh:path tcs:channelType ;
+        sh:maxCount 1 ;
+        sh:name "channelType" ;
+        sh:message "A boundary component may declare at most one tcs:channelType."
+    ] .
+
+
+#################################################################
+# tcs:CatalogMissingBridgeShape
+#
+# Formal-presence check: for every cross-container tcs:Channel,
+# both sides must be covered by a step whose specialized component
+# is typed as the matching boundary class (Entry on the reader
+# side, Exit on the writer side). BridgeTransportCompiler auto-
+# inserts missing sides where the catalog has a candidate; this
+# shape fires when the catalog has none, so the compiler had
+# nothing to insert.
+#
+# Scope: formal presence only — the shape checks that container-
+# crossing is realised via bridge components at all, nothing about
+# their configuration or transport implementation details (those
+# are the boundary config compilers' concern and are caught later
+# if broken).
+#################################################################
+
+tcs:CatalogMissingBridgeShape a sh:NodeShape ;
+    rdfs:label "CatalogMissingBridge application-profile shape" ;
+    sh:message "Checks that every cross-container channel has a bridge step on both sides." ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?this a tcs:Channel .
+                ?writer tcs:writesTo ?this .
+                ?reader tcs:readsFrom ?this .
+                ?cW tcs:runs ?writer .
+                ?cR tcs:runs ?reader .
+                FILTER (?cW != ?cR)
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path ( [ sh:inversePath tcs:writesTo ] prov:specializationOf ) ;
+        sh:class tcs:ExitBoundaryComponent ;
+        sh:minCount 1 ;
+        sh:name "exit-side-bridge" ;
+        sh:message "Cross-container channel {?this} has no ExitBoundaryComponent-typed writer step — no bridge component available in the catalog to insert."
+    ] , [
+        sh:path ( [ sh:inversePath tcs:readsFrom ] prov:specializationOf ) ;
+        sh:class tcs:EntryBoundaryComponent ;
+        sh:minCount 1 ;
+        sh:name "entry-side-bridge" ;
+        sh:message "Cross-container channel {?this} has no EntryBoundaryComponent-typed reader step — no bridge component available in the catalog to insert."
+    ] .
+
+
+#################################################################
+# tcs:UnsupportedChannelTopologyShape
+#
+# BridgeTransportCompiler's MVP only handles cross-container
+# channels with (a) a single writer and (b) readers all in one
+# downstream container. Fan-in (writers in more than one
+# container) and multi-container fan-out (readers spanning more
+# than two containers total) fall outside that scope and must
+# stay hand-authored. Ordinary branching (N readers in one
+# downstream container) is fully supported.
+#################################################################
+
+tcs:UnsupportedChannelTopologyShape a sh:NodeShape ;
+    rdfs:label "UnsupportedChannelTopology application-profile shape" ;
+    sh:message "Checks that cross-container channel topology is a MVP-supported (1-writer, 1-or-2-container) shape." ;
+    sh:targetClass tcs:Channel ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Channel {?this} has writers in more than one container — multi-container fan-in is not auto-bridged." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:Channel .
+                ?writer tcs:writesTo ?this .
+                ?container tcs:runs ?writer .
+            }
+            GROUP BY ?this
+            HAVING (COUNT(DISTINCT ?container) > 1)
+        """
+    ] , [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Channel {?this} has readers spanning more than two containers total — multi-container fan-out is not auto-bridged." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:Channel .
+                {
+                    ?reader tcs:readsFrom ?this .
+                    ?container tcs:runs ?reader .
+                }
+                UNION
+                {
+                    ?writer tcs:writesTo ?this .
+                    ?container tcs:runs ?writer .
+                }
+            }
+            GROUP BY ?this
+            HAVING (COUNT(DISTINCT ?container) > 2)
+        """
     ] .
 
 
@@ -789,11 +922,13 @@ tcs:LdioStepOrderingShape a sh:NodeShape ;
 
 # LDIO's own YAML schema makes `input:` and `input.adapter:` *singular*
 # keys — unlike `transformers:`/`outputs:`, which are lists. A second
-# `Input` or `Adapter` step in one pipeline has nowhere to go in that
-# schema.
+# `Input` or `Adapter` step in one segment has nowhere to go in that
+# schema. Scoped per ``tcs:segment`` (not per ``tcs:PipelineDefinition``)
+# so a multi-segment LDIO pipeline can legitimately have one Input +
+# one Adapter per segment.
 tcs:LdioSingularStepShape a sh:NodeShape ;
     rdfs:label "LDIO singular Input/Adapter shape" ;
-    sh:message "Checks that a pipeline has at most one LDIO Input step and at most one LDIO Adapter step (LDIO's input:/input.adapter: YAML keys are singular)." ;
+    sh:message "Checks that a segment has at most one LDIO Input step and at most one LDIO Adapter step (LDIO's input:/input.adapter: YAML keys are singular)." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -809,15 +944,15 @@ tcs:LdioSingularStepShape a sh:NodeShape ;
 
     sh:sparql [
         sh:prefixes tcs:prefixes ;
-        sh:message "LDIO step {?this} is a second \"Input\" step in pipeline {?plan}, alongside {?other} — LDIO's input: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
+        sh:message "LDIO step {?this} is a second \"Input\" step in segment {?segment}, alongside {?other} — LDIO's input: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
         sh:select """
-            SELECT ?this ?plan ?other WHERE {
+            SELECT ?this ?segment ?other WHERE {
                 ?this a tcs:InstancePipelineComponent ;
-                      p-plan:isStepOfPlan ?plan ;
+                      tcs:segment ?segment ;
                       prov:specializationOf ?comp .
                 ?comp ldio:type "Input" .
                 ?other a tcs:InstancePipelineComponent ;
-                       p-plan:isStepOfPlan ?plan ;
+                       tcs:segment ?segment ;
                        prov:specializationOf ?ocomp .
                 ?ocomp ldio:type "Input" .
                 FILTER ( ?other != ?this )
@@ -827,15 +962,15 @@ tcs:LdioSingularStepShape a sh:NodeShape ;
 
     sh:sparql [
         sh:prefixes tcs:prefixes ;
-        sh:message "LDIO step {?this} is a second \"Adapter\" step in pipeline {?plan}, alongside {?other} — LDIO's input.adapter: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
+        sh:message "LDIO step {?this} is a second \"Adapter\" step in segment {?segment}, alongside {?other} — LDIO's input.adapter: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
         sh:select """
-            SELECT ?this ?plan ?other WHERE {
+            SELECT ?this ?segment ?other WHERE {
                 ?this a tcs:InstancePipelineComponent ;
-                      p-plan:isStepOfPlan ?plan ;
+                      tcs:segment ?segment ;
                       prov:specializationOf ?comp .
                 ?comp ldio:type "Adapter" .
                 ?other a tcs:InstancePipelineComponent ;
-                       p-plan:isStepOfPlan ?plan ;
+                       tcs:segment ?segment ;
                        prov:specializationOf ?ocomp .
                 ?ocomp ldio:type "Adapter" .
                 FILTER ( ?other != ?this )
@@ -928,6 +1063,45 @@ tcs:SwStepEnvValueShape a sh:NodeShape ;
             SELECT ?this ?p WHERE {
                 ?this ?p ?v .
                 FILTER ( ?p != rdf:type && !isLiteral(?v) )
+            }
+        """
+    ] .
+
+
+# Semantic.works components are single-tenant microservices: each owns
+# exactly one static per-service config file with zero per-instance
+# aggregation (unlike LDIO/RDF-Connect's multi-tenant orchestrator
+# runtimes, which are designed to host several independent pipelines
+# side by side in one container). Reusing the same sw: component across
+# more than one InstancePipelineComponent has no defined behaviour today
+# and is caught here rather than silently misbehaving at runtime — see
+# `pipeline generator/README.md` §6.3's container/multi-tenancy contract.
+tcs:SwSingleInstanceShape a sh:NodeShape ;
+    rdfs:label "Semantic.works single-instance shape" ;
+    sh:message "Checks that no semantic.works component is specialized by more than one InstancePipelineComponent." ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp .
+                FILTER ( STRSTARTS(STR(?comp), "https://semantic.works/services/") )
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Step {?this} specializes semantic.works component {?comp}, which is also specialized by {?other} — semantic.works components are single-tenant microservices and must not be instanced more than once." ;
+        sh:select """
+            SELECT ?this ?comp ?other WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp .
+                ?other a tcs:InstancePipelineComponent ;
+                       prov:specializationOf ?comp .
+                FILTER ( ?other != ?this )
             }
         """
     ] .

@@ -9,28 +9,20 @@ class DockerComposeCompiler(Compiler):
     """
     Compiles the docker compose configuration file.
 
-    Runs only once the shaping loop has settled, because other compilers
-    (e.g. :class:`SemanticWorksEnvVarCompiler`) may still be editing
-    ``tcs:DockerComposeConfig`` bodies. ``PipelineGenerator`` signals
-    that settling has occurred by adding ``<build> tcs:isFinishing true``
-    to the graph.
+    Invoked explicitly by :class:`PipelineGenerator` after the
+    fixpoint loop terminates, so every other compiler that may still
+    be editing ``tcs:DockerComposeConfig`` bodies (e.g.
+    :class:`SemanticWorksEnvVarCompiler`) has already finished.
+    Deliberately kept out of the registry via ``is_explicit_call``.
     """
+
+    is_explicit_call = True
 
     def __init__(self, graph: Graph) -> None:
         super().__init__(graph)
         # Intermediate state — populated in ``compile``.
         self.compose_file: dict = {"services": {}}
         self.config_service_name: dict[str, str] = {}
-
-    @classmethod
-    def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Triggered once ``tcs:isFinishing true`` is set on the build and
-        at least one ``tcs:DockerComposeConfig`` node is present."""
-        if graph_reader.filter(pred="tcs:isFinishing", obj=True).df.empty:
-            return False
-        return not graph_reader.filter(
-            pred="rdf:type", obj="tcs:DockerComposeConfig"
-        ).df.empty
 
     def compile(self) -> Graph:
         self.merge_docker_compose_configs()
@@ -39,23 +31,35 @@ class DockerComposeCompiler(Compiler):
         return self.output_reader.graph
 
     def merge_docker_compose_configs(self) -> None:
-        """Aggregate every ``tcs:DockerComposeConfig`` in the build graph
-        into one normalized compose-file dict, stashed on
-        :attr:`compose_file` for :meth:`attach_docker_compose_file` to
-        serialize. Also records, on :attr:`config_service_name`, the
-        compose service name each config normalized to — reused by
-        :meth:`fold_in_depends_on` instead of re-parsing.
+        """Aggregate every ``tcs:DockerComposeConfig`` reachable from a
+        ``tcs:DockerContainer`` on this build into one normalized
+        compose-file dict, stashed on :attr:`compose_file` for
+        :meth:`attach_docker_compose_file` to serialize. Also records, on
+        :attr:`config_service_name`, the compose service name each config
+        normalized to — reused by :meth:`fold_in_depends_on` instead of
+        re-parsing.
+
+        Scoped to containers actually reachable from this build (rather
+        than every ``tcs:DockerComposeConfig`` present anywhere in the
+        graph) so this compiler doesn't depend on the graph having
+        already been narrowed down to just this pipeline elsewhere —
+        the same reachability path :meth:`_lookup_container_service_names`
+        already uses.
         """
         # Sorted for reproducibility — SPARQL SELECT row order isn't
         # guaranteed stable, and this loop's order determines which
         # config the collision guard below blames second.
         config_list = sorted(
-            self.output_reader.select(
-                "?config",
-                """
-                     ?config a tcs:DockerComposeConfig ;
+            set(
+                self.output_reader.select(
+                    "?config",
+                    """
+            ?container a tcs:DockerContainer ; tcs:instantiates ?component .
+            ?component tcs:config ?config .
+            ?config a tcs:DockerComposeConfig .
             """,
-            )["config"].to_list()
+                )["config"]
+            )
         )
 
         # Every ``tcs:DockerComposeConfig`` is normalized to the same

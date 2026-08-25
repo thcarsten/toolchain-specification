@@ -42,7 +42,8 @@
 # RDF Connect Components
 #################################################################
 
-rdfc:SPARQLIngest a tcs:PipelineComponent, dcat:Resource;
+rdfc:SPARQLIngest a tcs:PipelineComponent, dcat:Resource, tcs:ExitBoundaryComponent;
+    tcs:channelType tcs:SparqlUpdateChannel ;
     rdfs:label "Sparql Ingest";
     rdfs:description "This processor takes a stream of RDF records, transforms them into corresponding SPARQL Update queries, and executes them against a SPARQL Graph Store via the SPARQL Protocol." ; 
     dcat:landingPage "https://github.com/rdf-connect/sparql-ingest-processor-ts";
@@ -81,7 +82,8 @@ rdfc:SPARQLIngest a tcs:PipelineComponent, dcat:Resource;
     ] .
 
 
-rdfc:HttpOut a tcs:PipelineComponent, dcat:Resource;
+rdfc:HttpOut a tcs:PipelineComponent, dcat:Resource, tcs:ExitBoundaryComponent;
+    tcs:channelType tcs:HttpChannel ;
     rdfs:label "RDF Connect Http Out";
     dct:requires rdfc:PyRunner;
     dct:requires [
@@ -250,7 +252,8 @@ rdfc:HttpFetch a tcs:PipelineComponent, dcat:Resource ;
 # HTTP ingest server. The demonstrator switched from the pull-based
 # `rdfc:HttpFetch`/`rdfc:HttpIn` to an accept-a-POST server so the LDIO
 # workbench can push enriched observations to `http://rdfc:9000/source-a`.
-rdfc:HttpServer a tcs:PipelineComponent, dcat:Resource ;
+rdfc:HttpServer a tcs:PipelineComponent, dcat:Resource, tcs:EntryBoundaryComponent ;
+    tcs:channelType tcs:HttpChannel ;
     rdfs:label "HTTP Server processor";
     rdfs:description "This processor starts an HTTP server and writes the body of every incoming request to the output channel. It supports configuring the bind address, accepted HTTP method, path, and the status code returned to clients.";
     dcat:landingPage "https://github.com/rdf-connect/http-utils-processor-ts/blob/http-server/" ;
@@ -704,12 +707,10 @@ proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource ;
     rdfs:label "JSON-LD to N-Quads processor";
     rdfs:description "Parses incoming JSON-LD strings and serializes them as N-Quads for downstream RDF processors.";
     dct:requires rdfc:NodeRunner ;
-    dct:requires [
-        a spdx:Package ;
-        spdx:name "jsonld-to-nquads" ;
-        spdx:downloadLocation "file:///workspace/pipeline/processors/jsonld-to-nquads" ;
-        spdx:suppliedBy :npm
-    ] ;
+    # Local processor — source ships in demonstrator/RDFC/processors/jsonld-to-nquads/
+    # and is copied into the rdfc/ output folder by hand until the generator
+    # learns to ship local file:// dependencies (roadmap A). Only its `jsonld`
+    # peer-dep is listed as an npm package.
     dct:requires [
         a spdx:Package ;
         spdx:name "jsonld" ;

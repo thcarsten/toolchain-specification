@@ -128,3 +128,4 @@ earlier "Component / instance reuse" / "Channels / graph shape" sections).
 - [x] `LdioStepOrderingShape` — an `Input` step preceded by another LDIO step — **shape**
 - [x] `SwComponentDockerConfigShape` — a `sw:` component with no direct `tcs:DockerComposeConfig` — **shape**
 - [x] `SwStepEnvValueShape` — a `sw:` step's embedded config with a non-literal (IRI) value — **shape**
+- [x] `SwSingleInstanceShape` — two `InstancePipelineComponent`s specializing the same `sw:` component — **shape**
