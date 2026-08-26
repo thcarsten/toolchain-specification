@@ -20,8 +20,10 @@ shape-matching bridge (see :meth:`ValidationReportCompiler.match_shapes`
 attached to the build.
 """
 
+import re
+
 import pandas as pd
-from rdflib import Graph, Literal, URIRef
+from rdflib import BNode, Graph, Literal, URIRef
 from rdfine import GraphReader
 
 from ..base import Compiler
@@ -30,42 +32,25 @@ from ..utils import attach_file
 
 class ValidationReportCompiler(Compiler):
     """
-    Runs once :class:`PipelineEnricher` has actually finished (channels
-    synthesized, configs seeded), guaranteed by :meth:`applies_to`
-    triggering explicitly on ``<build> dct:creator tcs:PipelineEnricher``
-    - the provenance triple ``PipelineGenerator`` writes immediately
-    after any compiler runs - rather than a coarser signal both
-    compilers would happen to share. First use of this pattern in the
-    codebase; elsewhere two compilers' relative order has so far either
-    not mattered or fallen out of graph state each needs anyway.
+    Invoked explicitly by :class:`PipelineGenerator` after the fixpoint
+    loop terminates and before :class:`DockerComposeCompiler`. Not
+    registry-triggered — kept out via ``is_explicit_call``, since it
+    must see every shaping compiler's contribution and would otherwise
+    race with them for eligibility in the loop.
 
-    Side effect worth knowing: fixpoint eligibility is snapshotted once
-    per iteration, and ``PipelineEnricher``'s ``dct:creator`` triple
-    only exists *after* it finishes - so this compiler can't be
-    eligible in the same iteration Enricher runs in, only the next one.
-    ``PipelineAssembler`` has no such dependency and is already eligible
-    in Enricher's own iteration, so it runs first. Verified empirically:
-    compile order is ``..., PipelineEnricher, PipelineAssembler,
-    ValidationReportCompiler, ...`` - not strictly between the two as
-    an earlier version of this docstring claimed. Harmless for
-    correctness (``PipelineAssembler`` only adds container/``tcs:runs``
-    triples, nothing this compiler inspects), but worth a second look if
-    that ordering ever needs to be tightened back up.
-
-    Known limitation (resolved): :class:`PipelineExtractor` used to
-    shrink the graph down to only what is reachable from the one
-    pipeline being compiled, dropping the generic application-profile
-    shapes in ``catalog-application-profile-shapes.ttl`` (e.g.
-    ``tcs:RdfcProcessorShape``, ``tcs:PipelineComponentShape``) since
-    they float independently via ``sh:targetClass``/``sh:target`` with
-    no graph edge from the pipeline to reach them. Fixed by having
-    ``PipelineExtractor`` separately collect the forward-reachable
-    subgraph of every ``sh:NodeShape`` in the source graph and re-add
-    it after the pipeline traversal. Verified empirically:
-    ``tcs:RdfcProcessorShape`` and ``tcs:PipelineComponentShape`` both
-    now survive into the build graph alongside component-attached
-    configShapes, so ``validate_normal_shapes`` sees both kinds.
+    Generic application-profile shapes in
+    ``catalog-application-profile-shapes.ttl`` (e.g.
+    ``tcs:RdfcProcessorShape``, ``tcs:PipelineComponentShape``) float
+    independently via ``sh:targetClass``/``sh:target`` with no graph
+    edge from the pipeline reaching them; :class:`GraphReducer` keeps
+    them in the build graph by separately collecting the
+    forward-reachable subgraph of every ``sh:NodeShape`` in the source
+    graph and re-adding it after the pipeline traversal, so
+    :meth:`validate_normal_shapes` sees both these and
+    component-attached configShapes.
     """
+
+    is_explicit_call = True
 
     #: Override on a subclass to change where the report is attached.
     filename = "validation-report.ttl"
@@ -80,18 +65,6 @@ class ValidationReportCompiler(Compiler):
         # Populated by validate_normal_shapes(); consumed by
         # generate_validation_report() at the end of the pipeline.
         self._shacl_report: GraphReader | None = None
-
-    @classmethod
-    def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Triggered once ``PipelineEnricher`` has actually run —
-        checked via the ``<build> dct:creator tcs:PipelineEnricher``
-        provenance triple ``PipelineGenerator`` writes right after any
-        compiler finishes, rather than a coarser signal both compilers
-        would happen to share.
-        """
-        return not graph_reader.filter(
-            pred="dct:creator", obj="tcs:PipelineEnricher"
-        ).df.empty
 
     def compile(self) -> Graph:
         self.normalize_config_shapes()
@@ -176,19 +149,18 @@ class ValidationReportCompiler(Compiler):
         can be audited directly after a compile, without re-parsing the
         attached report.
 
-        Also records, on :attr:`validated_shapes` /
-        :attr:`untargeted_shapes`, which ``sh:NodeShape``s in the build
-        graph did or didn't end up with a target — an absence of
-        violations only means something if the shape was actually
-        evaluated, and a ``sh:NodeShape`` with no target at all is
-        silently never checked by pySHACL. Note that a legitimately
-        untargeted shape isn't necessarily a bug: nested sub-shapes
-        reached only via ``sh:node``/``sh:property`` (e.g.
-        ``ldio:quantityValueShape``) are evaluated in the context of
-        their parent shape's target and never need one of their own.
-        :meth:`generate_validation_report` surfaces both lists in the
-        attached report so this is visible without re-deriving it from
-        the shapes graph by hand.
+        Also records, on :attr:`validated_shapes`, which ``sh:NodeShape``s
+        in the build graph actually carry a target and were therefore
+        evaluated by pySHACL — the only shapes worth reporting on at
+        all, since a shape without a target was never checked by
+        pySHACL in the first place. This is a plain Python list for
+        programmatic inspection
+        (``gen.compilers[ValidationReportCompiler].validated_shapes``);
+        :meth:`generate_validation_report` additionally asserts a
+        ``tcs:passed`` triple per shape in this list into the attached
+        report itself — the standard SHACL validation report has no
+        vocabulary for "this shape was checked and passed", it only
+        ever reports violations that were found.
         """
         report = self.output_reader.validate(advanced=True, inference="rdfs")
         self.conforms = report.ask("?r sh:conforms true")
@@ -205,12 +177,8 @@ class ValidationReportCompiler(Compiler):
             UNION { ?shape sh:targetSubjectsOf ?t }
             """,
         )["shape"].drop_duplicates()
-        all_shapes = self.output_reader.select("?shape", "?shape a sh:NodeShape .")[
-            "shape"
-        ].drop_duplicates()
 
         self.validated_shapes = sorted(targeted)
-        self.untargeted_shapes = sorted(set(all_shapes) - set(targeted))
 
     def gather_throughput_shapes(self) -> None:
         """Resolve an ``inputShape``/``outputShape`` for every ``tcs:Channel``,
@@ -261,8 +229,8 @@ class ValidationReportCompiler(Compiler):
         ).iterrows():
             own_shape.setdefault((row["node"], row["role"]), row["shape"])
 
-        input_shape = self._effective_role_shapes("tcs:inputShape")
-        output_shape = self._effective_role_shapes("tcs:outputShape")
+        input_shape = self._lookup_effective_role_shapes("tcs:inputShape")
+        output_shape = self._lookup_effective_role_shapes("tcs:outputShape")
 
         next_index = 0
         for channel_id in sorted(channels):
@@ -311,7 +279,7 @@ class ValidationReportCompiler(Compiler):
           is known.
 
         Regularization runs once, in dataflow order
-        (:meth:`_instances_in_dataflow_order`, writers before readers),
+        (:meth:`_order_instances_by_dataflow`, writers before readers),
         so a downstream passthrough sees an upstream passthrough's
         freshly-regularized ``outputShape`` once it has been propagated
         onto their shared channel — the same bidirectional propagation
@@ -327,12 +295,12 @@ class ValidationReportCompiler(Compiler):
         the current catalog, but "more specific info wins" is the safer
         default.
         """
-        passthrough_shape = self._effective_role_shapes("tcs:passthroughShape")
+        passthrough_shape = self._lookup_effective_role_shapes("tcs:passthroughShape")
         if not passthrough_shape:
             return
 
-        input_shape = self._effective_role_shapes("tcs:inputShape")
-        output_shape = self._effective_role_shapes("tcs:outputShape")
+        input_shape = self._lookup_effective_role_shapes("tcs:inputShape")
+        output_shape = self._lookup_effective_role_shapes("tcs:outputShape")
 
         reads_from = self.output_reader.select(
             "?instance ?channel", "?instance tcs:readsFrom ?channel ."
@@ -363,7 +331,7 @@ class ValidationReportCompiler(Compiler):
         }
 
         next_index = 0
-        for instance in self._instances_in_dataflow_order(reads_from, writes_to):
+        for instance in self._order_instances_by_dataflow(reads_from, writes_to):
             shape = passthrough_shape.get(instance)
             if shape is None:
                 continue
@@ -512,12 +480,12 @@ class ValidationReportCompiler(Compiler):
         ``output_shape``.
 
         Returns ``None`` ("not verified") by default — deliberately a
-        stub, not a hardwired network client: ``qsm-service``, the
-        Node/Fastify bridge described in ``test suite/README.md``'s
-        "Architecture" section, doesn't exist yet and its API contract
-        is still undecided. Override this method on a subclass (or
-        monkeypatch an instance) once the bridge is built and its
-        contract is settled.
+        stub, not a hardwired dependency: the shape-matching library
+        described in ``test suite/README.md``'s "Architecture" section
+        (a colleague is writing it in Python from scratch, superseding
+        the earlier ``qsm-service``/TypeScript bridge plan) doesn't exist
+        yet. Override this method on a subclass (or monkeypatch an
+        instance) to call into it in-process once it's built.
         """
         return None
 
@@ -527,49 +495,39 @@ class ValidationReportCompiler(Compiler):
         into the one file attached to the build, per architecture step
         8 in ``test suite/README.md``.
 
-        Also marks every shape from :meth:`validate_normal_shapes`'
-        ``validated_shapes``/``untargeted_shapes`` lists as
-        ``tcs:ValidatedShape``/``tcs:UntargetedShape``, so a reader of
-        the report can tell "this shape conforms" apart from "this
-        shape was never actually evaluated" — pySHACL silently skips
-        any ``sh:NodeShape`` without a target, and an absence of
-        violations for it doesn't mean what it looks like it means.
+        The attached report is a plain SHACL validation report
+        (``sh:conforms``, ``sh:result``) plus one ``tcs:passed`` boolean
+        and a copy of the shape's own catalog-authored ``sh:message``
+        for every shape in :attr:`validated_shapes` (i.e. every shape
+        that actually had a ``sh:target`` and was therefore evaluated —
+        untargeted shapes are not listed at all, there is no use in
+        reporting on a shape that was never checked), plus one
+        ``tcs:ThroughputMatchResult`` per ``tcs:Channel``.
 
-        The extra vocabulary used here (``tcs:ThroughputMatchResult``,
-        ``tcs:forChannel``, ``tcs:inputShape``, ``tcs:outputShape``,
-        ``tcs:matches``, ``tcs:ValidatedShape``, ``tcs:UntargetedShape``)
-        is provisional — it isn't part of the public semantic model yet,
-        since the shape-matching bridge's own contract (see
-        :meth:`match_shapes`) is still undecided. ``tcs:matches`` is a
-        string literal (``"true"`` / ``"false"`` / ``"unknown"``)
-        rather than a boolean so ``"unknown"`` — the expected default
-        result until the bridge exists — has somewhere to live without
-        overloading ``xsd:boolean``.
+        ``tcs:passed`` is derived from ``sh:sourceShape`` — a shape
+        counts as passed iff no ``sh:ValidationResult`` in the pySHACL
+        report names it as its source. ``sh:message`` is copied
+        verbatim from whatever the shape already carries in the
+        catalog (0, 1 or several values) rather than invented here —
+        shapes without one simply don't get a ``sh:message`` triple in
+        the report.
+
+        Shape identifiers that are catalog-normative (an author-given
+        IRI) are kept as-is. Identifiers auto-minted during compilation
+        for a catalog-authored *blank-node* shape (``:nodeshape_N`` from
+        ``PipelineSeeder.name_blind_nodes``) or for a channel with no
+        producer at all (``:emptyshape_N`` from :meth:`_mint_empty_shape`)
+        are not catalog-normative — :meth:`_unblank_synthetic_shape_ids`
+        turns them back into blank nodes in the attached report only,
+        leaving the working build graph untouched.
+
+        ``tcs:matches`` is a string literal (``"true"`` / ``"false"`` /
+        ``"unknown"``) rather than a boolean so ``"unknown"`` — the
+        expected default result until the shape-matching library exists
+        — has somewhere to live without overloading ``xsd:boolean``.
         """
         report = self._shacl_report
         assert report is not None, "validate_normal_shapes() must run first"
-
-        prefix_store = report.prefix_store
-        shape_type_triples = Graph()
-        prefix_store.bind_to_namespace(shape_type_triples)
-        type_pred = URIRef(prefix_store.expand_string("rdf:type"))
-        for shape_id in self.validated_shapes:
-            shape_type_triples.add(
-                (
-                    URIRef(prefix_store.expand_string(shape_id)),
-                    type_pred,
-                    URIRef(prefix_store.expand_string("tcs:ValidatedShape")),
-                )
-            )
-        for shape_id in self.untargeted_shapes:
-            shape_type_triples.add(
-                (
-                    URIRef(prefix_store.expand_string(shape_id)),
-                    type_pred,
-                    URIRef(prefix_store.expand_string("tcs:UntargetedShape")),
-                )
-            )
-        report = report.add(shape_type_triples)
 
         next_index = 0
         for _, row in self.throughput_matches.iterrows():
@@ -597,6 +555,25 @@ class ValidationReportCompiler(Compiler):
             ).graph
             report = report.add(new_triples)
 
+        for shape_id in self.validated_shapes:
+            failed = report.ask(
+                f"?result a sh:ValidationResult ; sh:sourceShape {shape_id} ."
+            )
+            report = report.add(
+                self.output_reader.construct(
+                    f"{shape_id} sh:message ?message .",
+                    f"{shape_id} sh:message ?message .",
+                ).graph
+            )
+            report = report.add(
+                report.construct(
+                    f"{shape_id} tcs:passed {'false' if failed else 'true'} .",
+                    "?s ?p ?o .",
+                ).graph
+            )
+
+        report = self._unblank_synthetic_shape_ids(report)
+
         self.output_reader = attach_file(
             self.output_reader,
             filename=self.filename,
@@ -604,7 +581,43 @@ class ValidationReportCompiler(Compiler):
             content=report.serialize("ttl"),
         )
 
-    def _effective_role_shapes(self, role: str) -> dict[str, str]:
+    _SYNTHETIC_SHAPE_ID = re.compile(r"^:(nodeshape|emptyshape)_\d+$")
+
+    def _unblank_synthetic_shape_ids(self, report: GraphReader) -> GraphReader:
+        """Render auto-minted shape IRIs back as blank nodes in the
+        attached report, so only catalog-normative shape URIs show up
+        as named resources there.
+
+        ``PipelineSeeder.name_blind_nodes`` renames every anonymous
+        ``sh:NodeShape`` in the catalog to a stable ``:nodeshape_N`` IRI
+        (needed so downstream compilers can reference it in a SPARQL
+        query string — blank-node labels aren't safely reusable across
+        separate query executions), and :meth:`_mint_empty_shape` mints
+        a fresh ``:emptyshape_N`` for channels with no producer at all.
+        Neither IRI is catalog-authored, so neither is a meaningful,
+        stable identifier outside this one compile — only the working
+        build graph needs them to be addressable; the attached report
+        is free to present them as what they really are.
+        """
+        synthetic = {
+            node
+            for node in set(report.graph.subjects()) | set(report.graph.objects())
+            if isinstance(node, URIRef)
+            and self._SYNTHETIC_SHAPE_ID.match(
+                report.prefix_store.compact_string(str(node))
+            )
+        }
+        if not synthetic:
+            return report
+
+        replacement = {node: BNode() for node in synthetic}
+        new_graph = Graph(bind_namespaces="none")
+        for triple in report.graph:
+            new_graph.add(tuple(replacement.get(term, term) for term in triple))
+        report.prefix_store.bind_to_namespace(new_graph)
+        return type(report)(new_graph)
+
+    def _lookup_effective_role_shapes(self, role: str) -> dict[str, str]:
         """Tier-2 (own ``dcat:qualifiedRelation`` attachment) over
         tier-3 (falls back to the shape attached to the
         ``tcs:PipelineComponent`` an instance specializes) resolution
@@ -642,7 +655,7 @@ class ValidationReportCompiler(Compiler):
 
         return effective
 
-    def _instances_in_dataflow_order(self, reads_from, writes_to) -> list[str]:
+    def _order_instances_by_dataflow(self, reads_from, writes_to) -> list[str]:
         """Topologically order every step that participates in channel
         wiring, upstream (writers) before downstream (readers) of the
         same channel — the order :meth:`normalize_passthrough_shapes`
@@ -696,7 +709,7 @@ class ValidationReportCompiler(Compiler):
         same ``dcat:qualifiedRelation`` idiom used everywhere else,
         minting a named relation IRI the same way ``normalize_config_shapes``
         mints its target IRIs. ``shape_id`` is always a named IRI here —
-        ``PipelineExtractor.name_blind_nodes`` renames every blank-node
+        ``PipelineSeeder.name_blind_nodes`` renames every blank-node
         ``sh:NodeShape`` (e.g. a component's trivial passthrough/output
         shape) before this compiler ever runs.
         """

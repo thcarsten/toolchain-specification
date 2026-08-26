@@ -1,5 +1,8 @@
 pipeline generator/resources/rdfc-docker/
 
+# IDE's
+.vscode/
+
 # Python build and cache artifacts.
 #
 # __pycache__ and *.egg-info were previously tracked, which meant that
@@ -17,6 +20,9 @@ dist/
 .venv/
 venv/
 
+# Local environments
+.env
+
 # Jupyter
 .ipynb_checkpoints/
 
@@ -24,3 +30,4 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
+_pytest_fixes.log

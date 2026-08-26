@@ -49,6 +49,7 @@ ldio:HttpInPoller a tcs:PipelineComponent, dcat:Resource;
         dcat:hadRole tcs:configShape ;
         dct:relation [
           a sh:NodeShape;
+          sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed.";
           sh:node ldio:HttpRequesterShape;
           sh:property [
               sh:path ldio:url;
@@ -86,11 +87,12 @@ ldio:HttpInPoller a tcs:PipelineComponent, dcat:Resource;
     [
         a dcat:Relationship;
         dcat:hadRole tcs:outputShape ;
-        dct:relation [ a sh:NodeShape ]
+        dct:relation [ a sh:NodeShape ; sh:message "HttpInPoller relays the raw HTTP response body verbatim — not yet RDF at this point, so no constraint can be asserted." ]
 ] .
 
 
-ldio:HttpIn a tcs:PipelineComponent, dcat:Resource;
+ldio:HttpIn a tcs:PipelineComponent, dcat:Resource, tcs:EntryBoundaryComponent;
+    tcs:channelType tcs:HttpChannel ;
     rdfs:label "Ldio:HttpIn" ;
     rdfs:description "The LDIO Http In is a basic Http Listener. Data can be written to http://{hostname}:{port}/{pipeline name}." ;
     rdfs:comment "This component has no config properties documented on the landing page." ;
@@ -279,6 +281,7 @@ ldio:JsonToLdAdapter a tcs:PipelineComponent, dcat:Resource ;
         dcat:hadRole tcs:configShape ;
         dct:relation [
           a sh:NodeShape;
+          sh:message "Checks that ldio:JsonToLdAdapter's wiring (context/force-content-type/max-jsonld-cache-capacity) is well-typed.";
           sh:property [
               sh:path ldio:context;
               sh:name "context";
@@ -309,7 +312,7 @@ ldio:JsonToLdAdapter a tcs:PipelineComponent, dcat:Resource ;
     [
         a dcat:Relationship;
         dcat:hadRole tcs:outputShape ;
-        dct:relation [ a sh:NodeShape ]
+        dct:relation [ a sh:NodeShape ; sh:message "JsonToLdAdapter's output fully depends on the @context supplied per instance — no generic claim holds across every possible configuration." ]
 ] .
 
 
@@ -407,6 +410,7 @@ ldio:SparqlConstructTransformer
         dcat:hadRole tcs:configShape ;
         dct:relation [
           a sh:NodeShape;
+          sh:message "Checks that ldio:SparqlConstructTransformer's wiring (query/infer) is well-typed.";
           sh:property [
               sh:path ldio:query;
               sh:name "query";
@@ -598,7 +602,8 @@ ldio:VersionObjectCreator a tcs:PipelineComponent, dcat:Resource;
 ] .
 
 
-ldio:HttpOut a tcs:PipelineComponent, dcat:Resource;
+ldio:HttpOut a tcs:PipelineComponent, dcat:Resource, tcs:ExitBoundaryComponent;
+    tcs:channelType tcs:HttpChannel ;
     rdfs:label "Ldio:HttpOut" ; 
     rdfs:description "The LDIO HTTP Out is a basic Http Client that will send the given Linked Data model to a target url.";
     ldio:type "Output" ;
@@ -609,6 +614,7 @@ ldio:HttpOut a tcs:PipelineComponent, dcat:Resource;
         dcat:hadRole tcs:configShape ;
         dct:relation [
           a sh:NodeShape;
+          sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed.";
           sh:node ldio:HttpRequesterShape;
           sh:property [
               sh:path ldio:endpoint;
@@ -635,7 +641,7 @@ ldio:HttpOut a tcs:PipelineComponent, dcat:Resource;
     [
         a dcat:Relationship;
         dcat:hadRole tcs:passthroughShape ;
-        dct:relation [ a sh:NodeShape ]
+        dct:relation [ a sh:NodeShape ; sh:message "HttpOut serializes and POSTs the incoming model verbatim — a pure passthrough at the RDF level, no constraint on its shape." ]
 ] .
 
 
@@ -1121,14 +1127,7 @@ ldio:LinkedDataInteractionsOrchestrator
     rdfs:label "Linked Data Interactions Orchestrator" ;
     dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
     spdx:versionInfo "2.8.0-SNAPSHOT";
-    tcs:config :LdioDefaultDockerComposeConfig ;
-    dct:requires ldio:LdioPipelineStarterService .
-
-
-ldio:LdioPipelineStarterService 
-    a tcs:PipelineComponent, dcat:Resource ;
-    rdfs:label "Ldio Pipeline Starter Service" ;
-    tcs:config :LdioPipelineStarterDockerComposeConfig . 
+    tcs:config :LdioDefaultDockerComposeConfig .
 
 
 #################################################################
@@ -1144,25 +1143,9 @@ ldio-workbench:
     image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
     ports:
       - "8080:8080"
-""" .
-
-
-:LdioPipelineStarterDockerComposeConfig
-    a tcs:Config, tcs:DockerComposeConfig ;
-    dct:format "text/yaml" ;
-    tcs:literal '''
-ldio-pipeline-starter:
-    image: curlimages/curl
     volumes:
-      - ./ldio_pipeline.yml:/pipeline.yml:ro
-    command: >
-      sh -c "
-      sleep 30 &&
-      curl -X POST
-      -H 'content-type: application/yaml'
-      http://ldio-workbench:8080/admin/api/v1/pipeline
-      --data-binary @/pipeline.yml
-      "         
-''' .
+      - ./ldio/application.yml:/ldio/application.yml:ro
+      - ./ldio/pipelines/:/ldio/pipelines/:ro
+""" .
 
 

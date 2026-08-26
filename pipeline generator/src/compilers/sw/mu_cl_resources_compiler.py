@@ -40,6 +40,11 @@ class MuClResourcesCompiler(Compiler):
         ).df.empty
 
     def compile(self) -> Graph:
+        self.attach_resources_config_files()
+        return self.output_reader.graph
+
+    def attach_resources_config_files(self) -> None:
+        """Attach all three config files listed in :data:`_FILES`."""
         for config_iri, filename in _FILES:
             self.output_reader = attach_file(
                 self.output_reader,
@@ -47,4 +52,3 @@ class MuClResourcesCompiler(Compiler):
                 filepath=_FILEPATH,
                 content=read_literal(self.output_reader, config_iri),
             )
-        return self.output_reader.graph

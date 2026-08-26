@@ -312,6 +312,34 @@ def parse_docker_compose_config(
     return normalized
 
 
+def lookup_container_service_name(reader: GraphReader, container_id: str) -> str | None:
+    """Return the compose service name for ``container_id``, or ``None``.
+
+    The container's instantiated component is expected to own a
+    single ``tcs:DockerComposeConfig`` (built by
+    :class:`PipelineAssembler` — one container per such component).
+    That config, once normalized via :func:`parse_docker_compose_config`,
+    carries the single service under ``services``. Compilers that
+    need cross-container hostnames — the boundary config compilers
+    filling in ``tcs:endpoint`` — call this rather than duplicating
+    the reachability query.
+    """
+    rows = reader.select(
+        "?config",
+        f"""
+        {container_id} tcs:instantiates ?component .
+        ?component tcs:config ?config .
+        ?config a tcs:DockerComposeConfig .
+        """,
+    )
+    configs = rows["config"].drop_duplicates().to_list()
+    if not configs:
+        return None
+    normalized = parse_docker_compose_config(reader, configs[0])
+    services = normalized.get("services") or {}
+    return next(iter(services), None)
+
+
 def attach_file(
     reader: GraphReader,
     *,

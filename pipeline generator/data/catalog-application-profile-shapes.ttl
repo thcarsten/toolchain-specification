@@ -2,6 +2,7 @@
 @prefix dcat: <http://www.w3.org/ns/dcat#> .
 @prefix dct: <http://purl.org/dc/terms/> .
 @prefix ldio: <http://example.org/example/ldio/> .
+@prefix nifi: <http://example.org/example/nifi/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix p-plan: <http://purl.org/net/p-plan#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
@@ -64,6 +65,11 @@ tcs:PipelineConfig        rdfs:subClassOf tcs:Config .
 tcs:DockerComposeConfig   rdfs:subClassOf tcs:Config .
 tcs:DockerImageConfig     rdfs:subClassOf tcs:Config .
 
+tcs:EntryBoundaryComponent  rdfs:subClassOf tcs:PipelineComponent .
+tcs:ExitBoundaryComponent   rdfs:subClassOf tcs:PipelineComponent .
+tcs:HttpChannel             rdfs:subClassOf tcs:Channel .
+tcs:SparqlUpdateChannel     rdfs:subClassOf tcs:HttpChannel .
+
 
 #################################################################
 # Prefix declarations for SHACL-AF SPARQL targets
@@ -75,6 +81,22 @@ tcs:DockerImageConfig     rdfs:subClassOf tcs:Config .
 # Not redeclared here to avoid two competing `sh:declare` sets on the
 # same subject.
 #################################################################
+
+tcs:prefixes
+    sh:declare
+        [ sh:prefix ""       ; sh:namespace "http://example.org/example/"^^xsd:anyURI ] ,
+        [ sh:prefix "dcat"   ; sh:namespace "http://www.w3.org/ns/dcat#"^^xsd:anyURI ] ,
+        [ sh:prefix "dct"    ; sh:namespace "http://purl.org/dc/terms/"^^xsd:anyURI ] ,
+        [ sh:prefix "ldio"   ; sh:namespace "http://example.org/example/ldio/"^^xsd:anyURI ] ,
+        [ sh:prefix "nifi"   ; sh:namespace "http://example.org/example/nifi/"^^xsd:anyURI ] ,
+        [ sh:prefix "owl"    ; sh:namespace "http://www.w3.org/2002/07/owl#"^^xsd:anyURI ] ,
+        [ sh:prefix "p-plan" ; sh:namespace "http://purl.org/net/p-plan#"^^xsd:anyURI ] ,
+        [ sh:prefix "prov"   ; sh:namespace "http://www.w3.org/ns/prov#"^^xsd:anyURI ] ,
+        [ sh:prefix "rdf"    ; sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ] ,
+        [ sh:prefix "rdfc"   ; sh:namespace "https://w3id.org/rdf-connect#"^^xsd:anyURI ] ,
+        [ sh:prefix "rdfs"   ; sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ] ,
+        [ sh:prefix "spdx"   ; sh:namespace "http://spdx.org/rdf/terms#"^^xsd:anyURI ] ,
+        [ sh:prefix "tcs"    ; sh:namespace "https://w3id.org/toolchain#"^^xsd:anyURI ] .
 
 
 #################################################################
@@ -88,6 +110,7 @@ tcs:DockerImageConfig     rdfs:subClassOf tcs:Config .
 
 tcs:PipelineComponentShape a sh:NodeShape ;
     rdfs:label "PipelineComponent application-profile shape" ;
+    sh:message "Checks that a PipelineComponent's tcs:config/dct:requires are well-typed, it has at most one DefaultConfig per Config subtype, and it is transitively deployable via dct:requires+." ;
     sh:targetClass tcs:PipelineComponent ;
 
     sh:property [
@@ -158,6 +181,7 @@ tcs:PipelineComponentShape a sh:NodeShape ;
 
 tcs:InstancePipelineComponentShape a sh:NodeShape ;
     rdfs:label "InstancePipelineComponent application-profile shape" ;
+    sh:message "Checks that a step belongs to exactly one PipelineDefinition, specializes exactly one PipelineComponent, has at most one hasInputVar, and that any readsFrom/writesTo point at a tcs:Channel." ;
     sh:targetClass tcs:InstancePipelineComponent ;
 
     sh:property [
@@ -208,6 +232,7 @@ tcs:InstancePipelineComponentShape a sh:NodeShape ;
 # not just within one framework's segment (e.g. LDIO).
 tcs:AcyclicGraphShape a sh:NodeShape ;
     rdfs:label "Acyclic channel graph shape" ;
+    sh:message "Checks that no step transitively reads from a channel it also writes to (no cycles in the readsFrom/writesTo channel graph)." ;
     sh:targetClass tcs:InstancePipelineComponent ;
 
     sh:sparql [
@@ -233,6 +258,7 @@ tcs:AcyclicGraphShape a sh:NodeShape ;
 # be undeployable through any catalog-driven tooling).
 tcs:SpecializedComponentIsCatalogedShape a sh:NodeShape ;
     rdfs:label "Specialized component is catalogued shape" ;
+    sh:message "Checks that every step's specialized component is listed as a dcat:resource of some tcs:Catalog." ;
     sh:targetClass tcs:InstancePipelineComponent ;
 
     sh:sparql [
@@ -262,6 +288,7 @@ tcs:SpecializedComponentIsCatalogedShape a sh:NodeShape ;
 
 tcs:PipelineDefinitionShape a sh:NodeShape ;
     rdfs:label "PipelineDefinition application-profile shape" ;
+    sh:message "Checks that a PipelineDefinition has at least one step referencing it via p-plan:isStepOfPlan." ;
     sh:targetClass tcs:PipelineDefinition ;
 
     sh:sparql [
@@ -287,6 +314,7 @@ tcs:PipelineDefinitionShape a sh:NodeShape ;
 
 tcs:ConfigShape a sh:NodeShape ;
     rdfs:label "Config application-profile shape" ;
+    sh:message "Checks that a Config carries exactly one of tcs:embedded/tcs:literal, and that a tcs:literal body also declares dct:format." ;
     sh:targetClass tcs:Config ;
 
     sh:xone (
@@ -308,11 +336,35 @@ tcs:ConfigShape a sh:NodeShape ;
 
 
 #################################################################
+# tcs:SecretReference
+#
+# Pipeline definitions carry only a logical secret name. The deployment
+# platform resolves the value after compilation, so build graphs and emitted
+# files never contain the credential itself.
+#################################################################
+
+tcs:SecretReferenceShape a sh:NodeShape ;
+    rdfs:label "Secret reference application-profile shape" ;
+    sh:targetClass tcs:SecretReference ;
+    sh:property [
+        sh:path tcs:secretName ;
+        sh:name "secret name" ;
+        sh:datatype xsd:string ;
+        sh:pattern "^[A-Za-z_][A-Za-z0-9_]*$" ;
+        sh:minLength 1 ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "tcs:secretName must be a non-empty environment-variable name using letters, digits, and underscores."
+    ] .
+
+
+#################################################################
 # tcs:Catalog
 #################################################################
 
 tcs:CatalogShape a sh:NodeShape ;
     rdfs:label "Catalog application-profile shape" ;
+    sh:message "Checks that every dcat:resource of a Catalog is a tcs:PipelineComponent." ;
     sh:targetClass tcs:Catalog ;
 
     sh:property [
@@ -334,6 +386,7 @@ tcs:CatalogShape a sh:NodeShape ;
 
 tcs:PipelineBuildShape a sh:NodeShape ;
     rdfs:label "PipelineBuild application-profile shape" ;
+    sh:message "Checks that a PipelineBuild links to exactly one PipelineDefinition, and that dct:hasPart/tcs:compiledFile point at a DockerContainer/spdx:File respectively." ;
     sh:targetClass tcs:PipelineBuild ;
 
     sh:property [
@@ -366,6 +419,7 @@ tcs:PipelineBuildShape a sh:NodeShape ;
 
 tcs:DockerContainerShape a sh:NodeShape ;
     rdfs:label "DockerContainer application-profile shape" ;
+    sh:message "Checks that a DockerContainer instantiates at least one PipelineComponent and that tcs:runs points at an InstancePipelineComponent." ;
     sh:targetClass tcs:DockerContainer ;
 
     sh:property [
@@ -397,6 +451,7 @@ tcs:DockerContainerShape a sh:NodeShape ;
 
 tcs:SpdxPackageShape a sh:NodeShape ;
     rdfs:label "spdx:Package application-profile shape" ;
+    sh:message "Checks that an spdx:Package declares both spdx:name and an IRI spdx:suppliedBy, needed to emit it into pyproject.toml/package.json." ;
     sh:targetClass spdx:Package ;
 
     sh:property [
@@ -415,6 +470,134 @@ tcs:SpdxPackageShape a sh:NodeShape ;
     ] .
 
 
+#################################################################
+# tcs:EntryBoundaryComponent / tcs:ExitBoundaryComponent
+#
+# tcs:channelType on a boundary component is optional metadata used
+# by BridgeTransportCompiler to pick auto-insertion candidates for a
+# default HTTP bridge. Boundary components without a channelType are
+# valid — they simply won't be considered for auto-insertion. When
+# declared, at most one channelType may be given (a component
+# provides one transport).
+#################################################################
+
+tcs:BoundaryChannelTypeShape a sh:NodeShape ;
+    rdfs:label "BoundaryChannelType application-profile shape" ;
+    sh:message "Checks that a boundary component declares at most one tcs:channelType." ;
+    sh:targetClass tcs:EntryBoundaryComponent ;
+    sh:targetClass tcs:ExitBoundaryComponent ;
+
+    sh:property [
+        sh:path tcs:channelType ;
+        sh:maxCount 1 ;
+        sh:name "channelType" ;
+        sh:message "A boundary component may declare at most one tcs:channelType."
+    ] .
+
+
+#################################################################
+# tcs:CatalogMissingBridgeShape
+#
+# Formal-presence check: for every cross-container tcs:Channel,
+# both sides must be covered by a step whose specialized component
+# is typed as the matching boundary class (Entry on the reader
+# side, Exit on the writer side). BridgeTransportCompiler auto-
+# inserts missing sides where the catalog has a candidate; this
+# shape fires when the catalog has none, so the compiler had
+# nothing to insert.
+#
+# Scope: formal presence only — the shape checks that container-
+# crossing is realised via bridge components at all, nothing about
+# their configuration or transport implementation details (those
+# are the boundary config compilers' concern and are caught later
+# if broken).
+#################################################################
+
+tcs:CatalogMissingBridgeShape a sh:NodeShape ;
+    rdfs:label "CatalogMissingBridge application-profile shape" ;
+    sh:message "Checks that every cross-container channel has a bridge step on both sides." ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?this a tcs:Channel .
+                ?writer tcs:writesTo ?this .
+                ?reader tcs:readsFrom ?this .
+                ?cW tcs:runs ?writer .
+                ?cR tcs:runs ?reader .
+                FILTER (?cW != ?cR)
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path ( [ sh:inversePath tcs:writesTo ] prov:specializationOf ) ;
+        sh:class tcs:ExitBoundaryComponent ;
+        sh:minCount 1 ;
+        sh:name "exit-side-bridge" ;
+        sh:message "Cross-container channel {?this} has no ExitBoundaryComponent-typed writer step — no bridge component available in the catalog to insert."
+    ] , [
+        sh:path ( [ sh:inversePath tcs:readsFrom ] prov:specializationOf ) ;
+        sh:class tcs:EntryBoundaryComponent ;
+        sh:minCount 1 ;
+        sh:name "entry-side-bridge" ;
+        sh:message "Cross-container channel {?this} has no EntryBoundaryComponent-typed reader step — no bridge component available in the catalog to insert."
+    ] .
+
+
+#################################################################
+# tcs:UnsupportedChannelTopologyShape
+#
+# BridgeTransportCompiler's MVP only handles cross-container
+# channels with (a) a single writer and (b) readers all in one
+# downstream container. Fan-in (writers in more than one
+# container) and multi-container fan-out (readers spanning more
+# than two containers total) fall outside that scope and must
+# stay hand-authored. Ordinary branching (N readers in one
+# downstream container) is fully supported.
+#################################################################
+
+tcs:UnsupportedChannelTopologyShape a sh:NodeShape ;
+    rdfs:label "UnsupportedChannelTopology application-profile shape" ;
+    sh:message "Checks that cross-container channel topology is a MVP-supported (1-writer, 1-or-2-container) shape." ;
+    sh:targetClass tcs:Channel ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Channel {?this} has writers in more than one container — multi-container fan-in is not auto-bridged." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:Channel .
+                ?writer tcs:writesTo ?this .
+                ?container tcs:runs ?writer .
+            }
+            GROUP BY ?this
+            HAVING (COUNT(DISTINCT ?container) > 1)
+        """
+    ] , [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Channel {?this} has readers spanning more than two containers total — multi-container fan-out is not auto-bridged." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:Channel .
+                {
+                    ?reader tcs:readsFrom ?this .
+                    ?container tcs:runs ?reader .
+                }
+                UNION
+                {
+                    ?writer tcs:writesTo ?this .
+                    ?container tcs:runs ?writer .
+                }
+            }
+            GROUP BY ?this
+            HAVING (COUNT(DISTINCT ?container) > 2)
+        """
+    ] .
+
+
 ###############################################################################
 # SECTION 2 — Compiler-specific constraints
 #
@@ -425,10 +608,601 @@ tcs:SpdxPackageShape a sh:NodeShape ;
 # together against a mixed-framework catalog.
 ###############################################################################
 
+#################################################################
+# 2.1  LDIO
+#################################################################
+
+# Every LDIO processing component must declare its role in the pipeline
+# via `ldio:type`. The value drives `LdioConfigCompiler.fill_in_components`,
+# which slots each processor into `input:` / `input.adapter:` /
+# `transformers[]` / `outputs[]` of the emitted LDIO YAML. Any other value
+# would fall through those branches silently and drop the processor from
+# the config.
+#
+# Discriminator: components that `dct:requires` the LDIO orchestrator
+# directly. The orchestrator itself and the pipeline-starter service are
+# exempt: they are infrastructure, not processing steps.
+tcs:LdioComponentTypeShape a sh:NodeShape ;
+    rdfs:label "LDIO component type shape" ;
+    sh:message "Checks that every LDIO processing component declares exactly one ldio:type (Input/Adapter/Transformer/Output) and an rdfs:label." ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:PipelineComponent ;
+                      dct:requires ldio:LinkedDataInteractionsOrchestrator .
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path ldio:type ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:in ( "Input" "Adapter" "Transformer" "Output" ) ;
+        sh:name "type" ;
+        sh:message "LDIO component {?this} must declare exactly one ldio:type in {\"Input\", \"Adapter\", \"Transformer\", \"Output\"}."
+    ] ;
+
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:name "label" ;
+        sh:message "LDIO component {?this} must declare rdfs:label — LdioConfigCompiler uses it as the ``name:`` key in the emitted YAML pipeline."
+    ] .
+
+
+# LDIO steps are strictly serial: each step has at most one upstream
+# channel (`tcs:readsFrom`) and at most one downstream channel
+# (`tcs:writesTo`). LDIO's YAML pipeline model has no branching primitive;
+# a step with two upstream feeds or two downstream sinks cannot be
+# rendered by `LdioConfigCompiler`.
+#
+# Discriminator: instance-pipeline-components whose specialized component
+# carries `ldio:type` (i.e., is an LDIO processing component).
+tcs:LdioStepSerialityShape a sh:NodeShape ;
+    rdfs:label "LDIO step seriality shape" ;
+    sh:message "Checks that every LDIO step has at most one upstream and one downstream channel (LDIO pipelines are strictly serial)." ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp .
+                ?comp ldio:type ?anytype .
+            }
+        """
+    ] ;
+
+    sh:property [
+        sh:path tcs:readsFrom ;
+        sh:maxCount 1 ;
+        sh:name "readsFrom" ;
+        sh:message "LDIO step {?this} reads from more than one channel — LDIO pipelines are strictly serial (max 1 upstream)."
+    ] ;
+
+    sh:property [
+        sh:path tcs:writesTo ;
+        sh:maxCount 1 ;
+        sh:name "writesTo" ;
+        sh:message "LDIO step {?this} writes to more than one channel — LDIO pipelines are strictly serial (max 1 downstream)."
+    ] .
+
+
+# LDIO step-ordering: an `Output` must be terminal in its LDIO segment,
+# an `Input` must be initial. Concretely:
+#   * If step X is an `Output`, no other LDIO step may read from a
+#     channel X writes to. (A downstream *non-LDIO* step is allowed —
+#     e.g. LDIO `HttpOut` writes to a channel that RDF-Connect
+#     `HttpIn` reads. Cross-framework hand-offs stay legal.)
+#   * If step X is an `Input`, no other LDIO step may write to a
+#     channel X reads from.
+#
+# The FILTER excludes the step itself so a self-loop (nonsensical but
+# not caught here) doesn't accidentally validate.
+tcs:LdioStepOrderingShape a sh:NodeShape ;
+    rdfs:label "LDIO step ordering shape" ;
+    sh:message "Checks that an LDIO Output step is terminal and an LDIO Input step is initial within its LDIO segment." ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp .
+                ?comp ldio:type ?anytype .
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "LDIO Output step {?this} is followed by another LDIO step ({?downstream}) via channel {?ch} — Output must be terminal within its LDIO segment." ;
+        sh:select """
+            SELECT ?this ?ch ?downstream WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp ;
+                      tcs:writesTo ?ch .
+                ?comp ldio:type "Output" .
+                ?downstream tcs:readsFrom ?ch ;
+                            prov:specializationOf ?dcomp .
+                ?dcomp ldio:type ?danytype .
+                FILTER ( ?downstream != ?this )
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "LDIO Input step {?this} is preceded by another LDIO step ({?upstream}) via channel {?ch} — Input must be initial within its LDIO segment." ;
+        sh:select """
+            SELECT ?this ?ch ?upstream WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp ;
+                      tcs:readsFrom ?ch .
+                ?comp ldio:type "Input" .
+                ?upstream tcs:writesTo ?ch ;
+                          prov:specializationOf ?ucomp .
+                ?ucomp ldio:type ?uanytype .
+                FILTER ( ?upstream != ?this )
+            }
+        """
+    ] .
+
+
+# LDIO's own YAML schema makes `input:` and `input.adapter:` *singular*
+# keys — unlike `transformers:`/`outputs:`, which are lists. A second
+# `Input` or `Adapter` step in one segment has nowhere to go in that
+# schema. Scoped per ``tcs:segment`` (not per ``tcs:PipelineDefinition``)
+# so a multi-segment LDIO pipeline can legitimately have one Input +
+# one Adapter per segment.
+tcs:LdioSingularStepShape a sh:NodeShape ;
+    rdfs:label "LDIO singular Input/Adapter shape" ;
+    sh:message "Checks that a segment has at most one LDIO Input step and at most one LDIO Adapter step (LDIO's input:/input.adapter: YAML keys are singular)." ;
+
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp .
+                ?comp ldio:type ?anytype .
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "LDIO step {?this} is a second \"Input\" step in segment {?segment}, alongside {?other} — LDIO's input: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
+        sh:select """
+            SELECT ?this ?segment ?other WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      tcs:segment ?segment ;
+                      prov:specializationOf ?comp .
+                ?comp ldio:type "Input" .
+                ?other a tcs:InstancePipelineComponent ;
+                       tcs:segment ?segment ;
+                       prov:specializationOf ?ocomp .
+                ?ocomp ldio:type "Input" .
+                FILTER ( ?other != ?this )
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "LDIO step {?this} is a second \"Adapter\" step in segment {?segment}, alongside {?other} — LDIO's input.adapter: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
+        sh:select """
+            SELECT ?this ?segment ?other WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      tcs:segment ?segment ;
+                      prov:specializationOf ?comp .
+                ?comp ldio:type "Adapter" .
+                ?other a tcs:InstancePipelineComponent ;
+                       tcs:segment ?segment ;
+                       prov:specializationOf ?ocomp .
+                ?ocomp ldio:type "Adapter" .
+                FILTER ( ?other != ?this )
+            }
+        """
+    ] .
 
 #################################################################
-# 2.1  RDF-Connect
+# 2.2  Apache NiFi
+#
+# NifiConfigCompiler emits flow.json from catalog metadata + authored
+# tcs:embedded configs. These shapes enforce the catalog metadata the
+# compiler requires; they do not mirror every NiFi NAR property.
+# Discriminator: dct:requires nifi:Orchestrator.
 #################################################################
+
+tcs:NifiDeploymentModeShape a sh:NodeShape ;
+    rdfs:label "NiFi deployment mode shape" ;
+    sh:targetClass tcs:PipelineDefinition ;
+    sh:property [
+        sh:path nifi:deploymentMode ;
+        sh:maxCount 1 ;
+        sh:in ("local" "remote") ;
+        sh:message "nifi:deploymentMode must be either local or remote. Omit it to use local Docker."
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Remote NiFi deployment requires exactly one nifi:deploymentConfig." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this nifi:deploymentMode "remote" .
+                {
+                    FILTER NOT EXISTS { ?this nifi:deploymentConfig ?config . }
+                }
+                UNION
+                {
+                    ?this nifi:deploymentConfig ?left, ?right .
+                    FILTER (?left != ?right)
+                }
+            }
+        """
+    ] .
+
+# Every catalog component assigned to NiFi must describe exactly one kind and
+# provide the metadata needed to emit that kind into flow.json.
+tcs:NifiCatalogMetadataShape a sh:NodeShape ;
+    rdfs:label "NiFi catalog metadata shape" ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this a tcs:PipelineComponent ;
+                    dct:requires nifi:Orchestrator .
+            }
+        """
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi component {?this} must describe exactly one kind: processor, controller service, or funnel." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this dct:requires nifi:Orchestrator .
+                OPTIONAL {
+                    {
+                        ?this nifi:processorType ?processorType .
+                        BIND ("processor" AS ?kind)
+                    }
+                    UNION
+                    {
+                        ?this nifi:controllerServiceType ?serviceType .
+                        BIND ("controller-service" AS ?kind)
+                    }
+                    UNION
+                    {
+                        ?this nifi:componentType "FUNNEL" .
+                        BIND ("funnel" AS ?kind)
+                    }
+                }
+            }
+            GROUP BY ?this
+            HAVING (COUNT(DISTINCT ?kind) != 1)
+        """
+    ] ;
+    sh:or (
+        [
+            sh:property [
+                sh:path nifi:processorType ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleGroup ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleArtifact ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleVersion ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:or (
+                [ sh:property [ sh:path nifi:outgoingRelationship ; sh:minCount 1 ] ]
+                [ sh:property [ sh:path nifi:autoTerminatedRelationship ; sh:minCount 1 ] ]
+            )
+        ]
+        [
+            sh:property [
+                sh:path nifi:componentType ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:hasValue "FUNNEL"
+            ]
+        ]
+        [
+            sh:property [
+                sh:path nifi:controllerServiceType ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleGroup ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleArtifact ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:bundleVersion ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:serviceApiType ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:serviceApiBundleGroup ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:serviceApiBundleArtifact ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ] ;
+            sh:property [
+                sh:path nifi:serviceApiBundleVersion ;
+                sh:minCount 1 ; sh:maxCount 1 ;
+                sh:datatype xsd:string
+            ]
+        ]
+    ) ;
+    sh:message "NiFi component {?this} must provide complete metadata for its processor, funnel, or controller-service kind." .
+
+
+# InstancePipelineComponent-valued NiFi properties currently represent
+# controller-service references. They must resolve to a controller service in
+# the same plan as the processor that consumes them.
+tcs:NifiControllerServiceReferenceShape a sh:NodeShape ;
+    rdfs:label "NiFi controller service reference shape" ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                    prov:specializationOf ?component ;
+                    p-plan:hasInputVar/tcs:embedded ?config .
+                ?component dcat:qualifiedRelation/dct:relation/sh:property ?propertyShape .
+                ?propertyShape sh:path ?predicate ;
+                    sh:class tcs:InstancePipelineComponent .
+                ?config ?predicate ?referencedStep .
+            }
+        """
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi step {?this} references {?referencedStep}, which is not a valid controller-service step." ;
+        sh:select """
+            SELECT DISTINCT ?this ?referencedStep WHERE {
+                ?this prov:specializationOf ?component ;
+                    p-plan:hasInputVar/tcs:embedded ?config .
+                ?component dcat:qualifiedRelation/dct:relation/sh:property ?propertyShape .
+                ?propertyShape sh:path ?predicate ;
+                    sh:class tcs:InstancePipelineComponent .
+                ?config ?predicate ?referencedStep .
+                FILTER NOT EXISTS {
+                    ?referencedStep a tcs:InstancePipelineComponent ;
+                        prov:specializationOf ?serviceComponent .
+                    ?serviceComponent nifi:controllerServiceType ?serviceType .
+                }
+            }
+        """
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi step {?this} and referenced controller service {?referencedStep} must belong to the same pipeline definition." ;
+        sh:select """
+            SELECT DISTINCT ?this ?referencedStep WHERE {
+                ?this p-plan:isStepOfPlan ?plan ;
+                    prov:specializationOf ?component ;
+                    p-plan:hasInputVar/tcs:embedded ?config .
+                ?component dcat:qualifiedRelation/dct:relation/sh:property ?propertyShape .
+                ?propertyShape sh:path ?predicate ;
+                    sh:class tcs:InstancePipelineComponent .
+                ?config ?predicate ?referencedStep .
+                FILTER NOT EXISTS { ?referencedStep p-plan:isStepOfPlan ?plan . }
+            }
+        """
+    ] .
+
+
+# Route blocks select which NiFi relationships feed an authored channel.
+tcs:NifiRouteShape a sh:NodeShape ;
+    rdfs:label "NiFi route shape" ;
+    sh:targetObjectsOf nifi:route ;
+    sh:property [
+        sh:path nifi:channel ;
+        sh:class tcs:Channel ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "A NiFi route must reference exactly one nifi:channel."
+    ] ;
+    sh:property [
+        sh:path nifi:selectedRelationship ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:message "A NiFi route must select at least one relationship."
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi route {?this} references channel {?channel}, but its owner step does not write to that channel." ;
+        sh:select """
+            SELECT DISTINCT ?this ?channel WHERE {
+                ?step p-plan:hasInputVar/tcs:embedded ?config .
+                ?config nifi:route ?this .
+                ?this nifi:channel ?channel .
+                FILTER NOT EXISTS { ?step tcs:writesTo ?channel . }
+            }
+        """
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi route {?this} selects relationship {?relationship}, which is not declared by its PipelineComponent." ;
+        sh:select """
+            SELECT DISTINCT ?this ?relationship WHERE {
+                ?step prov:specializationOf ?component ;
+                    p-plan:hasInputVar/tcs:embedded ?config .
+                ?config nifi:route ?this .
+                ?this nifi:selectedRelationship ?relationship .
+                FILTER NOT EXISTS {
+                    ?component
+                        (nifi:outgoingRelationship|nifi:autoTerminatedRelationship)
+                        ?relationship .
+                }
+            }
+        """
+    ] .
+
+
+# Multiple NiFi writers/readers on the same semantic channel make the current
+# compiler create an implicit Cartesian product of Connections. Keep such
+# fan-in/fan-out explicit until the model has a dedicated channel mode.
+tcs:NifiChannelTopologyShape a sh:NodeShape ;
+    rdfs:label "NiFi channel topology shape" ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?step (tcs:readsFrom|tcs:writesTo) ?this ;
+                    prov:specializationOf ?component .
+                ?component dct:requires nifi:Orchestrator .
+            }
+        """
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi channel {?this} has more than one NiFi writer; explicit fan-in is not supported yet." ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?left tcs:writesTo ?this ;
+                    prov:specializationOf ?leftComponent .
+                ?right tcs:writesTo ?this ;
+                    prov:specializationOf ?rightComponent .
+                ?leftComponent dct:requires nifi:Orchestrator .
+                ?rightComponent dct:requires nifi:Orchestrator .
+                FILTER (?left != ?right)
+            }
+        """
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi channel {?this} has more than one NiFi reader; explicit fan-out is not supported yet." ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?left tcs:readsFrom ?this ;
+                    prov:specializationOf ?leftComponent .
+                ?right tcs:readsFrom ?this ;
+                    prov:specializationOf ?rightComponent .
+                ?leftComponent dct:requires nifi:Orchestrator .
+                ?rightComponent dct:requires nifi:Orchestrator .
+                FILTER (?left != ?right)
+            }
+        """
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi step {?step} reads from and writes to channel {?this}; self-loop channels are not supported by the compiler." ;
+        sh:select """
+            SELECT DISTINCT ?this ?step WHERE {
+                ?step tcs:readsFrom ?this ;
+                    tcs:writesTo ?this ;
+                    prov:specializationOf ?component .
+                ?component dct:requires nifi:Orchestrator .
+            }
+        """
+    ] .
+
+
+# Optional instance scheduledState must be a known NiFi enum value.
+tcs:NifiStepScheduledStateShape a sh:NodeShape ;
+    rdfs:label "NiFi step scheduledState shape" ;
+
+    sh:targetSubjectsOf nifi:scheduledState ;
+
+    sh:property [
+        sh:path nifi:scheduledState ;
+        sh:datatype xsd:string ;
+        sh:in ("DISABLED" "ENABLED" "RUNNING") ;
+        sh:maxCount 1 ;
+        sh:message "nifi:scheduledState on {?this} must be one of DISABLED, ENABLED, RUNNING."
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi processor {?this} must use scheduled state RUNNING or DISABLED." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this prov:specializationOf ?component ;
+                    nifi:scheduledState ?state .
+                ?component nifi:processorType ?processorType .
+                FILTER (?state NOT IN ("RUNNING", "DISABLED"))
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi controller-service step {?this} must use scheduled state ENABLED or DISABLED." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this prov:specializationOf ?component ;
+                    nifi:scheduledState ?state .
+                ?component nifi:controllerServiceType ?serviceType .
+                FILTER (?state NOT IN ("ENABLED", "DISABLED"))
+            }
+        """
+    ] ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "NiFi funnel step {?this} must not declare nifi:scheduledState." ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?this prov:specializationOf ?component ;
+                    nifi:scheduledState ?state .
+                ?component nifi:componentType "FUNNEL" .
+            }
+        """
+    ] .
+
+#################################################################
+# 2.3  RDF-Connect
+#################################################################
+
+# Every RDF-Connect processor must declare `owl:imports` pointing at the
+# processor's own `.ttl` shape file. The RdfcConfigCompiler copies these
+# imports onto the pipeline (`<> owl:imports ?import`) so the runner can
+# locate the processor definition at startup — a processor without
+# owl:imports would be present in the emitted pipeline.ttl but unbootable.
+#
+# Discriminator: `dct:requires` some `rdfc:Runner` (i.e., is a processor,
+# not the orchestrator itself). Runners are exempt because they are
+# not processors — even though the current catalog happens to attach
+# owl:imports to them too, that's a modelling convenience, not a
+# requirement.
 
 # A step's channel wiring is expressed twice: framework-specifically
 # inside its `tcs:embedded` config (`rdfc:reader demo:sdsMeasurements`),
@@ -496,17 +1270,6 @@ tcs:RdfcStepChannelWiringShape a sh:NodeShape ;
     ] .
 
 
-# Every RDF-Connect processor must declare `owl:imports` pointing at the
-# processor's own `.ttl` shape file. The RdfcConfigCompiler copies these
-# imports onto the pipeline (`<> owl:imports ?import`) so the runner can
-# locate the processor definition at startup — a processor without
-# owl:imports would be present in the emitted pipeline.ttl but unbootable.
-#
-# Discriminator: `dct:requires` some `rdfc:Runner` (i.e., is a processor,
-# not the orchestrator itself). Runners are exempt because they are
-# not processors — even though the current catalog happens to attach
-# owl:imports to them too, that's a modelling convenience, not a
-# requirement.
 tcs:RdfcProcessorShape a sh:NodeShape ;
     rdfs:label "RDF-Connect processor shape" ;
 
@@ -654,7 +1417,6 @@ tcs:RdfcOrchestratorConfigShape a sh:NodeShape ;
             }
         """
     ] ;
-
     sh:sparql [
         sh:prefixes tcs:prefixes ;
         sh:message "rdfc:Orchestrator must carry at least one tcs:DockerImageConfig — without it RdfcDockerFileCompiler cannot emit a Dockerfile for the RDFC container." ;
@@ -703,208 +1465,7 @@ tcs:RdfcPackageManagerShape a sh:NodeShape ;
 
 
 #################################################################
-# 2.2  LDIO
-#################################################################
-
-# Every LDIO processing component must declare its role in the pipeline
-# via `ldio:type`. The value drives `LdioConfigCompiler.fill_in_components`,
-# which slots each processor into `input:` / `input.adapter:` /
-# `transformers[]` / `outputs[]` of the emitted LDIO YAML. Any other value
-# would fall through those branches silently and drop the processor from
-# the config.
-#
-# Discriminator: components that `dct:requires` the LDIO orchestrator
-# directly. The orchestrator itself and the pipeline-starter service are
-# exempt: they are infrastructure, not processing steps.
-tcs:LdioComponentTypeShape a sh:NodeShape ;
-    rdfs:label "LDIO component type shape" ;
-
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?this a tcs:PipelineComponent ;
-                      dct:requires ldio:LinkedDataInteractionsOrchestrator .
-            }
-        """
-    ] ;
-
-    sh:property [
-        sh:path ldio:type ;
-        sh:datatype xsd:string ;
-        sh:minCount 1 ;
-        sh:maxCount 1 ;
-        sh:in ( "Input" "Adapter" "Transformer" "Output" ) ;
-        sh:name "type" ;
-        sh:message "LDIO component {?this} must declare exactly one ldio:type in {\"Input\", \"Adapter\", \"Transformer\", \"Output\"}."
-    ] ;
-
-    sh:property [
-        sh:path rdfs:label ;
-        sh:minCount 1 ;
-        sh:name "label" ;
-        sh:message "LDIO component {?this} must declare rdfs:label — LdioConfigCompiler uses it as the ``name:`` key in the emitted YAML pipeline."
-    ] .
-
-
-# LDIO steps are strictly serial: each step has at most one upstream
-# channel (`tcs:readsFrom`) and at most one downstream channel
-# (`tcs:writesTo`). LDIO's YAML pipeline model has no branching primitive;
-# a step with two upstream feeds or two downstream sinks cannot be
-# rendered by `LdioConfigCompiler`.
-#
-# Discriminator: instance-pipeline-components whose specialized component
-# carries `ldio:type` (i.e., is an LDIO processing component).
-tcs:LdioStepSerialityShape a sh:NodeShape ;
-    rdfs:label "LDIO step seriality shape" ;
-
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?this a tcs:InstancePipelineComponent ;
-                      prov:specializationOf ?comp .
-                ?comp ldio:type ?anytype .
-            }
-        """
-    ] ;
-
-    sh:property [
-        sh:path tcs:readsFrom ;
-        sh:maxCount 1 ;
-        sh:name "readsFrom" ;
-        sh:message "LDIO step {?this} reads from more than one channel — LDIO pipelines are strictly serial (max 1 upstream)."
-    ] ;
-
-    sh:property [
-        sh:path tcs:writesTo ;
-        sh:maxCount 1 ;
-        sh:name "writesTo" ;
-        sh:message "LDIO step {?this} writes to more than one channel — LDIO pipelines are strictly serial (max 1 downstream)."
-    ] .
-
-
-# LDIO step-ordering: an `Output` must be terminal in its LDIO segment,
-# an `Input` must be initial. Concretely:
-#   * If step X is an `Output`, no other LDIO step may read from a
-#     channel X writes to. (A downstream *non-LDIO* step is allowed —
-#     e.g. LDIO `HttpOut` writes to a channel that RDF-Connect
-#     `HttpIn` reads. Cross-framework hand-offs stay legal.)
-#   * If step X is an `Input`, no other LDIO step may write to a
-#     channel X reads from.
-#
-# The FILTER excludes the step itself so a self-loop (nonsensical but
-# not caught here) doesn't accidentally validate.
-tcs:LdioStepOrderingShape a sh:NodeShape ;
-    rdfs:label "LDIO step ordering shape" ;
-
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?this a tcs:InstancePipelineComponent ;
-                      prov:specializationOf ?comp .
-                ?comp ldio:type ?anytype .
-            }
-        """
-    ] ;
-
-    sh:sparql [
-        sh:prefixes tcs:prefixes ;
-        sh:message "LDIO Output step {?this} is followed by another LDIO step ({?downstream}) via channel {?ch} — Output must be terminal within its LDIO segment." ;
-        sh:select """
-            SELECT ?this ?ch ?downstream WHERE {
-                ?this a tcs:InstancePipelineComponent ;
-                      prov:specializationOf ?comp ;
-                      tcs:writesTo ?ch .
-                ?comp ldio:type "Output" .
-                ?downstream tcs:readsFrom ?ch ;
-                            prov:specializationOf ?dcomp .
-                ?dcomp ldio:type ?danytype .
-                FILTER ( ?downstream != ?this )
-            }
-        """
-    ] ;
-
-    sh:sparql [
-        sh:prefixes tcs:prefixes ;
-        sh:message "LDIO Input step {?this} is preceded by another LDIO step ({?upstream}) via channel {?ch} — Input must be initial within its LDIO segment." ;
-        sh:select """
-            SELECT ?this ?ch ?upstream WHERE {
-                ?this a tcs:InstancePipelineComponent ;
-                      prov:specializationOf ?comp ;
-                      tcs:readsFrom ?ch .
-                ?comp ldio:type "Input" .
-                ?upstream tcs:writesTo ?ch ;
-                          prov:specializationOf ?ucomp .
-                ?ucomp ldio:type ?uanytype .
-                FILTER ( ?upstream != ?this )
-            }
-        """
-    ] .
-
-
-# LDIO's own YAML schema makes `input:` and `input.adapter:` *singular*
-# keys — unlike `transformers:`/`outputs:`, which are lists. A second
-# `Input` or `Adapter` step in one pipeline has nowhere to go in that
-# schema.
-tcs:LdioSingularStepShape a sh:NodeShape ;
-    rdfs:label "LDIO singular Input/Adapter shape" ;
-
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?this a tcs:InstancePipelineComponent ;
-                      prov:specializationOf ?comp .
-                ?comp ldio:type ?anytype .
-            }
-        """
-    ] ;
-
-    sh:sparql [
-        sh:prefixes tcs:prefixes ;
-        sh:message "LDIO step {?this} is a second \"Input\" step in pipeline {?plan}, alongside {?other} — LDIO's input: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
-        sh:select """
-            SELECT ?this ?plan ?other WHERE {
-                ?this a tcs:InstancePipelineComponent ;
-                      p-plan:isStepOfPlan ?plan ;
-                      prov:specializationOf ?comp .
-                ?comp ldio:type "Input" .
-                ?other a tcs:InstancePipelineComponent ;
-                       p-plan:isStepOfPlan ?plan ;
-                       prov:specializationOf ?ocomp .
-                ?ocomp ldio:type "Input" .
-                FILTER ( ?other != ?this )
-            }
-        """
-    ] ;
-
-    sh:sparql [
-        sh:prefixes tcs:prefixes ;
-        sh:message "LDIO step {?this} is a second \"Adapter\" step in pipeline {?plan}, alongside {?other} — LDIO's input.adapter: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
-        sh:select """
-            SELECT ?this ?plan ?other WHERE {
-                ?this a tcs:InstancePipelineComponent ;
-                      p-plan:isStepOfPlan ?plan ;
-                      prov:specializationOf ?comp .
-                ?comp ldio:type "Adapter" .
-                ?other a tcs:InstancePipelineComponent ;
-                       p-plan:isStepOfPlan ?plan ;
-                       prov:specializationOf ?ocomp .
-                ?ocomp ldio:type "Adapter" .
-                FILTER ( ?other != ?this )
-            }
-        """
-    ] .
-
-
-#################################################################
-# 2.3  Semantic.works
+# 2.4  Semantic.works
 #
 # SemanticWorksCompiler folds each step's `p-plan:hasInputVar` config
 # into the `environment:` section of its component's compose config.
@@ -924,6 +1485,7 @@ tcs:LdioSingularStepShape a sh:NodeShape ;
 # reaching a DockerComposeConfig transitively via dct:requires+.
 tcs:SwComponentDockerConfigShape a sh:NodeShape ;
     rdfs:label "Semantic.works component DockerComposeConfig shape" ;
+    sh:message "Checks that every semantic.works component directly carries a tcs:DockerComposeConfig." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -964,6 +1526,7 @@ tcs:SwComponentDockerConfigShape a sh:NodeShape ;
 # type triple is harmless boilerplate the compiler ignores.
 tcs:SwStepEnvValueShape a sh:NodeShape ;
     rdfs:label "Semantic.works step env-value literal shape" ;
+    sh:message "Checks that semantic.works step config values are RDF literals, not IRIs or blank nodes." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -985,6 +1548,42 @@ tcs:SwStepEnvValueShape a sh:NodeShape ;
             SELECT ?this ?p WHERE {
                 ?this ?p ?v .
                 FILTER ( ?p != rdf:type && !isLiteral(?v) )
+            }
+        """
+    ] .
+
+# Semantic.works components are single-tenant microservices: each owns
+# exactly one static per-service config file with zero per-instance
+# aggregation (unlike LDIO/RDF-Connect's multi-tenant orchestrator
+# runtimes, which are designed to host several independent pipelines
+# side by side in one container). Reusing the same sw: component across
+# more than one InstancePipelineComponent has no defined behaviour today
+# and is caught here rather than silently misbehaving at runtime — see
+# `pipeline generator/README.md` §6.3's container/multi-tenancy contract.
+tcs:SwSingleInstanceShape a sh:NodeShape ;
+    rdfs:label "Semantic.works single-instance shape" ;
+    sh:message "Checks that no semantic.works component is specialized by more than one InstancePipelineComponent." ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT DISTINCT ?this WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp .
+                FILTER ( STRSTARTS(STR(?comp), "https://semantic.works/services/") )
+            }
+        """
+    ] ;
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Step {?this} specializes semantic.works component {?comp}, which is also specialized by {?other} — semantic.works components are single-tenant microservices and must not be instanced more than once." ;
+        sh:select """
+            SELECT ?this ?comp ?other WHERE {
+                ?this a tcs:InstancePipelineComponent ;
+                      prov:specializationOf ?comp .
+                ?other a tcs:InstancePipelineComponent ;
+                       prov:specializationOf ?comp .
+                FILTER ( ?other != ?this )
             }
         """
     ] .

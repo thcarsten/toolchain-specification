@@ -88,9 +88,9 @@ what it does and how it works.
 Companion notes for the presenter. Assumes comfort with RDF, Turtle, SPARQL, rdflib.
 
 REPOSITORY CONTEXT
-- Location: toolchain-specification/pipeline generator/. Compilers under src/compilers/, grouped into per-framework subfolders (core/, ldio/, rdfc/, sw/). End-to-end walkthrough in src/demo.ipynb. Sample catalog split by framework in data/catalog-ldio.ttl + data/catalog-rdf.ttl + data/catalog-sw.ttl.
+- Location: toolchain-specification/pipeline generator/. Compilers under src/compilers/, grouped into per-framework subfolders (core/, ldio/, nifi/, rdfc/, sw/). End-to-end walkthrough in src/demo.ipynb. Sample catalog split by framework in data/catalog-ldio.ttl + data/catalog-nifi.ttl + data/catalog-rdfc.ttl + data/catalog-sw.ttl.
 - What it does: reads a pipeline definition and a component catalog (both RDF), assembles an in-memory build graph, emits a project folder with framework-specific configs and docker-compose.yml.
-- Target frameworks: RDF-Connect, LDIO, semantic.works.
+- Target frameworks: RDF-Connect, LDIO, Apache NiFi, semantic.works.
 - rdfine (src/rdfine/): in-repo wrapper over rdflib exposing GraphReader (filter, traverse, select, construct, add). Used by every compiler.
 - tcs: namespace: tcs:PipelineBuild, tcs:DockerContainer, tcs:DockerComposeConfig, tcs:compiledFile, tcs:filename, tcs:filepath, tcs:literal, tcs:instantiates, tcs:runs. spdx: namespace: spdx:File.
 
@@ -254,6 +254,9 @@ fixpoint loop until nothing new fires.
     <ul>
       <li>SemanticWorksEnvVarCompiler</li>
       <li>LdioConfigCompiler</li>
+      <li>NifiConfigCompiler</li>
+      <li>NifiDockerfileCompiler</li>
+      <li>NifiRemoteCompiler</li>
       <li>RdfcConfigCompiler</li>
       <li>RdfcDockerFileCompiler</li>
       <li>VirtuosoCompiler</li>
@@ -354,15 +357,15 @@ of the three decisions in the previous slides.
 
 <!--
 SLIDE 8 - THE DESIGN IN PRACTICE
-The table lists every concrete compiler with its trigger and output. PipelineExtractor is instantiated up front by PipelineGenerator because it is the only compiler needing the pipeline_id in its constructor; every other compiler is discovered via the registry and run when its applies_to trigger becomes true. Compilers live in per-framework subfolders under src/compilers/ (core/, ldio/, rdfc/, sw/).
+The table lists every concrete compiler with its trigger and output. PipelineExtractor is instantiated up front by PipelineGenerator because it is the only compiler needing the pipeline_id in its constructor; every other compiler is discovered via the registry and run when its applies_to trigger becomes true. Compilers live in per-framework subfolders under src/compilers/ (core/, ldio/, nifi/, rdfc/, sw/).
 
 VOCABULARY (for reference)
 - Pipeline Definition: RDF description of a data pipeline, expressed against the public semantic model.
-- Component / Catalog: a component is a reusable pipeline building block; the catalog is the RDF library of all available components (data/catalog-ldio.ttl + data/catalog-rdf.ttl + data/catalog-sw.ttl).
+- Component / Catalog: a component is a reusable pipeline building block; the catalog is the RDF library of all available components (data/catalog-ldio.ttl + data/catalog-nifi.ttl + data/catalog-rdfc.ttl + data/catalog-sw.ttl).
 - Build graph: the in-memory rdflib.Graph the generator assembles. All build state lives here.
 - tcs:PipelineBuild: root node of a build graph. Generated files hang off it via tcs:compiledFile.
 - spdx:File: RDF node representing a generated file. Carries tcs:filename, tcs:filepath, tcs:literal (the body).
-- Compiler: subclass in src/compilers/, grouped into per-framework subfolders (core/, ldio/, rdfc/, sw/). Takes the build graph, transforms it, returns it. Registers automatically on import.
+- Compiler: subclass in src/compilers/, grouped into per-framework subfolders (core/, ldio/, nifi/, rdfc/, sw/). Takes the build graph, transforms it, returns it. Registers automatically on import.
 - applies_to: classmethod on every compiler. Decides whether the compiler should run against a given build graph. Default is False; every concrete compiler declares its own trigger. Execution order emerges from these triggers becoming true as the graph grows.
 - tcs:isFinishing: temporary triple on the build (`<build> tcs:isFinishing <bool>`) that PipelineGenerator toggles to true whenever a shaping pass finds nothing eligible. Compilers that need to run only after the graph has settled (DockerComposeCompiler) gate on this flag. Stripped from the graph before compile() returns.
 - rdfine / GraphReader: in-repo wrapper over rdflib used by every compiler.

@@ -314,6 +314,19 @@ rdfc:HttpServer dcat:qualifiedRelation [
     dct:relation [ a sh:NodeShape ]
 ] .
 
+# Boundary tagging for HTTP-facing processors. Not derivable from
+# their upstream processor.ttl (which only knows about channel wiring,
+# not container topology), so declared here rather than in the
+# generated catalog. Lets BridgeTransportCompiler recognise the
+# container-crossing side that ldio:HttpIn / ldio:HttpOut already have
+# tagged, and satisfies CatalogMissingBridgeShape / bridge_transport
+# on cross-container channels between LDIO and RDF-Connect.
+rdfc:HttpServer a tcs:EntryBoundaryComponent ;
+    tcs:channelType tcs:HttpChannel .
+
+rdfc:HttpOut a tcs:ExitBoundaryComponent ;
+    tcs:channelType tcs:HttpChannel .
+
 
 rdfc:SkolemizationProcessor dcat:qualifiedRelation [
     a dcat:Relationship ;

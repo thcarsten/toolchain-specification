@@ -1,4 +1,4 @@
-from rdflib import Graph
+from rdflib import Graph, URIRef
 from rdfine import GraphReader, GraphDict, receive_first
 import re
 
@@ -36,6 +36,7 @@ class RdfcConfigCompiler(Compiler):
         # :attr:`output_reader` through :func:`compilers.utils.attach_file`.
         self.rdfc_reader: GraphReader = GraphReader(Graph())
         self.pipeline_id: str = ""
+        self.pipeline_ttl: str = ""
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
@@ -45,47 +46,36 @@ class RdfcConfigCompiler(Compiler):
         ).df.empty
 
     def compile(self) -> Graph:
-        self.rdfc_reader = self.input_reader.construct(
-            "?pipeline a rdfc:Pipeline .",
-            "?pipeline a tcs:PipelineDefinition",
-        )
-        self.pipeline_id = receive_first(
-            self.input_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
-                "sub"
-            ],
-        )
-
+        self.initialize_rdfc_reader()
+        self.lookup_pipeline_id()
         self.describe_pipeline()
         self.describe_processors()
         self.describe_channel_wiring()
         self.describe_configs()
         self.describe_channels()
-
-        ttl_string = self.rdfc_reader.serialize("ttl")
-        # RDF Connect requires the pipeline to be named ``<>``. A plain
-        # string replace would also corrupt any other IRI that happens
-        # to have the pipeline's compact name as a prefix (e.g. a
-        # channel ``demo:TestArchive`` when the pipeline is
-        # ``demo:Test``) — the lookahead/lookbehind keep the match
-        # anchored to the whole token.
-        ttl_string = re.sub(
-            rf"(?<![\w:]){re.escape(self.pipeline_id)}(?!\w)", "<>", ttl_string
-        )
-
-        self.output_reader = attach_file(
-            self.output_reader,
-            filename="pipeline.ttl",
-            filepath="rdfc",
-            content=ttl_string,
-        )
-
-        self.output_reader = rewrite_compose_volume_host_path(
-            self.output_reader,
-            component_iri="rdfc:Orchestrator",
-            container_path=_RDFC_PIPELINE_CONTAINER_PATH,
-            host_path=_RDFC_PIPELINE_HOST_PATH,
-        )
+        self.serialize_pipeline_ttl()
+        self.attach_rdfc_pipeline_file()
         return self.output_reader.graph
+
+    def initialize_rdfc_reader(self) -> None:
+        """Seed :attr:`rdfc_reader` with the ``rdfc:Pipeline`` typing
+        triple every ``describe_*`` step below adds to.
+        """
+        self.rdfc_reader = self.input_reader.construct(
+            "?pipeline a rdfc:Pipeline .",
+            "?pipeline a tcs:PipelineDefinition",
+        )
+
+    def lookup_pipeline_id(self) -> None:
+        """Locate the single ``tcs:PipelineDefinition`` node being
+        compiled, needed both by the ``describe_*`` steps and to
+        anchor the ``<>`` self-reference in :meth:`serialize_pipeline_ttl`.
+        """
+        self.pipeline_id = receive_first(
+            self.input_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
+                "sub"
+            ],
+        )
 
     def describe_pipeline(self) -> None:
         """
@@ -256,7 +246,7 @@ class RdfcConfigCompiler(Compiler):
         config_id = configs[0]
 
         # Anchored through config_id (always a named IRI post
-        # PipelineExtractor.name_blind_nodes) rather than holding the
+        # PipelineSeeder.name_blind_nodes) rather than holding the
         # tcs:embedded blank node directly — a blank node's label isn't
         # stable across separate SPARQL query executions, so it can
         # never be safely stringified into a query.
@@ -325,24 +315,66 @@ class RdfcConfigCompiler(Compiler):
         Only the author knows which framework predicate their step
         expects — the compiler cannot guess it reliably.
 
-        What the compiler *can* do without ambiguity is add the
-        uniform type declaration every RDF-Connect channel needs.
-        Scope of "channel worth typing": any ``tcs:Channel`` already
-        referenced in the emitted pipeline graph (``self.rdfc_reader``).
-        ``describe_configs`` pulls in each config's ``tcs:embedded``
-        block via ``GraphDict``/``traverse``, which follows through
-        to every channel IRI referenced by the config and picks up
-        the ``?ch a tcs:Channel`` triple that ``inference_rules.yaml``
-        adds from ``tcs:readsFrom`` / ``tcs:writesTo``. Constraining
-        on those already-present triples means we emit boilerplate
-        exactly for the channels the pipeline.ttl uses — no dead
-        declarations for cross-framework channels whose RDFC-side
-        step has no wiring config referencing them (e.g., an LDIO→RDFC
-        boundary channel that only appears as a ``tcs:readsFrom``
-        annotation).
+        Every ``tcs:Channel`` in the build graph is typed as both
+        ``rdfc:Reader`` and ``rdfc:Writer`` so downstream SHACL
+        shapes checking ``sh:class rdfc:Reader``/``rdfc:Writer`` on
+        catalog configShapes pass on every channel the pipeline
+        touches. In the emitted ``pipeline.ttl`` (``rdfc_reader``)
+        only channels the RDFC step wiring actually references pick
+        up the typing — this keeps ``pipeline.ttl`` free of dead
+        declarations for channels other framework compilers care
+        about but the RDFC runner never sees.
         """
-        channel_types = self.rdfc_reader.construct(
-            "?ch a rdfc:Reader, rdfc:Writer .",
-            "?ch a tcs:Channel .",
+        channel_types = self.output_reader.construct(
+            "?channel a rdfc:Reader, rdfc:Writer .",
+            "?channel a tcs:Channel .",
         ).graph
-        self.rdfc_reader = self.rdfc_reader.add(channel_types)
+        self.output_reader = self.output_reader.add(channel_types)
+
+        # Restrict the pipeline.ttl-facing typing to channels the RDFC
+        # step wiring actually references. Compare in expanded URI
+        # form because ``.df`` compaction uses a graph-derived
+        # PrefixStore rather than ``self.prefix_store`` (see
+        # ``/memories/repo/rdfine-gotchas.md``).
+        rdfc_object_uris = {
+            str(o) for _, _, o in self.rdfc_reader.graph if isinstance(o, URIRef)
+        }
+        referenced_types = Graph()
+        for s, p, o in channel_types:
+            if str(s) in rdfc_object_uris:
+                referenced_types.add((s, p, o))
+        self.rdfc_reader = self.rdfc_reader.add(referenced_types)
+
+    def serialize_pipeline_ttl(self) -> None:
+        """Serialize :attr:`rdfc_reader` to Turtle, stashed on
+        :attr:`pipeline_ttl` for :meth:`attach_rdfc_pipeline_file`.
+        """
+        ttl_string = self.rdfc_reader.serialize("ttl")
+        # RDF Connect requires the pipeline to be named ``<>``. A plain
+        # string replace would also corrupt any other IRI that happens
+        # to have the pipeline's compact name as a prefix (e.g. a
+        # channel ``demo:TestArchive`` when the pipeline is
+        # ``demo:Test``) — the lookahead/lookbehind keep the match
+        # anchored to the whole token.
+        self.pipeline_ttl = re.sub(
+            rf"(?<![\w:]){re.escape(self.pipeline_id)}(?!\w)", "<>", ttl_string
+        )
+
+    def attach_rdfc_pipeline_file(self) -> None:
+        """Attach :attr:`pipeline_ttl` as ``rdfc/pipeline.ttl`` and
+        repoint ``rdfc:Orchestrator``'s compose volume mount at that
+        same host path.
+        """
+        self.output_reader = attach_file(
+            self.output_reader,
+            filename="pipeline.ttl",
+            filepath="rdfc",
+            content=self.pipeline_ttl,
+        )
+
+        self.output_reader = rewrite_compose_volume_host_path(
+            self.output_reader,
+            component_iri="rdfc:Orchestrator",
+            container_path=_RDFC_PIPELINE_CONTAINER_PATH,
+            host_path=_RDFC_PIPELINE_HOST_PATH,
+        )

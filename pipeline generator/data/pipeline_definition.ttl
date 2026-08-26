@@ -25,7 +25,7 @@
 #
 # Attempts to describe the hand-built pipeline in `demonstrator/` (branch
 # `development`) in `tcs:` terms. Meant to be parsed **alongside**
-# `catalog.ttl` and `demonstrator-catalog-extensions.ttl`; without the
+# the framework-specific `catalog-*.ttl` files; without the
 # latter every `prov:specializationOf` on an RDF-Connect processor or
 # semantic.works mu-service will point at an undefined IRI.
 #
@@ -101,31 +101,25 @@
 #     already optional so this works, but the model has no dedicated
 #     `tcs:Sink` marker to make the terminal nature explicit.
 #
-#  6. LDIO orchestrator version + volume drift. `catalog.ttl` declares
+#  6. LDIO orchestrator version + volume drift. `catalog-ldio.ttl` declares
 #     `ldes/ldi-orchestrator:2.8.0-SNAPSHOT` with a bare `ports:` mapping.
 #     The demonstrator runs `2.13.0` with two bind-mounted volumes
 #     (`application.yml` + `pipelines/`). The generator would emit the
 #     older, un-mounted shape today.
 #
-#  7. Runtime `depends_on`. The demonstrator's docker-compose has
-#     `ldio-workbench depends_on: [rdfc]` because LDIO POSTs to RDFC at
-#     startup. `dct:requires` on components could inform such a triple,
-#     but `DockerComposeCompiler` does not currently emit `depends_on`
-#     stanzas.
-#
-#  8. Shared config directories. Several mu services mount the same
+#  7. Shared config directories. Several mu services mount the same
 #     `./semantic-works/config/<...>/` directory into `/config`. The
 #     compose configs express this per service, but there's no first-class
 #     notion of a shared-config volume declared once and referenced N times.
 #
-#  9. Deterministic namespaces on values inside `tcs:embedded` configs.
+#  8. Deterministic namespaces on values inside `tcs:embedded` configs.
 #     The demonstrator uses IRIs from `sosa:`, `qudt:`, `tm:` inside its
 #     processor configs (`tm:path sosa:hasSimpleResult`, etc.). These
 #     survive the compile because rdfine's `GraphDict` traversal keeps
 #     namespaces, but there's no application-profile shape enforcing which
 #     namespaces are legal in a given processor's config.
 #
-# 10. The mock sensor API's own `Content-Type` quirk. The demonstrator's
+#  9. The mock sensor API's own `Content-Type` quirk. The demonstrator's
 #     `Ldio:JsonToLdAdapter` sets `force-content-type: true` and inlines a
 #     JSON-LD `@context` to work around the API's misdeclared
 #     `Content-Type: application/json` header on JSON-LD bodies. This is

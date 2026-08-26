@@ -120,3 +120,24 @@ rules:
         ?successor tcs:readsFrom ?otherR .
         FILTER (?otherR != ?r)
       }
+  -
+    # Channel-type propagation: a channel written to by a step whose
+    # component is a tcs:EntryBoundaryComponent inherits that boundary's
+    # tcs:channelType. Lets pre-compile SHACL shapes see the channel type
+    # BridgeTransportCompiler will otherwise mint at compile time.
+    construct: |
+      ?ch a ?channelType .
+    where: |
+      ?step tcs:writesTo ?ch ;
+            prov:specializationOf ?comp .
+      ?comp a tcs:EntryBoundaryComponent ;
+            tcs:channelType ?channelType .
+  -
+    # Symmetric case for tcs:ExitBoundaryComponent reading from a channel.
+    construct: |
+      ?ch a ?channelType .
+    where: |
+      ?step tcs:readsFrom ?ch ;
+            prov:specializationOf ?comp .
+      ?comp a tcs:ExitBoundaryComponent ;
+            tcs:channelType ?channelType .

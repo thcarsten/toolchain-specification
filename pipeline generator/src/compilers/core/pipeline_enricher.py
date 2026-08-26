@@ -7,7 +7,7 @@ from ..base import Compiler
 
 class PipelineEnricher(Compiler):
     """
-    Framework-agnostic graph enrichment, run between ``PipelineExtractor``
+    Framework-agnostic graph enrichment, run between ``PipelineSeeder``
     and ``PipelineAssembler``. Bundles every generic normalization step so
     downstream framework compilers (RDF-Connect, LDIO, semantic.works,
     ...) can assume a fully-wired, fully-configured step graph without
@@ -51,14 +51,14 @@ class PipelineEnricher(Compiler):
         super().__init__(graph)
         # Only incremented when a new resource is actually minted, and
         # checked against the graph so it never collides with a name
-        # already in use — same idiom as PipelineExtractor.name_blind_nodes
+        # already in use — same idiom as PipelineSeeder.name_blind_nodes
         # / PipelineAssembler.describe_docker_container.
         self._next_channel_index = 0
         self._next_config_index = 0
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Triggered once ``PipelineExtractor`` has seeded the
+        """Triggered once ``PipelineSeeder`` has seeded the
         ``tcs:PipelineBuild`` node — i.e. as soon as its bootstrap has
         run, regardless of whether the pipeline happens to have any
         steps yet. Triggering on the presence of an
