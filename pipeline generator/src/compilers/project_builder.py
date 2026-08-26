@@ -77,4 +77,11 @@ class ProjectBuilder:
             full.parent.mkdir(parents=True, exist_ok=True)
             full.write_text(str(row["content"]), encoding="utf-8")
             written.append(full)
+        if ".env.example" in self.files["filename"].astype(str).values:
+            env_file = target_root / ".env"
+            if not env_file.exists():
+                print(
+                    "Deployment secrets are required. "
+                    f"Supply a {env_file}. "
+                )
         return written

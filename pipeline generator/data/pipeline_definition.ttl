@@ -25,7 +25,7 @@
 #
 # Attempts to describe the hand-built pipeline in `demonstrator/` (branch
 # `development`) in `tcs:` terms. Meant to be parsed **alongside**
-# `catalog.ttl` and `demonstrator-catalog-extensions.ttl`; without the
+# the framework-specific `catalog-*.ttl` files; without the
 # latter every `prov:specializationOf` on an RDF-Connect processor or
 # semantic.works mu-service will point at an undefined IRI.
 #
@@ -101,7 +101,7 @@
 #     already optional so this works, but the model has no dedicated
 #     `tcs:Sink` marker to make the terminal nature explicit.
 #
-#  6. LDIO orchestrator version + volume drift. `catalog.ttl` declares
+#  6. LDIO orchestrator version + volume drift. `catalog-ldio.ttl` declares
 #     `ldes/ldi-orchestrator:2.8.0-SNAPSHOT` with a bare `ports:` mapping.
 #     The demonstrator runs `2.13.0` with two bind-mounted volumes
 #     (`application.yml` + `pipelines/`). The generator would emit the

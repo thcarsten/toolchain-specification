@@ -26,6 +26,7 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 CATALOG_FILES = [
     "catalog-core.ttl",
     "catalog-ldio.ttl",
+    "catalog-nifi.ttl",
     "catalog-rdfc.ttl",
     "catalog-sw.ttl",
 ]

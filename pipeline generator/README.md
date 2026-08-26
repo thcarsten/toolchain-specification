@@ -13,6 +13,7 @@
 &nbsp;&nbsp;&nbsp;&nbsp;[4.6. Provenance: dct:creator attachment](#46-provenance-dctcreator-attachment) <br>
 &nbsp;&nbsp;&nbsp;&nbsp;[4.7. Compiler responsibilities at a glance](#47-compiler-responsibilities-at-a-glance) <br>
 &nbsp;&nbsp;&nbsp;&nbsp;[4.8. Boundary components and cross-container bridges](#48-boundary-components-and-cross-container-bridges) <br>
+&nbsp;&nbsp;&nbsp;&nbsp;[4.9. NiFi deployment target](#49-nifi-deployment-target) <br>
 [5. Limitations](#5-limitations) <br>
 &nbsp;&nbsp;&nbsp;&nbsp;[5.1. No override mechanism for tcs:DefaultConfig bodies](#51-no-override-mechanism-for-tcsdefaultconfig-bodies) <br>
 &nbsp;&nbsp;&nbsp;&nbsp;[5.2. Cross-framework channels](#52-cross-framework-channels) <br>
@@ -107,15 +108,17 @@ This section is a closer look at the `compilers` package. (`rdfine` has its own 
 | [utils.py](src/compilers/utils.py) | (internal) `attach_file`, `extract_config`, `read_literal`, `parse_docker_compose_config`, `lookup_container_service_name` | Compiler-side helpers that encode knowledge of the semantic model — including the `spdx:File` attachment helper called by file-producing compilers. |
 | [core/pipeline_seeder.py](src/compilers/core/pipeline_seeder.py) | `PipelineSeeder` | Bootstrap: seed the `tcs:PipelineBuild` skeleton (`prov:hadPlan`-linked to the definition) and rename blank-node subjects to stable IRIs. |
 | [core/pipeline_assembler.py](src/compilers/core/pipeline_assembler.py) | `PipelineAssembler` | Materialize the `tcs:DockerContainer` / step / config skeleton onto the seeded `tcs:PipelineBuild`. |
-| [core/pipeline_enricher.py](src/compilers/core/pipeline_enricher.py) | `PipelineEnricher` | Expand author-facing shorthands into their fully-wired form: synthesize `tcs:Channel`s from `p-plan:isPrecededBy`, ensure every step has a `tcs:PipelineConfig` slot for later compilers to write into. |
-| [core/bridge_transport_compiler.py](src/compilers/core/bridge_transport_compiler.py) | `BridgeTransportCompiler` | Auto-insert Entry/Exit boundary steps for any cross-container `tcs:Channel` whose author didn't hand-declare a bridge. See [§4.8](#48-boundary-components-and-cross-container-bridges). |
 | [core/segment_tagger.py](src/compilers/core/segment_tagger.py) | `SegmentTagger` | Tag every `tcs:InstancePipelineComponent` with the `tcs:segment` it belongs to (a maximal chain within one container). Used by segment-scoped SHACL shapes and per-segment framework compilers. |
 | [core/graph_reducer.py](src/compilers/core/graph_reducer.py) | `GraphReducer` | Narrow the build graph down to just the triples reachable from the seeded `tcs:PipelineBuild`, after `BridgeTransportCompiler` has finished touching the catalog. |
+| [core/bridge_transport_compiler.py](src/compilers/core/bridge_transport_compiler.py) | `BridgeTransportCompiler` | Auto-insert Entry/Exit boundary steps for any cross-container `tcs:Channel` whose author didn't hand-declare a bridge. See [§4.8](#48-boundary-components-and-cross-container-bridges). |
 | [core/validation_report_compiler.py](src/compilers/core/validation_report_compiler.py) | `ValidationReportCompiler` | **Finalize call.** Run SHACL over the fully-shaped build + shapes graph and attach the report at `validation/validation-report.ttl`. |
 | [core/docker_compose_compiler.py](src/compilers/core/docker_compose_compiler.py) | `DockerComposeCompiler` | **Finalize call.** Aggregate every `tcs:DockerComposeConfig` on the build into the top-level `docker-compose.yml`. |
 | [ldio/config_compiler.py](src/compilers/ldio/config_compiler.py) | `LdioConfigCompiler` | Emit one LDIO pipeline YAML per `tcs:segment` under `ldio/pipelines/<segment>.yml`, plus a companion `ldio/application.yml` pointing the orchestrator at that directory (Pattern A2 directory-scan). |
 | [ldio/http_in_config_compiler.py](src/compilers/ldio/http_in_config_compiler.py) | `LdioHttpInConfigCompiler` | Per-boundary config compiler: writes `tcs:endpoint` onto the channel a `ldio:HttpIn` step reads from. |
 | [ldio/http_out_config_compiler.py](src/compilers/ldio/http_out_config_compiler.py) | `LdioHttpOutConfigCompiler` | Per-boundary config compiler: reads `tcs:endpoint` off the channel a `ldio:HttpOut` step writes to and folds it into the step's config. |
+| [nifi/config_compiler.py](src/compilers/nifi/config_compiler.py) | `NifiConfigCompiler` | Produce NiFi `flow.json` and local post-start configuration artifacts. |
+| [nifi/dockerfile_compiler.py](src/compilers/nifi/dockerfile_compiler.py) | `NifiDockerfileCompiler` | Produce the local NiFi Dockerfile. |
+| [nifi/remote_compiler.py](src/compilers/nifi/remote_compiler.py) | `NifiRemoteCompiler` | Replace local deployment with the one-shot remote NiFi deployer. |
 | [rdfc/config_compiler.py](src/compilers/rdfc/config_compiler.py) | `RdfcConfigCompiler` | Produce the RDF-Connect `pipeline.ttl` and attach it to the build. |
 | [rdfc/dockerfile_compiler.py](src/compilers/rdfc/dockerfile_compiler.py) | `RdfcDockerFileCompiler` | Produce the RDF-Connect `Dockerfile`, `pyproject.toml` and `package.json` under `rdfc/`. The Dockerfile is verbatim from a `tcs:DockerImageConfig`; the two dependency files are synthesised from `spdx:Package` annotations on the components the pipeline actually uses. |
 | [rdfc/http_server_config_compiler.py](src/compilers/rdfc/http_server_config_compiler.py) | `RdfcHttpServerConfigCompiler` | Per-boundary config compiler: allocates a port for each `rdfc:HttpServer` step and writes `tcs:port` + `tcs:endpoint` onto the channel it reads from. |
@@ -140,6 +143,7 @@ from compilers import (
     RdfcConfigCompiler, RdfcDockerFileCompiler,
     RdfcHttpServerConfigCompiler, RdfcHttpOutConfigCompiler,
     SemanticWorksEnvVarCompiler,
+    NifiConfigCompiler, NifiDockerfileCompiler, NifiRemoteCompiler,
     VirtuosoCompiler, MuClResourcesCompiler, MuDispatcherCompiler,
     MuDeltaNotifierCompiler, MuAuthorizationCompiler, ErrorAlertCompiler,
 )
@@ -312,6 +316,9 @@ A useful side effect: because provenance is attached *while the loop is running*
 | `LdioConfigCompiler` | a container instantiates `ldio:LinkedDataInteractionsOrchestrator`, every LDIO step carries a `tcs:segment`, and every LDIO step's `p-plan:hasInputVar` has been populated | LDIO components and their configs | `spdx:File`s named `ldio/pipelines/<segment>.yml` (one per segment) and `ldio/application.yml` |
 | `RdfcConfigCompiler` | a container instantiates `rdfc:Orchestrator` | RDF-Connect components, runners and step graph | `spdx:File` named `rdfc/pipeline.ttl` |
 | `RdfcDockerFileCompiler` | a container instantiates `rdfc:Orchestrator` and a `tcs:DockerImageConfig` is present | the Dockerfile literal + every `spdx:Package` reachable via `dct:requires` from components in the container | `spdx:File`s named `rdfc/Dockerfile`, `rdfc/pyproject.toml`, `rdfc/package.json` |
+| `NifiConfigCompiler` | a container instantiates `nifi:Orchestrator` | NiFi steps, component metadata, configs and channels | persisted `spdx:File` named `nifi/flow.json`; for local builds, secret references also produce a one-shot `nifi-configure` service and `nifi/configure_local.py` |
+| `NifiDockerfileCompiler` | local NiFi deployment and a NiFi `tcs:DockerImageConfig` is present | the NiFi Dockerfile literal | `spdx:File` named `nifi/Dockerfile` |
+| `NifiRemoteCompiler` | `nifi:deploymentMode "remote"` and `nifi/flow.json` is present | the persisted flow, deployment config, secret references and NiFi compose config | upload-format `nifi/flow_definition.json`, stdlib-only `nifi/deploy_flow.py`, and a one-shot deployer using native Compose secret mounts |
 | `ValidationReportCompiler` | *(finalize — explicit call, `is_explicit_call = True`)* | the fully shaped build + shapes graph | `spdx:File` named `validation/validation-report.ttl` |
 | `DockerComposeCompiler` | *(finalize — explicit call, `is_explicit_call = True`)* | every `tcs:DockerComposeConfig` reachable from the build | `spdx:File` named `./docker-compose.yml` |
 
@@ -333,6 +340,38 @@ A `tcs:Channel` connects an [InstancePipelineComponent](../../semantic%20model/R
 **`SegmentTagger`** runs after boundary insertion and tags every [InstancePipelineComponent](../../semantic%20model/README.md#instancepipelinecomponent) with the [tcs:segment](../../semantic%20model/README.md#tcssegment) it belongs to (a maximal chain of steps in one container that data can flow through without crossing a container boundary). Framework config compilers can then emit one config artifact per segment (LDIO's Pattern A2 directory-scan, `ldio/pipelines/<segment>.yml`), and segment-scoped SHACL shapes such as `tcs:LdioSingularStepShape` become checkable per-segment rather than per-pipeline. Segments are a purely compile-time bookkeeping notion — they never appear in the deployed pipeline.
 
 Onboarding a new HTTP boundary component for a new framework needs three things in the catalog: (a) type it `tcs:EntryBoundaryComponent` or `tcs:ExitBoundaryComponent`; (b) declare `tcs:channelType tcs:HttpChannel`; (c) write a small per-boundary config compiler that knows where in the component's own config schema its port/endpoint live. No changes to `BridgeTransportCompiler` itself.
+
+### 4.9. NiFi deployment target
+
+NiFi runs locally in the generated Docker stack by default. To deploy the generated process group into an existing NiFi instance instead, add this opt-in triple to the pipeline definition or its separate deployment overlay:
+
+For a local build, catalog-marked sensitive properties remain absent from `flow.json`. When their authored values are `tcs:SecretReference` nodes, the compiler adds a one-shot `nifi-configure` Compose service. It waits for NiFi, mounts the referenced host variables as Compose secrets, temporarily stops or disables each affected component, updates it through the local NiFi API, and restores the state authored in the pipeline definition. The generated `.env.example` lists the required variables; copy it to `.env`, fill the values, and use the normal `docker compose up` command.
+
+```turtle
+:DemonstratorPipeline
+    nifi:deploymentMode "remote" ;
+    nifi:deploymentConfig :NifiRemoteDeployment .
+
+:NifiRemoteDeployment
+    a tcs:PipelineConfig ;
+    tcs:embedded [
+        nifi:dshUsername [
+            a tcs:SecretReference ;
+            tcs:secretName "DSH_USERNAME"
+        ] ;
+        nifi:dshPassword [
+            a tcs:SecretReference ;
+            tcs:secretName "DSH_PASSWORD"
+        ] ;
+        nifi:dshGatewayUrl "https://gateway.az.kpn-dsh.com/token" ;
+        nifi:baseUrl "https://nifi.urban-sense-acc.az.kpn-dsh.com" ;
+        nifi:parentProcessGroupId "..."
+    ] .
+```
+
+The remote build replaces the local NiFi service with a one-shot `nifi-deploy` service. A `tcs:SecretReference` contains only the logical name of a host environment variable; its value is never read by the generator or written into the build graph, flow JSON, notebook, or Compose YAML. Compose resolves each value at deployment and mounts it under `/run/secrets/` for the deployer. `nifi:parentProcessGroupId` is optional and root is used when it is absent or empty.
+
+Populate every referenced variable from the current shell, `.env`, or a CI secret store, then run `docker compose up nifi-deploy`. For the example overlay these are `DSH_USERNAME`, `DSH_PASSWORD`, `AZURE_STORAGE_ACCOUNT_NAME`, and `AZURE_SAS_TOKEN`. Compose automatically loads `.env` beside the generated `docker-compose.yml`; the generated `.env.example` lists every required name and can be copied as a starting point. See [`data/pipeline_definition_nifi.deployment.ttl`](data/pipeline_definition_nifi.deployment.ttl) for the reference-only deployment overlay.
 
 ## 5. Limitations
 
@@ -386,7 +425,7 @@ The pipeline generator is not fully implemented yet, it is a work in progress. W
 - [ ] Pipeline-level config override mechanism: let a `tcs:PipelineDefinition` shadow a catalog-level `tcs:DefaultConfig` with a pipeline-specific body. Prerequisite for cleanly moving the demonstrator-specific bodies (see [§5.1](#51-no-override-mechanism-for-tcsdefaultconfig-bodies)) out of `catalog-sw.ttl` and into `pipeline_definition.ttl`.
 - [x] Cross-framework `tcs:Channel`: extend the channel model to describe transports that span framework boundaries. HTTP-transport bridges (LDIO ↔ RDFC) are now handled automatically by `BridgeTransportCompiler` + per-boundary config compilers — see [§4.8](#48-boundary-components-and-cross-container-bridges). SPARQL-Update bridges (RDFC → sw) are catalog-typed with `tcs:channelType tcs:SparqlUpdateChannel` but the MVP `BridgeTransportCompiler.default_channel_type` still fixes them to hand-authored. Semantic.works delta-notifier subscriptions (the `oslc:Error` rule in `delta/rules.js`) remain out of scope — they need a different channel model entirely.
 - [x] RdfcDockerFileCompiler: Creates an adhoc Dockerfile for RDF-Connect. This allows to include only those dependencies in a docker container which are actually used in the pipeline.
-- [ ] NifiCompiler: Compiler for [Nifi 2](https://nifi.apache.org/). 
+- [ ] NifiCompiler: Compiler for [Nifi 2](https://nifi.apache.org/). Persisted-flow generation and local/remote deployment selection are implemented; live production verification remains.
 - [x] PipelineGenerator: Uses all previously described compilers to route the compilation flow for generating a pipeline project folder based on a Pipeline Definition. Routing is done via the registry + `applies_to` mechanism described above; producing the project folder on disk is handled by `ProjectBuilder`.
 
 

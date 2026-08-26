@@ -12,7 +12,7 @@ from testing_helpers import CATALOG_FILES, DATA_DIR, SHAPES_FILE
 
 @pytest.fixture
 def catalog_graph() -> Graph:
-    """The four framework catalog files only — no shapes, no pipeline
+    """The framework catalog files only — no shapes, no pipeline
     definition. Edge-case tests parse their own tiny synthetic pipeline
     into this via `parse_extra`."""
     g = Graph()
