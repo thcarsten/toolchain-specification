@@ -1,0 +1,31 @@
+@prefix rdfc: <https://w3id.org/rdf-connect#>.
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
+@prefix sh: <http://www.w3.org/ns/shacl#>.
+@prefix ex: <http://dishacled.example.org/processors#>.
+
+# Not (yet) part of the harvested RDF-Connect component catalog: there is no
+# published processor that parses JSON-LD into RDF, and the source-a API only
+# ever serves JSON-LD, so this small local processor bridges HttpFetch's raw
+# response body into the Turtle-family text that Sdsify (and n3.Parser) expect.
+ex:JsonLdToNQuads rdfc:jsImplementationOf rdfc:Processor;
+  rdfs:label "JSON-LD to N-Quads processor";
+  rdfs:description "Parses incoming JSON-LD strings and serializes them as N-Quads for downstream RDF processors.";
+  rdfc:file <./index.js>;
+  rdfc:class "JsonLdToNQuads";
+  rdfc:entrypoint <./>.
+
+[] a sh:NodeShape;
+  sh:targetClass ex:JsonLdToNQuads;
+  sh:property [
+    sh:path rdfc:reader;
+    sh:name "reader";
+    sh:class rdfc:Reader;
+    sh:minCount 1;
+    sh:maxCount 1;
+  ], [
+    sh:path rdfc:writer;
+    sh:name "writer";
+    sh:class rdfc:Writer;
+    sh:minCount 1;
+    sh:maxCount 1;
+  ].

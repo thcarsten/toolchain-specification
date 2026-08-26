@@ -278,7 +278,7 @@ For pure passthrough (`ldio:HttpOut`, `rdfc:HttpServer`, …), the attached shap
 Validation takes place **before** the pipeline generator compiles a pipeline build. The strategy runs in five ordered steps, falling into two pillars:
 
 - **Steps 1–2** are plain SHACL validation — a single pySHACL pass over everything that already has (or can be given) a `sh:target`.
-- **Steps 3–5** exist because `inputShape`, `outputShape` and `passthroughShape` describe data that isn't part of the graph being validated (see [role vocabulary](#role-vocabulary)), so they can't be attached with `sh:target` and checked by pySHACL directly. These steps resolve them down to concrete pairs of shapes first, then hand those pairs to the external shape-matching algorithm.
+- **Steps 3–5** exist because `inputShape`, `outputShape` and `passthroughShape` describe data that isn't part of the graph being validated (see [role vocabulary](#role-vocabulary)), so they can't be attached with `sh:target` and checked by pySHACL directly. These steps resolve them down to concrete pairs of shapes first, then hand those pairs to the shape-matching library.
 
 **Pillar 1 — regular SHACL validation**
 
@@ -316,9 +316,7 @@ Validation takes place **before** the pipeline generator compiles a pipeline bui
 
 5. **Shape matching**
 - For each `tcs:Channel`, its resolved `inputShape` and `outputShape` are compared: is what one component produces compatible with what the other expects?
-- All of these go through the same external shape-matching bridge (see [Architecture](#architecture)) 
-
-<br><br>
+- All of these go through the same shape-matching library (see [Architecture](#architecture))
 
 6. **Reporting validation results**
 - Results of the validation check should be reported if violations occurred.
@@ -348,22 +346,11 @@ Roughly speaking, this `ValidationReportCompiler` consists of the following meth
 6. **list_shapes_to_match**
 - Build a table of the shape-id pairs that need to be checked against each other — one row per `tcs:Channel`: `(inputShape, outputShape)`. A single SPARQL `SELECT` via [`GraphReader.select()`](../pipeline%20generator/src/rdfine/graph_reader.py) is enough to produce this as a DataFrame.
 7. **validate_throughput_shapes**
-- For every pair listed by the previous method, submit it to the external shape-matching bridge (see below) and record the result as a new dataframe-column. 
+- For every pair listed by the previous method, submit it to the shape-matching library (see below) and record the result as a new dataframe-column. 
 8. **generate_validation_report**
 - Attach a validation report combining the results of `validate_normal_shapes` and `validate_throughput_shapes` to the `PipelineBuild` via `attach_file()`. For the demonstrator pipeline this is written to [`pipeline generator/out/dishacled-full/validation/validation-report.ttl`](../pipeline%20generator/out/dishacled-full/validation/validation-report.ttl) — a plain SHACL validation report (`sh:conforms`, `sh:result`) combined with one `tcs:ThroughputMatchResult` per `tcs:Channel`.
 
-With the exception of shape-matching, all steps above can be executed in Python. Shape-matching however is implemented as a [Typescript library](https://github.com/DiSHACLed/query-shape-matching-algorithm). This requires a bridge between the `ValidationReportCompiler` and an external service responsible for shape-matching. For this, the `ValidationReportCompiler` talks to a small long-lived Node service over HTTP+JSON. 
-
-Bridge:
-- `qsm-service` is a thin Node process (Fastify) run in a Docker Container that exposes a containment-checking endpoint.
-- The Python side ships a small client that serializes shapes as RDF strings (via `rdflib`) and calls the service with `httpx`.
-- Full API contract between TypeScript and Python side is to be discussed. 
-
-
-**Why a service, not in-process:** the Typescript library's transitive dependencies (Traqula parsers, n3.js, rdf-data-factory) are ESM and rely on Node
-built-ins that a Python-embedded JS engine does not provide, so any in-process option would require a bundle-and-polyfill layer per dependency
-upgrade. A separate service keeps 100 % Node compatibility, matches the docker-compose idiom used everywhere else in DiSHACLed, and adds only an
-HTTP round-trip that is invisible at test-suite call volumes.
+All steps above, including shape-matching, can be executed natively in Python. Shape-matching is being written as a Python library from scratch by a colleague; `ValidationReportCompiler.match_shapes()` calls directly into it in-process once it exists, with no bridge, no service, and no RDF-over-HTTP serialization step. Until that library lands, `match_shapes()` remains the documented, overridable stub described in [Architecture](#architecture) — it returns `None` ("unverified") for every pair. See `AGENTS.md`'s session log for the earlier TypeScript-bridge design this superseded.
 
 ## Future directions
 
@@ -377,8 +364,9 @@ One way this could be implemented is to write a new compiler called `ThroughputV
     - [x] [shapes](../pipeline%20generator/data/tcs_shapes.ttl) describing constraints introduced by specific `Compilers`
     - [ ] `configShapes` for each `PipelineComponent` in the Demonstrator pipeline
     - [ ] `inputShape`, `outputShape` or `passthroughShape` for each step in the Demonstrator pipeline 
-- [ ] expand the [Typescript library](https://github.com/DiSHACLed/query-shape-matching-algorithm) to support shape-to-shape matching (rather than query-to-shape matching)
-- [ ] expose shape-matching as a service that can be containerized and communicated with via API
+- [ ] ~~expand the [Typescript library](https://github.com/DiSHACLed/query-shape-matching-algorithm) to support shape-to-shape matching (rather than query-to-shape matching)~~ — superseded 2026-08-18, see note above
+- [ ] ~~expose shape-matching as a service that can be containerized and communicated with via API~~ — superseded 2026-08-18, no service needed for an in-process Python library
+- [ ] native Python shape-matching library (colleague, from scratch) — once it exists, wire `match_shapes()` to call it in-process
 - [ ] Prototype the `ValidationReportCompiler`
     - [x] method: normalize_config_shapes
     - [x] method: validate_normal_shapes
@@ -386,5 +374,5 @@ One way this could be implemented is to write a new compiler called `ThroughputV
     - [x] method: normalize_passthrough_shapes
     - [x] method: fill_missing_shapes
     - [x] method: list_shapes_to_match
-    - [x] method: validate_throughput_shapes (stub — see `match_shapes()`; `qsm-service` bridge itself not yet built)
+    - [x] method: validate_throughput_shapes (stub — see `match_shapes()`; awaiting the native Python shape-matching library, in development)
     - [x] method: generate_validation_report

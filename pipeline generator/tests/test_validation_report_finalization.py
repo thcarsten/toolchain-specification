@@ -56,7 +56,7 @@ def test_list_shapes_to_match_covers_every_channel_exactly_once(demonstrator_gra
 
 
 def test_validate_throughput_shapes_defaults_to_unverified(demonstrator_graph):
-    # No shape-matching bridge is configured, so match_shapes()'s
+    # No shape-matching library is available yet, so match_shapes()'s
     # default stub must leave every pair unverified rather than
     # guessing a result.
     gen, _ = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
@@ -65,9 +65,9 @@ def test_validate_throughput_shapes_defaults_to_unverified(demonstrator_graph):
 
 
 def test_match_shapes_override_flows_into_the_report(demonstrator_graph, monkeypatch):
-    # match_shapes() is the documented extension point for a future
-    # qsm-service bridge — verify overriding it actually changes the
-    # end-to-end result, not just the isolated method.
+    # match_shapes() is the documented extension point for the future
+    # native Python shape-matching library — verify overriding it
+    # actually changes the end-to-end result, not just the isolated method.
     monkeypatch.setattr(
         ValidationReportCompiler, "match_shapes", lambda self, i, o: True
     )
@@ -97,26 +97,25 @@ def test_generate_validation_report_attaches_exactly_one_file(demonstrator_graph
     assert len(compiler.throughput_matches) == len(_channels(build))
 
 
-def test_report_marks_which_shapes_were_actually_evaluated(demonstrator_graph):
-    # SpecializedComponentIsCatalogedShape carries a sh:target (via
-    # sh:sparql), so it must show up as validated; a nested sub-shape
-    # only ever reached via sh:node (e.g. demo:PlaceShape, reached from
-    # demo:WaterLevelPropertyValueShape's schema:location property) has
-    # no target of its own and must show up as untargeted instead.
+def test_validated_shapes_is_python_only_not_asserted_into_report(demonstrator_graph):
+    # validated_shapes tracks shape coverage for programmatic inspection
+    # only (SpecializedComponentIsCatalogedShape carries a sh:target via
+    # sh:sparql, so it must show up here) — it must never be asserted as
+    # RDF into the attached report, since that would mean inventing new
+    # tcs: vocabulary without sign-off.
     gen, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
     compiler = gen.compilers[ValidationReportCompiler]
 
     assert "tcs:SpecializedComponentIsCatalogedShape" in compiler.validated_shapes
-    assert "demo:PlaceShape" in compiler.untargeted_shapes
-    assert "demo:PlaceShape" not in compiler.validated_shapes
+    assert not hasattr(compiler, "untargeted_shapes")
 
     content = _report_content(build)
-    assert "tcs:ValidatedShape" in content
-    assert "tcs:UntargetedShape" in content
+    assert "ValidatedShape" not in content
+    assert "UntargetedShape" not in content
 
 
 def test_real_pipeline_components_are_not_flagged_as_dangling(demonstrator_graph):
-    # PipelineExtractor's narrowing must preserve the catalog's own
+    # GraphReducer's narrowing must preserve the catalog's own
     # dcat:resource membership assertion for every component this
     # pipeline's steps actually specialize — otherwise every real, valid
     # step looks identical to a genuinely dangling/mistyped

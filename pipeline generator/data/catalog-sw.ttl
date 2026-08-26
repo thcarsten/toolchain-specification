@@ -71,7 +71,8 @@ sw:triple-store a tcs:PipelineComponent, dcat:Resource;
 # (loket-error-alert-service → triple-store → delta-notifier → identifier).
 #################################################################
 
-sw:mu-identifier a tcs:PipelineComponent, mu:Microservice, dcat:Resource ;
+sw:mu-identifier a tcs:PipelineComponent, mu:Microservice, dcat:Resource, tcs:EntryBoundaryComponent ;
+    tcs:channelType tcs:SparqlUpdateChannel ;
     rdfs:description "SPARQL gateway. Front door for every SPARQL update / query in the mu stack; adds the session cookie header used by the authorisation layer." ;
     dcat:landingPage <https://github.com/mu-semtech/mu-identifier> ;
     dct:requires sw:mu-dispatcher ;

@@ -152,7 +152,6 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
     ldio:RepositoryMaterialiser,
     # LDIO — Orchestrator
     ldio:LinkedDataInteractionsOrchestrator,
-    ldio:LdioPipelineStarterService ,
     # RDF Connect
     rdfc:HttpFetch,
     # rdfc:HttpIn,

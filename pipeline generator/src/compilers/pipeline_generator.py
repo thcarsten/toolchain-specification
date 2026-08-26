@@ -1,49 +1,47 @@
 """Orchestrate the compiler registry into a single end-to-end build."""
 
 import pandas as pd
-from rdflib import Graph, Literal, URIRef
+from rdflib import Graph, URIRef
 from rdfine import GraphReader
 
 from rdfine import receive_first
 
 from .base import Compiler
-from .core.pipeline_extractor import PipelineExtractor
+from .core.pipeline_seeder import PipelineSeeder
+from .core.graph_reducer import GraphReducer
+from .core.validation_report_compiler import ValidationReportCompiler
+from .core.docker_compose_compiler import DockerComposeCompiler
 
 
 class PipelineGenerator:
     """Compile a complete ``tcs:PipelineBuild`` from a catalog graph.
 
-    The generator runs one bootstrap step followed by a single
-    fixpoint loop:
+    The generator runs one bootstrap step, then a fixpoint loop over
+    the registry, then three explicit finalize calls:
 
-    1. **Bootstrap** — :class:`PipelineExtractor` is instantiated
+    1. **Bootstrap** — :class:`PipelineSeeder` is instantiated
        explicitly because it is the only compiler that needs the
-       ``pipeline_id`` in its constructor. Its ``applies_to`` returns
-       ``True`` anyway, so it would be the first compiler picked by
-       the loop; the explicit call is a wiring convenience, not a
-       privileged phase. It seeds the ``tcs:PipelineBuild`` node so
-       that provenance and file attachments can find a target from
-       here on.
+       ``pipeline_id`` in its constructor. It seeds the
+       ``tcs:PipelineBuild`` node so that provenance and file
+       attachments can find a target from here on, and normalizes
+       blank-node identifiers so downstream compilers can reference
+       the resulting resources by stable IRI.
     2. **Fixpoint loop** — every iteration, the generator asks every
        not-yet-run compiler in :attr:`Compiler._registry` whether its
        :meth:`Compiler.applies_to` trigger is satisfied by the current
        build graph, and runs those that are. This repeats until an
-       iteration finds nothing eligible.
-
-    Finalization-style compilers (currently only
-    :class:`DockerComposeCompiler`) rely on a temporary graph flag to
-    know when they should run. The generator maintains
-    ``<build> tcs:isFinishing <bool>``:
-
-    - Seeded as ``false`` right after the extractor creates the build.
-    - Flipped to ``true`` when a normal shaping iteration finds
-      nothing eligible; the loop then does one more scan.
-    - Flipped back to ``false`` as soon as a compiler runs during the
-      finishing pass, so shaping can resume if the finishing pass
-      itself triggered further work.
-    - Stripped from the graph entirely before :meth:`compile` returns,
-      so downstream consumers (e.g. :class:`ProjectBuilder`) never see
-      the runtime flag.
+       iteration finds nothing eligible. The full catalog stays
+       visible throughout the loop — narrowing is deferred to
+       :class:`GraphReducer` below — so mid-loop compilers such as
+       :class:`BridgeTransportCompiler` can reach catalog components
+       no step of this pipeline had specialized yet.
+    3. **Explicit finalize** — once the loop terminates,
+       :class:`GraphReducer` narrows the build to just this pipeline's
+       triples, then :class:`ValidationReportCompiler` attaches the
+       SHACL validation report, then :class:`DockerComposeCompiler`
+       emits ``docker-compose.yml``. All three are excluded from the
+       registry via ``is_explicit_call = True`` so their ordering is
+       fixed, not emergent.
 
     Compilers register themselves on import via
     :meth:`Compiler.__init_subclass__`, so adding a new compiler is a
@@ -78,19 +76,20 @@ class PipelineGenerator:
         self.compilers = {}
         ran: set[type[Compiler]] = set()
 
-        # Bootstrap: PipelineExtractor needs the pipeline_id in its
+        # Bootstrap: PipelineSeeder needs the pipeline_id in its
         # constructor, so it is instantiated explicitly. It also seeds
-        # the ``tcs:PipelineBuild`` node, without which provenance and
-        # the ``tcs:isFinishing`` flag would have nowhere to attach.
-        extractor = PipelineExtractor(self.pipeline_id, self.catalog_graph)
-        self.build = extractor.compile()
-        self.compilers[PipelineExtractor] = extractor
-        ran.add(PipelineExtractor)
-        self._record_creator(PipelineExtractor)
-        self._set_finishing(False)
+        # the ``tcs:PipelineBuild`` node, without which provenance
+        # would have nowhere to attach.
+        seeder = PipelineSeeder(self.pipeline_id, self.catalog_graph)
+        self.build = seeder.compile()
+        self.compilers[PipelineSeeder] = seeder
+        ran.add(PipelineSeeder)
+        self._record_creator(PipelineSeeder)
 
-        # Fixpoint loop.
-        settling = False
+        # Fixpoint loop over the registry. Explicit-call compilers
+        # (ValidationReportCompiler, DockerComposeCompiler) are
+        # excluded from ``_registry`` by ``is_explicit_call = True``
+        # and are invoked directly below, after the loop.
         while True:
             reader = GraphReader(self.build)
             eligible = [
@@ -98,25 +97,8 @@ class PipelineGenerator:
                 for cls in Compiler._registry
                 if cls not in ran and cls.applies_to(reader)
             ]
-
             if not eligible:
-                if settling:
-                    # True fixpoint — nothing left to do.
-                    self._strip_finishing()
-                    return self.build
-                # Give finalization-style compilers a chance by
-                # flipping the flag and looping once more.
-                self._set_finishing(True)
-                settling = True
-                continue
-
-            # Progress was made — if we were in a finishing pass, drop
-            # back to a regular shaping pass so newly-eligible normal
-            # compilers can still trigger.
-            if settling:
-                self._set_finishing(False)
-                settling = False
-
+                break
             for cls in eligible:
                 instance = cls(self.build)
                 self.build = instance.compile()
@@ -124,11 +106,20 @@ class PipelineGenerator:
                 ran.add(cls)
                 self._record_creator(cls)
 
+        # Explicit finalize calls, in fixed order.
+        for cls in (ValidationReportCompiler, DockerComposeCompiler):
+            instance = cls(self.build)
+            self.build = instance.compile()
+            self.compilers[cls] = instance
+            self._record_creator(cls)
+
+        return self.build
+
     # ------------------------------------------------------------------
     # Small graph-side helpers used by ``compile``.
     # ------------------------------------------------------------------
 
-    def _build_id(self) -> str:
+    def _lookup_build_id(self) -> str:
         """Locate the ``tcs:PipelineBuild`` node currently in the graph."""
         reader = GraphReader(self.build)
         return receive_first(
@@ -143,7 +134,7 @@ class PipelineGenerator:
         which compilers have already run by querying ``dct:creator``
         on the build.
         """
-        build_id = self._build_id()
+        build_id = self._lookup_build_id()
         iri = cls.compiler_iri()
         reader = GraphReader(self.build)
         rows = [
@@ -167,38 +158,3 @@ class PipelineGenerator:
             prefix_store=reader.prefix_store,
         ).graph
         self.build = reader.add(new_graph).graph
-
-    def _set_finishing(self, value: bool) -> None:
-        """Set ``<build> tcs:isFinishing <value>`` (Python bool).
-
-        Any pre-existing ``tcs:isFinishing`` triple on the build is
-        removed first so the flag always has a single value.
-        """
-        reader = GraphReader(self.build)
-        build_id = self._build_id()
-        existing = reader.filter(sub=build_id, pred="tcs:isFinishing").graph
-        reader = reader.remove(existing)
-        rows = [
-            {
-                "sub": build_id,
-                "pred": "tcs:isFinishing",
-                "obj": value,
-                "sub_type": URIRef,
-                "obj_type": Literal,
-            }
-        ]
-        new_graph = GraphReader(
-            pd.DataFrame.from_records(rows),
-            prefix_store=reader.prefix_store,
-        ).graph
-        self.build = reader.add(new_graph).graph
-
-    def _strip_finishing(self) -> None:
-        """Remove any ``tcs:isFinishing`` triple from the build.
-
-        Called once, right before ``compile`` returns, so the runtime
-        flag never leaks into the graph seen by downstream consumers.
-        """
-        reader = GraphReader(self.build)
-        finishing = reader.filter(pred="tcs:isFinishing").graph
-        self.build = reader.remove(finishing).graph

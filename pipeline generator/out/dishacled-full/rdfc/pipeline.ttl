@@ -23,11 +23,11 @@ demo:HttpIngest a rdfc:HttpServer ;
             rdfc:path "/source-a" ;
             rdfc:successStatusCode 202 ] ;
     rdfc:port 9000 ;
-    rdfc:writer :channel_5 .
+    rdfc:writer :channel_84 .
 
 demo:JsonLdToRdf a proc:JsonLdToNQuads ;
-    rdfc:reader :channel_5 ;
-    rdfc:writer :channel_44 .
+    rdfc:reader :channel_84 ;
+    rdfc:writer :channel_79 .
 
 demo:LogMeasurementsMeta a rdfc:LogProcessorJs ;
     rdfc:label "sds-measurements-metadata" ;
@@ -40,7 +40,7 @@ demo:LogViolationsMeta a rdfc:LogProcessorJs ;
     rdfc:reader demo:sdsViolationsMeta .
 
 demo:SdsifyMeasurements a rdfc:Sdsify ;
-    rdfc:input :channel_44 ;
+    rdfc:input :channel_79 ;
     rdfc:metadataConfig [ rdfc:description "SDS stream of sosa:Observation water level measurements from source-a" ;
             rdfc:streamId demo:measurementsStream ] ;
     rdfc:metadataOutput demo:sdsMeasurementsMeta ;
@@ -48,7 +48,7 @@ demo:SdsifyMeasurements a rdfc:Sdsify ;
     rdfc:typeFilter sosa:Observation .
 
 demo:SdsifyViolations a rdfc:Sdsify ;
-    rdfc:input :channel_38 ;
+    rdfc:input :channel_92 ;
     rdfc:metadataConfig [ rdfc:description "SDS stream of threshold-violation alerts for source-a" ;
             rdfc:streamId demo:violationsStream ] ;
     rdfc:metadataOutput demo:sdsViolationsMeta ;
@@ -56,9 +56,9 @@ demo:SdsifyViolations a rdfc:Sdsify ;
     rdfc:typeFilter <http://open-services.net/ns/core#Error> .
 
 demo:SkolemizeViolations a rdfc:SkolemizationProcessor ;
-    rdfc:incoming :channel_12 ;
+    rdfc:incoming :channel_73 ;
     rdfc:mime "text/turtle" ;
-    rdfc:outgoing :channel_38 .
+    rdfc:outgoing :channel_92 .
 
 demo:SparqlIngest a rdfc:SPARQLIngest ;
     rdfc:ingestConfig [ rdfc:forVirtuoso true ;
@@ -70,7 +70,7 @@ demo:SparqlIngest a rdfc:SPARQLIngest ;
 
 demo:ThresholdMonitor a tm:ThresholdMonitorJs ;
     rdfc:reader demo:sdsMeasurements ;
-    rdfc:writer :channel_12 ;
+    rdfc:writer :channel_73 ;
     tm:creator demo:thresholdMonitorAgent ;
     tm:max 3e+02 ;
     tm:min 0e+00 ;
@@ -87,4 +87,28 @@ demo:ThresholdMonitor a tm:ThresholdMonitorJs ;
         demo:SkolemizeViolations,
         demo:SparqlIngest,
         demo:ThresholdMonitor .
+
+:channel_73 a rdfc:Reader,
+        rdfc:Writer .
+
+:channel_79 a rdfc:Reader,
+        rdfc:Writer .
+
+:channel_84 a rdfc:Reader,
+        rdfc:Writer .
+
+:channel_92 a rdfc:Reader,
+        rdfc:Writer .
+
+demo:sdsMeasurements a rdfc:Reader,
+        rdfc:Writer .
+
+demo:sdsMeasurementsMeta a rdfc:Reader,
+        rdfc:Writer .
+
+demo:sdsViolations a rdfc:Reader,
+        rdfc:Writer .
+
+demo:sdsViolationsMeta a rdfc:Reader,
+        rdfc:Writer .
 

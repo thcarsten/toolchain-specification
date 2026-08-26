@@ -37,6 +37,11 @@ class ErrorAlertCompiler(Compiler):
         ).df.empty
 
     def compile(self) -> Graph:
+        self.attach_error_alert_config_files()
+        return self.output_reader.graph
+
+    def attach_error_alert_config_files(self) -> None:
+        """Attach both config files listed in :data:`_FILES`."""
         for config_iri, filename in _FILES:
             self.output_reader = attach_file(
                 self.output_reader,
@@ -44,4 +49,3 @@ class ErrorAlertCompiler(Compiler):
                 filepath=_FILEPATH,
                 content=read_literal(self.output_reader, config_iri),
             )
-        return self.output_reader.graph

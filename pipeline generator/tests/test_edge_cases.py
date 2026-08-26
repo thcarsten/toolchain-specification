@@ -52,7 +52,9 @@ def test_ldio_transformer_reuse_keeps_distinct_configs(catalog_graph):
     from compilers import LdioConfigCompiler
 
     gen, _ = compile_pipeline(catalog_graph, "demo:Test")
-    transformers = gen.compilers[LdioConfigCompiler].output["transformers"]
+    segments = gen.compilers[LdioConfigCompiler].segment_outputs
+    assert len(segments) == 1
+    transformers = next(iter(segments.values()))["transformers"]
     assert [t["config"] for t in transformers] == ["QUERY_A", "QUERY_B"]
 
 
@@ -82,14 +84,16 @@ def test_sw_component_reuse_folds_both_env_vars(catalog_graph):
 
 
 def test_ldio_duplicate_input_triggers_shape(catalog_with_shapes):
+    # LdioSingularStepShape is now per tcs:segment (slice 5) — both
+    # duplicate steps must share a segment tag for the shape to fire.
     parse_extra(
         catalog_with_shapes,
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf ldio:HttpInPoller ;
-            p-plan:isStepOfPlan demo:Test .
+            p-plan:isStepOfPlan demo:Test ; tcs:segment demo:seg1 .
         demo:B a tcs:InstancePipelineComponent ; prov:specializationOf ldio:HttpInPoller ;
-            p-plan:isStepOfPlan demo:Test .
+            p-plan:isStepOfPlan demo:Test ; tcs:segment demo:seg1 .
     """,
     )
     assert_shacl_violation(catalog_with_shapes, message_contains='second "Input" step')
@@ -211,14 +215,16 @@ def test_attach_file_duplicate_path_raises():
 
 
 def test_ldio_duplicate_adapter_triggers_shape(catalog_with_shapes):
+    # LdioSingularStepShape is now per tcs:segment (slice 5) — both
+    # duplicate steps must share a segment tag for the shape to fire.
     parse_extra(
         catalog_with_shapes,
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf ldio:JsonToLdAdapter ;
-            p-plan:isStepOfPlan demo:Test .
+            p-plan:isStepOfPlan demo:Test ; tcs:segment demo:seg1 .
         demo:B a tcs:InstancePipelineComponent ; prov:specializationOf ldio:JsonToLdAdapter ;
-            p-plan:isStepOfPlan demo:Test .
+            p-plan:isStepOfPlan demo:Test ; tcs:segment demo:seg1 .
     """,
     )
     assert_shacl_violation(
@@ -314,15 +320,18 @@ def test_zero_step_pipeline_compiles_to_minimal_build(catalog_graph):
     parse_extra(catalog_graph, PREFIXES + "demo:Empty a tcs:PipelineDefinition .")
     gen, _ = compile_pipeline(catalog_graph, "demo:Empty")
     # PipelineEnricher triggers on tcs:PipelineBuild existing (seeded
-    # unconditionally by PipelineExtractor), so it still runs here as a
-    # no-op enrichment pass — there are no steps to synthesize channels
-    # or configs for, but the compiler is still eligible and does run.
-    # ValidationReportCompiler triggers on PipelineEnricher's dct:creator
-    # provenance, so it follows for the same reason.
+    # unconditionally by PipelineSeeder), so it still runs here as a
+    # no-op enrichment pass. PipelineAssembler needs at least one step
+    # to fire, so it stays out — and with it GraphReducer and
+    # BridgeTransportCompiler / SegmentTagger, all of which gate on
+    # provenance from earlier compilers that never ran.
+    # ValidationReportCompiler and DockerComposeCompiler are explicit
+    # finalize calls, so they still run unconditionally at the end.
     assert [c.__name__ for c in gen.compilers] == [
-        "PipelineExtractor",
+        "PipelineSeeder",
         "PipelineEnricher",
         "ValidationReportCompiler",
+        "DockerComposeCompiler",
     ]
 
 
@@ -391,7 +400,9 @@ def test_ldio_fanout_both_outputs_survive(catalog_graph):
     from compilers import LdioConfigCompiler
 
     gen, _ = compile_pipeline(catalog_graph, "demo:Test")
-    outputs = gen.compilers[LdioConfigCompiler].output["outputs"]
+    segments = gen.compilers[LdioConfigCompiler].segment_outputs
+    assert len(segments) == 1
+    outputs = next(iter(segments.values()))["outputs"]
     targets = {o["config"]["target"] for o in outputs}
     assert targets == {"http://a", "http://b"}
 
@@ -555,8 +566,11 @@ def test_config_neither_embedded_nor_literal_triggers_shape(catalog_with_shapes)
         demo:BadConfig a tcs:Config .
     """,
     )
+    # ConfigShape's own top-level sh:message (added 2026-08-18) now wins
+    # over pySHACL's default sh:xone message for any violation inside it.
     assert_shacl_violation(
-        catalog_with_shapes, message_contains="must conform to exactly one shape"
+        catalog_with_shapes,
+        message_contains="carries exactly one of tcs:embedded/tcs:literal",
     )
 
 
@@ -569,8 +583,10 @@ def test_config_both_embedded_and_literal_triggers_shape(catalog_with_shapes):
             tcs:literal "x" ; dct:format "text/plain" .
     """,
     )
+    # Same shape-level sh:message override as above.
     assert_shacl_violation(
-        catalog_with_shapes, message_contains="must conform to exactly one shape"
+        catalog_with_shapes,
+        message_contains="carries exactly one of tcs:embedded/tcs:literal",
     )
 
 
@@ -930,4 +946,21 @@ def test_sw_step_env_value_non_literal_triggers_shape(catalog_with_shapes):
     )
     assert_shacl_violation(
         catalog_with_shapes, message_contains="non-literal value at predicate"
+    )
+
+
+def test_sw_component_reused_by_two_steps_triggers_shape(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf sw:mu-dispatcher ;
+            p-plan:isStepOfPlan demo:Test .
+        demo:B a tcs:InstancePipelineComponent ; prov:specializationOf sw:mu-dispatcher ;
+            p-plan:isStepOfPlan demo:Test .
+    """,
+    )
+    assert_shacl_violation(
+        catalog_with_shapes,
+        message_contains="must not be instanced more than once",
     )
