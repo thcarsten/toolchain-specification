@@ -233,7 +233,8 @@ class BridgeTransportCompiler(Compiler):
                 p-plan:isStepOfPlan {pipeline_id} ;
                 tcs:readsFrom {upstream_channel} ;
                 tcs:writesTo {channel} .
-            {container} tcs:runs {exit_step} .
+            {container} tcs:runs {exit_step} ;
+                tcs:instantiates {exit_component} .
             {upstream_channel} a tcs:Channel , {self.default_channel_type} .
             ?w tcs:writesTo {upstream_channel} .
             """,
@@ -263,7 +264,8 @@ class BridgeTransportCompiler(Compiler):
                 p-plan:isStepOfPlan {pipeline_id} ;
                 tcs:readsFrom {channel} ;
                 tcs:writesTo {downstream_channel} .
-            {container} tcs:runs {entry_step} .
+            {container} tcs:runs {entry_step} ;
+                tcs:instantiates {entry_component} .
             {downstream_channel} a tcs:Channel , {self.default_channel_type} .
             ?r tcs:readsFrom {downstream_channel} .
             """,

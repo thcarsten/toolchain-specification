@@ -40,10 +40,39 @@ class RdfcConfigCompiler(Compiler):
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Triggered when a container instantiates the RDF-Connect orchestrator."""
-        return not graph_reader.filter(
+        """Triggered when a container instantiates the RDF-Connect
+        orchestrator, :class:`SegmentTagger` has recorded provenance
+        (which implies :class:`BridgeTransportCompiler` has finished
+        inserting any boundary steps), and every RDFC step in that
+        container already has a ``p-plan:hasInputVar``. The last two
+        gates together defer this compiler until the boundary config
+        compilers have populated any Bridge-inserted steps — otherwise
+        the emitted ``pipeline.ttl`` would silently omit their type
+        triple, config body, and reader/writer wiring.
+        """
+        has_rdfc_container = not graph_reader.filter(
             pred="tcs:instantiates", obj="rdfc:Orchestrator"
         ).df.empty
+        if not has_rdfc_container:
+            return False
+        segments_tagged = not graph_reader.filter(
+            pred="dct:creator", obj="tcs:SegmentTagger"
+        ).df.empty
+        if not segments_tagged:
+            return False
+        unconfigured = graph_reader.select(
+            "?step",
+            """
+            ?container a tcs:DockerContainer ;
+                       tcs:instantiates rdfc:Orchestrator ;
+                       tcs:runs ?step .
+            ?step a tcs:InstancePipelineComponent ;
+                  prov:specializationOf ?comp .
+            ?comp a rdfc:Processor .
+            FILTER NOT EXISTS { ?step p-plan:hasInputVar ?c }
+            """,
+        )
+        return unconfigured.empty
 
     def compile(self) -> Graph:
         self.initialize_rdfc_reader()
@@ -112,6 +141,19 @@ class RdfcConfigCompiler(Compiler):
             )
 
             self.rdfc_reader = self.rdfc_reader.add(runner_reader.graph)
+
+            # Also emit the runner's own owl:imports (e.g.
+            # ``@rdfc/js-runner/index.ttl``). Without it the
+            # orchestrator sees ``:env_1 rdfc:instantiates rdfc:NodeRunner``
+            # but has no triples describing ``rdfc:NodeRunner`` itself
+            # (its ``rdfc:CommandRunner`` typing, ``rdfc:command``, and
+            # ``rdfc:handlesSubjectsOf`` all live in the runner's
+            # own index.ttl) and refuses to start.
+            runner_import_reader = self.input_reader.construct(
+                f"{self.pipeline_id} owl:imports ?import .",
+                f"{runner_id} owl:imports ?import .",
+            )
+            self.rdfc_reader = self.rdfc_reader.add(runner_import_reader.graph)
 
     def describe_processors(self) -> None:
         """
@@ -349,7 +391,19 @@ class RdfcConfigCompiler(Compiler):
         """Serialize :attr:`rdfc_reader` to Turtle, stashed on
         :attr:`pipeline_ttl` for :meth:`attach_rdfc_pipeline_file`.
         """
-        ttl_string = self.rdfc_reader.serialize("ttl")
+        # Emit ``@base`` as the container path of the pipeline file
+        # itself, not the working directory. RDF-Connect's orchestrator
+        # (``@rdfc/orchestrator-js`` — ``util.js:readQuads``) only
+        # follows ``owl:imports`` triples whose subject IRI exactly
+        # matches the file URL it was launched with — for us,
+        # ``file://{_RDFC_PIPELINE_CONTAINER_PATH}``. Serializing with
+        # the directory as base would emit them on ``<file:///workspace/pipeline/>``
+        # instead, and the orchestrator would silently start with no
+        # processors registered and exit as soon as it finished loading.
+        ttl_string = self.rdfc_reader.graph.serialize(
+            format="ttl",
+            base=f"file://{_RDFC_PIPELINE_CONTAINER_PATH}",
+        )
         # RDF Connect requires the pipeline to be named ``<>``. A plain
         # string replace would also corrupt any other IRI that happens
         # to have the pipeline's compact name as a prefix (e.g. a
