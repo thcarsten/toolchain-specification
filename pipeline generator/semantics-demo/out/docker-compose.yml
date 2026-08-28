@@ -1,0 +1,20 @@
+services:
+  ldio-workbench:
+    container_name: ldio-workbench
+    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
+    ports:
+    - 8080:8080
+    volumes:
+    - ./ldio/application.yml:/ldio/application.yml:ro
+    - ./ldio/pipelines/:/ldio/pipelines/:ro
+    depends_on:
+    - rdfc
+  rdfc:
+    container_name: rdfc
+    image: rdf-connect:latest
+    build: ./rdfc
+    volumes:
+    - ./rdfc/pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro
+    environment:
+      LOG_LEVEL: debug
+    command: npx rdfc /workspace/pipeline/pipeline.ttl

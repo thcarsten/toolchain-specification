@@ -1,0 +1,30 @@
+@base <file:///workspace/pipeline/pipeline.ttl> .
+@prefix : <http://example.org/example/> .
+@prefix demo: <http://example.org/example/semantics-demo/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<> a rdfc:Pipeline ;
+    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/http-utils-processor-ts/server.ttl>,
+        <file:///workspace/pipeline/node_modules/@rdfc/js-runner/index.ttl>,
+        <file:///workspace/pipeline/node_modules/@rdfc/log-processor-ts/processor.ttl> ;
+    rdfc:consistsOf :env_1 .
+
+:bridgestep_1 a rdfc:HttpServer ;
+    rdfc:options [ rdfc:method "POST" ;
+            rdfc:path "/bridgestep_1" ;
+            rdfc:successStatusCode 202 ] ;
+    rdfc:port 9000 ;
+    rdfc:writer :channel_bridge_1 .
+
+:env_1 rdfc:instantiates rdfc:NodeRunner ;
+    rdfc:processor :bridgestep_1,
+        demo:Log .
+
+demo:Log a rdfc:LogProcessorJs ;
+    rdfc:reader :channel_bridge_1 .
+
+:channel_bridge_1 a rdfc:Reader,
+        rdfc:Writer .
+

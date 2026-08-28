@@ -1,0 +1,2799 @@
+@prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix demo: <http://example.org/example/semantics-demo/> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix nifi: <http://example.org/example/nifi/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix proc: <http://dishacled.example.org/processors#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix rdfl: <https://w3id.org/rdf-lens/ontology#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix spdx: <http://spdx.org/rdf/terms#> .
+@prefix sw: <https://semantic.works/services/> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix tm: <https://w3id.org/rdf-connect/threshold-monitor#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:DishacledCatalog a dcat:Catalog,
+        tcs:Catalog ;
+    dct:title "Catalog of Pipeline Components" ;
+    dcat:resource proc:JsonLdToNQuads,
+        ldio:AmqpIn,
+        ldio:AmqpOut,
+        ldio:ChangeDetectionFilter,
+        ldio:ConsoleOut,
+        ldio:GeoJsonToWktTransformer,
+        ldio:HttpEnricher,
+        ldio:HttpIn,
+        ldio:HttpInPoller,
+        ldio:HttpOut,
+        ldio:JsonToLdAdapter,
+        ldio:KafkaIn,
+        ldio:KafkaOut,
+        ldio:LdesClient,
+        ldio:LdesClientConnector,
+        ldio:LdioPipelineStarterService,
+        ldio:LinkedDataInteractionsOrchestrator,
+        ldio:NgsiV2ToLdAdapter,
+        ldio:RdfAdapter,
+        ldio:RepositoryMaterialiser,
+        ldio:RmlAdapter,
+        ldio:SparqlConstructTransformer,
+        ldio:VersionMaterialiser,
+        ldio:VersionObjectCreator,
+        nifi:AzureStorageCredentialsControllerService_v12,
+        nifi:CreateVersionObjectProcessor,
+        nifi:ExecuteGroovyScript,
+        nifi:FetchAzureBlobStorage_v12,
+        nifi:Funnel,
+        nifi:GenerateFlowFile,
+        nifi:InvokeHTTP,
+        nifi:Orchestrator,
+        nifi:SplitText,
+        sw:deliver-email-service,
+        sw:loket-error-alert-service,
+        sw:mu-authorization,
+        sw:mu-cl-resources,
+        sw:mu-delta-notifier,
+        sw:mu-dispatcher,
+        sw:mu-identifier,
+        sw:triple-store,
+        rdfc:HttpFetch,
+        rdfc:HttpIn,
+        rdfc:HttpOut,
+        rdfc:HttpServer,
+        rdfc:LogProcessorJs,
+        rdfc:LogProcessorPy,
+        rdfc:NodeRunner,
+        rdfc:Orchestrator,
+        rdfc:PyRunner,
+        rdfc:SPARQLIngest,
+        rdfc:Sdsify,
+        rdfc:SkolemizationProcessor,
+        rdfc:thresholdMonitoringProcessor,
+        tm:ThresholdMonitorJs .
+
+demo:Log a tcs:InstancePipelineComponent ;
+    p-plan:isPrecededBy demo:Parse ;
+    p-plan:isStepOfPlan demo:SemanticsDemoPipeline ;
+    prov:specializationOf rdfc:LogProcessorJs ;
+    tcs:readsFrom _:N4db941bbb21f4d5eae375027a77d442c .
+
+tcs:AcyclicGraphShape a sh:NodeShape ;
+    rdfs:label "Acyclic channel graph shape" ;
+    sh:message "Checks that no step transitively reads from a channel it also writes to (no cycles in the readsFrom/writesTo channel graph)." ;
+    sh:sparql [ sh:message "Step {?this} is part of a cycle in the channel graph — it transitively reads from a channel it also writes to." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this (tcs:writesTo/^tcs:readsFrom)+ ?this .\r
+            }\r
+        """ ] ;
+    sh:targetClass tcs:InstancePipelineComponent .
+
+tcs:BoundaryChannelTypeShape a sh:NodeShape ;
+    rdfs:label "BoundaryChannelType application-profile shape" ;
+    sh:message "Checks that a boundary component declares at most one tcs:channelType." ;
+    sh:property [ sh:maxCount 1 ;
+            sh:message "A boundary component may declare at most one tcs:channelType." ;
+            sh:name "channelType" ;
+            sh:path tcs:channelType ] ;
+    sh:targetClass tcs:EntryBoundaryComponent,
+        tcs:ExitBoundaryComponent .
+
+tcs:CatalogMissingBridgeShape a sh:NodeShape ;
+    rdfs:label "CatalogMissingBridge application-profile shape" ;
+    sh:message "Checks that every cross-container channel has a bridge step on both sides." ;
+    sh:property [ sh:class tcs:ExitBoundaryComponent ;
+            sh:message "Cross-container channel {?this} has no ExitBoundaryComponent-typed writer step — no bridge component available in the catalog to insert." ;
+            sh:minCount 1 ;
+            sh:name "exit-side-bridge" ;
+            sh:path ( [ sh:inversePath tcs:writesTo ] prov:specializationOf ) ],
+        [ sh:class tcs:EntryBoundaryComponent ;
+            sh:message "Cross-container channel {?this} has no EntryBoundaryComponent-typed reader step — no bridge component available in the catalog to insert." ;
+            sh:minCount 1 ;
+            sh:name "entry-side-bridge" ;
+            sh:path ( [ sh:inversePath tcs:readsFrom ] prov:specializationOf ) ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this WHERE {\r
+                ?this a tcs:Channel .\r
+                ?writer tcs:writesTo ?this .\r
+                ?reader tcs:readsFrom ?this .\r
+                ?cW tcs:runs ?writer .\r
+                ?cR tcs:runs ?reader .\r
+                FILTER (?cW != ?cR)\r
+            }\r
+        """ ] .
+
+tcs:CatalogShape a sh:NodeShape ;
+    rdfs:label "Catalog application-profile shape" ;
+    sh:message "Checks that every dcat:resource of a Catalog is a tcs:PipelineComponent." ;
+    sh:property [ sh:class tcs:PipelineComponent ;
+            sh:message "tcs:Catalog dcat:resource entries must be tcs:PipelineComponent instances." ;
+            sh:name "resource" ;
+            sh:path dcat:resource ] ;
+    sh:targetClass tcs:Catalog .
+
+tcs:ConfigShape a sh:NodeShape ;
+    rdfs:label "Config application-profile shape" ;
+    sh:message "Checks that a Config carries exactly one of tcs:embedded/tcs:literal, and that a tcs:literal body also declares dct:format." ;
+    sh:sparql [ sh:message "Config {?this} uses tcs:literal but has no dct:format — the compiler cannot know how to parse the string body." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:Config ;\r
+                      tcs:literal ?lit .\r
+                FILTER NOT EXISTS { ?this dct:format ?fmt . }\r
+            }\r
+        """ ] ;
+    sh:targetClass tcs:Config ;
+    sh:xone ( [ sh:property [ sh:minCount 1 ;
+                        sh:path tcs:embedded ] ] [ sh:property [ sh:minCount 1 ;
+                        sh:path tcs:literal ] ] ) .
+
+tcs:DockerContainerShape a sh:NodeShape ;
+    rdfs:label "DockerContainer application-profile shape" ;
+    sh:message "Checks that a DockerContainer instantiates at least one PipelineComponent and that tcs:runs points at an InstancePipelineComponent." ;
+    sh:property [ sh:class tcs:PipelineComponent ;
+            sh:message "A DockerContainer must instantiate at least one tcs:PipelineComponent." ;
+            sh:minCount 1 ;
+            sh:name "instantiates" ;
+            sh:path tcs:instantiates ],
+        [ sh:class tcs:InstancePipelineComponent ;
+            sh:message "tcs:runs must point at a tcs:InstancePipelineComponent." ;
+            sh:name "runs" ;
+            sh:path tcs:runs ] ;
+    sh:targetClass tcs:DockerContainer .
+
+tcs:InstancePipelineComponentShape a sh:NodeShape ;
+    rdfs:label "InstancePipelineComponent application-profile shape" ;
+    sh:message "Checks that a step belongs to exactly one PipelineDefinition, specializes exactly one PipelineComponent, has at most one hasInputVar, and that any readsFrom/writesTo point at a tcs:Channel." ;
+    sh:property [ sh:class tcs:PipelineDefinition ;
+            sh:maxCount 1 ;
+            sh:message "Every step must belong to exactly one tcs:PipelineDefinition." ;
+            sh:minCount 1 ;
+            sh:name "isStepOfPlan" ;
+            sh:path p-plan:isStepOfPlan ],
+        [ sh:class tcs:PipelineComponent ;
+            sh:maxCount 1 ;
+            sh:message "Every step must specialize exactly one tcs:PipelineComponent." ;
+            sh:minCount 1 ;
+            sh:name "specializationOf" ;
+            sh:path prov:specializationOf ],
+        [ sh:class tcs:Config ;
+            sh:maxCount 1 ;
+            sh:message "A step may have at most one p-plan:hasInputVar — two configs on the same step silently merge their predicates (e.g. duplicate rdfc:level values) instead of composing with any defined precedence." ;
+            sh:name "hasInputVar" ;
+            sh:path p-plan:hasInputVar ],
+        [ sh:class tcs:Channel ;
+            sh:message "tcs:readsFrom must point at a tcs:Channel." ;
+            sh:name "readsFrom" ;
+            sh:path tcs:readsFrom ],
+        [ sh:class tcs:Channel ;
+            sh:message "tcs:writesTo must point at a tcs:Channel." ;
+            sh:name "writesTo" ;
+            sh:path tcs:writesTo ] ;
+    sh:targetClass tcs:InstancePipelineComponent .
+
+tcs:LdioComponentTypeShape a sh:NodeShape ;
+    rdfs:label "LDIO component type shape" ;
+    sh:message "Checks that every LDIO processing component declares exactly one ldio:type (Input/Adapter/Transformer/Output) and an rdfs:label." ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:in ( "Input" "Adapter" "Transformer" "Output" ) ;
+            sh:maxCount 1 ;
+            sh:message "LDIO component {?this} must declare exactly one ldio:type in {\"Input\", \"Adapter\", \"Transformer\", \"Output\"}." ;
+            sh:minCount 1 ;
+            sh:name "type" ;
+            sh:path ldio:type ],
+        [ sh:message "LDIO component {?this} must declare rdfs:label — LdioConfigCompiler uses it as the ``name:`` key in the emitted YAML pipeline." ;
+            sh:minCount 1 ;
+            sh:name "label" ;
+            sh:path rdfs:label ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:PipelineComponent ;\r
+                      dct:requires ldio:LinkedDataInteractionsOrchestrator .\r
+            }\r
+        """ ] .
+
+tcs:LdioSingularStepShape a sh:NodeShape ;
+    rdfs:label "LDIO singular Input/Adapter shape" ;
+    sh:message "Checks that a segment has at most one LDIO Input step and at most one LDIO Adapter step (LDIO's input:/input.adapter: YAML keys are singular)." ;
+    sh:sparql [ sh:message "LDIO step {?this} is a second \"Input\" step in segment {?segment}, alongside {?other} — LDIO's input: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this ?segment ?other WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      tcs:segment ?segment ;\r
+                      prov:specializationOf ?comp .\r
+                ?comp ldio:type "Input" .\r
+                ?other a tcs:InstancePipelineComponent ;\r
+                       tcs:segment ?segment ;\r
+                       prov:specializationOf ?ocomp .\r
+                ?ocomp ldio:type "Input" .\r
+                FILTER ( ?other != ?this )\r
+            }\r
+        """ ],
+        [ sh:message "LDIO step {?this} is a second \"Adapter\" step in segment {?segment}, alongside {?other} — LDIO's input.adapter: key is singular, not a list; LdioConfigCompiler would silently drop one of them." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this ?segment ?other WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      tcs:segment ?segment ;\r
+                      prov:specializationOf ?comp .\r
+                ?comp ldio:type "Adapter" .\r
+                ?other a tcs:InstancePipelineComponent ;\r
+                       tcs:segment ?segment ;\r
+                       prov:specializationOf ?ocomp .\r
+                ?ocomp ldio:type "Adapter" .\r
+                FILTER ( ?other != ?this )\r
+            }\r
+        """ ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?comp .\r
+                ?comp ldio:type ?anytype .\r
+            }\r
+        """ ] .
+
+tcs:LdioStepOrderingShape a sh:NodeShape ;
+    rdfs:label "LDIO step ordering shape" ;
+    sh:message "Checks that an LDIO Output step is terminal and an LDIO Input step is initial within its LDIO segment." ;
+    sh:sparql [ sh:message "LDIO Output step {?this} is followed by another LDIO step ({?downstream}) via channel {?ch} — Output must be terminal within its LDIO segment." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this ?ch ?downstream WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?comp ;\r
+                      tcs:writesTo ?ch .\r
+                ?comp ldio:type "Output" .\r
+                ?downstream tcs:readsFrom ?ch ;\r
+                            prov:specializationOf ?dcomp .\r
+                ?dcomp ldio:type ?danytype .\r
+                FILTER ( ?downstream != ?this )\r
+            }\r
+        """ ],
+        [ sh:message "LDIO Input step {?this} is preceded by another LDIO step ({?upstream}) via channel {?ch} — Input must be initial within its LDIO segment." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this ?ch ?upstream WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?comp ;\r
+                      tcs:readsFrom ?ch .\r
+                ?comp ldio:type "Input" .\r
+                ?upstream tcs:writesTo ?ch ;\r
+                          prov:specializationOf ?ucomp .\r
+                ?ucomp ldio:type ?uanytype .\r
+                FILTER ( ?upstream != ?this )\r
+            }\r
+        """ ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?comp .\r
+                ?comp ldio:type ?anytype .\r
+            }\r
+        """ ] .
+
+tcs:LdioStepSerialityShape a sh:NodeShape ;
+    rdfs:label "LDIO step seriality shape" ;
+    sh:message "Checks that every LDIO step has at most one upstream and one downstream channel (LDIO pipelines are strictly serial)." ;
+    sh:property [ sh:maxCount 1 ;
+            sh:message "LDIO step {?this} reads from more than one channel — LDIO pipelines are strictly serial (max 1 upstream)." ;
+            sh:name "readsFrom" ;
+            sh:path tcs:readsFrom ],
+        [ sh:maxCount 1 ;
+            sh:message "LDIO step {?this} writes to more than one channel — LDIO pipelines are strictly serial (max 1 downstream)." ;
+            sh:name "writesTo" ;
+            sh:path tcs:writesTo ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?comp .\r
+                ?comp ldio:type ?anytype .\r
+            }\r
+        """ ] .
+
+tcs:NifiCatalogMetadataShape a sh:NodeShape ;
+    rdfs:label "NiFi catalog metadata shape" ;
+    sh:message "NiFi component {?this} must provide complete metadata for its processor, funnel, or controller-service kind." ;
+    sh:or ( [ sh:or ( [ sh:property [ sh:minCount 1 ;
+                                    sh:path nifi:outgoingRelationship ] ] [ sh:property [ sh:minCount 1 ;
+                                    sh:path nifi:autoTerminatedRelationship ] ] ) ;
+                sh:property [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:processorType ],
+                    [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:bundleGroup ],
+                    [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:bundleArtifact ],
+                    [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:bundleVersion ] ] [ sh:property [ sh:hasValue "FUNNEL" ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:componentType ] ] [ sh:property [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:serviceApiBundleArtifact ],
+                    [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:serviceApiBundleVersion ],
+                    [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:controllerServiceType ],
+                    [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:bundleGroup ],
+                    [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:bundleArtifact ],
+                    [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:bundleVersion ],
+                    [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:serviceApiType ],
+                    [ sh:datatype xsd:string ;
+                        sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:path nifi:serviceApiBundleGroup ] ] ) ;
+    sh:sparql [ sh:message "NiFi component {?this} must describe exactly one kind: processor, controller service, or funnel." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this dct:requires nifi:Orchestrator .\r
+                OPTIONAL {\r
+                    {\r
+                        ?this nifi:processorType ?processorType .\r
+                        BIND ("processor" AS ?kind)\r
+                    }\r
+                    UNION\r
+                    {\r
+                        ?this nifi:controllerServiceType ?serviceType .\r
+                        BIND ("controller-service" AS ?kind)\r
+                    }\r
+                    UNION\r
+                    {\r
+                        ?this nifi:componentType "FUNNEL" .\r
+                        BIND ("funnel" AS ?kind)\r
+                    }\r
+                }\r
+            }\r
+            GROUP BY ?this\r
+            HAVING (COUNT(DISTINCT ?kind) != 1)\r
+        """ ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:PipelineComponent ;\r
+                    dct:requires nifi:Orchestrator .\r
+            }\r
+        """ ] .
+
+tcs:NifiChannelTopologyShape a sh:NodeShape ;
+    rdfs:label "NiFi channel topology shape" ;
+    sh:sparql [ sh:message "NiFi channel {?this} has more than one NiFi writer; explicit fan-in is not supported yet." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this WHERE {\r
+                ?left tcs:writesTo ?this ;\r
+                    prov:specializationOf ?leftComponent .\r
+                ?right tcs:writesTo ?this ;\r
+                    prov:specializationOf ?rightComponent .\r
+                ?leftComponent dct:requires nifi:Orchestrator .\r
+                ?rightComponent dct:requires nifi:Orchestrator .\r
+                FILTER (?left != ?right)\r
+            }\r
+        """ ],
+        [ sh:message "NiFi channel {?this} has more than one NiFi reader; explicit fan-out is not supported yet." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this WHERE {\r
+                ?left tcs:readsFrom ?this ;\r
+                    prov:specializationOf ?leftComponent .\r
+                ?right tcs:readsFrom ?this ;\r
+                    prov:specializationOf ?rightComponent .\r
+                ?leftComponent dct:requires nifi:Orchestrator .\r
+                ?rightComponent dct:requires nifi:Orchestrator .\r
+                FILTER (?left != ?right)\r
+            }\r
+        """ ],
+        [ sh:message "NiFi step {?step} reads from and writes to channel {?this}; self-loop channels are not supported by the compiler." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this ?step WHERE {\r
+                ?step tcs:readsFrom ?this ;\r
+                    tcs:writesTo ?this ;\r
+                    prov:specializationOf ?component .\r
+                ?component dct:requires nifi:Orchestrator .\r
+            }\r
+        """ ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this WHERE {\r
+                ?step (tcs:readsFrom|tcs:writesTo) ?this ;\r
+                    prov:specializationOf ?component .\r
+                ?component dct:requires nifi:Orchestrator .\r
+            }\r
+        """ ] .
+
+tcs:NifiControllerServiceReferenceShape a sh:NodeShape ;
+    rdfs:label "NiFi controller service reference shape" ;
+    sh:sparql [ sh:message "NiFi step {?this} references {?referencedStep}, which is not a valid controller-service step." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this ?referencedStep WHERE {\r
+                ?this prov:specializationOf ?component ;\r
+                    p-plan:hasInputVar/tcs:embedded ?config .\r
+                ?component dcat:qualifiedRelation/dct:relation/sh:property ?propertyShape .\r
+                ?propertyShape sh:path ?predicate ;\r
+                    sh:class tcs:InstancePipelineComponent .\r
+                ?config ?predicate ?referencedStep .\r
+                FILTER NOT EXISTS {\r
+                    ?referencedStep a tcs:InstancePipelineComponent ;\r
+                        prov:specializationOf ?serviceComponent .\r
+                    ?serviceComponent nifi:controllerServiceType ?serviceType .\r
+                }\r
+            }\r
+        """ ],
+        [ sh:message "NiFi step {?this} and referenced controller service {?referencedStep} must belong to the same pipeline definition." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this ?referencedStep WHERE {\r
+                ?this p-plan:isStepOfPlan ?plan ;\r
+                    prov:specializationOf ?component ;\r
+                    p-plan:hasInputVar/tcs:embedded ?config .\r
+                ?component dcat:qualifiedRelation/dct:relation/sh:property ?propertyShape .\r
+                ?propertyShape sh:path ?predicate ;\r
+                    sh:class tcs:InstancePipelineComponent .\r
+                ?config ?predicate ?referencedStep .\r
+                FILTER NOT EXISTS { ?referencedStep p-plan:isStepOfPlan ?plan . }\r
+            }\r
+        """ ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                    prov:specializationOf ?component ;\r
+                    p-plan:hasInputVar/tcs:embedded ?config .\r
+                ?component dcat:qualifiedRelation/dct:relation/sh:property ?propertyShape .\r
+                ?propertyShape sh:path ?predicate ;\r
+                    sh:class tcs:InstancePipelineComponent .\r
+                ?config ?predicate ?referencedStep .\r
+            }\r
+        """ ] .
+
+tcs:NifiDeploymentModeShape a sh:NodeShape ;
+    rdfs:label "NiFi deployment mode shape" ;
+    sh:property [ sh:in ( "local" "remote" ) ;
+            sh:maxCount 1 ;
+            sh:message "nifi:deploymentMode must be either local or remote. Omit it to use local Docker." ;
+            sh:path nifi:deploymentMode ] ;
+    sh:sparql [ sh:message "Remote NiFi deployment requires exactly one nifi:deploymentConfig." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this nifi:deploymentMode "remote" .\r
+                {\r
+                    FILTER NOT EXISTS { ?this nifi:deploymentConfig ?config . }\r
+                }\r
+                UNION\r
+                {\r
+                    ?this nifi:deploymentConfig ?left, ?right .\r
+                    FILTER (?left != ?right)\r
+                }\r
+            }\r
+        """ ] ;
+    sh:targetClass tcs:PipelineDefinition .
+
+tcs:NifiRouteShape a sh:NodeShape ;
+    rdfs:label "NiFi route shape" ;
+    sh:property [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:message "A NiFi route must reference exactly one nifi:channel." ;
+            sh:minCount 1 ;
+            sh:path nifi:channel ],
+        [ sh:datatype xsd:string ;
+            sh:message "A NiFi route must select at least one relationship." ;
+            sh:minCount 1 ;
+            sh:path nifi:selectedRelationship ] ;
+    sh:sparql [ sh:message "NiFi route {?this} references channel {?channel}, but its owner step does not write to that channel." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this ?channel WHERE {\r
+                ?step p-plan:hasInputVar/tcs:embedded ?config .\r
+                ?config nifi:route ?this .\r
+                ?this nifi:channel ?channel .\r
+                FILTER NOT EXISTS { ?step tcs:writesTo ?channel . }\r
+            }\r
+        """ ],
+        [ sh:message "NiFi route {?this} selects relationship {?relationship}, which is not declared by its PipelineComponent." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this ?relationship WHERE {\r
+                ?step prov:specializationOf ?component ;\r
+                    p-plan:hasInputVar/tcs:embedded ?config .\r
+                ?config nifi:route ?this .\r
+                ?this nifi:selectedRelationship ?relationship .\r
+                FILTER NOT EXISTS {\r
+                    ?component\r
+                        (nifi:outgoingRelationship|nifi:autoTerminatedRelationship)\r
+                        ?relationship .\r
+                }\r
+            }\r
+        """ ] ;
+    sh:targetObjectsOf nifi:route .
+
+tcs:NifiStepScheduledStateShape a sh:NodeShape ;
+    rdfs:label "NiFi step scheduledState shape" ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:in ( "DISABLED" "ENABLED" "RUNNING" ) ;
+            sh:maxCount 1 ;
+            sh:message "nifi:scheduledState on {?this} must be one of DISABLED, ENABLED, RUNNING." ;
+            sh:path nifi:scheduledState ] ;
+    sh:sparql [ sh:message "NiFi processor {?this} must use scheduled state RUNNING or DISABLED." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this prov:specializationOf ?component ;\r
+                    nifi:scheduledState ?state .\r
+                ?component nifi:processorType ?processorType .\r
+                FILTER (?state NOT IN ("RUNNING", "DISABLED"))\r
+            }\r
+        """ ],
+        [ sh:message "NiFi controller-service step {?this} must use scheduled state ENABLED or DISABLED." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this prov:specializationOf ?component ;\r
+                    nifi:scheduledState ?state .\r
+                ?component nifi:controllerServiceType ?serviceType .\r
+                FILTER (?state NOT IN ("ENABLED", "DISABLED"))\r
+            }\r
+        """ ],
+        [ sh:message "NiFi funnel step {?this} must not declare nifi:scheduledState." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this prov:specializationOf ?component ;\r
+                    nifi:scheduledState ?state .\r
+                ?component nifi:componentType "FUNNEL" .\r
+            }\r
+        """ ] ;
+    sh:targetSubjectsOf nifi:scheduledState .
+
+tcs:PipelineBuildShape a sh:NodeShape ;
+    rdfs:label "PipelineBuild application-profile shape" ;
+    sh:message "Checks that a PipelineBuild links to exactly one PipelineDefinition, and that dct:hasPart/tcs:compiledFile point at a DockerContainer/spdx:File respectively." ;
+    sh:property [ sh:class tcs:PipelineDefinition ;
+            sh:maxCount 1 ;
+            sh:message "A PipelineBuild must be linked to exactly one PipelineDefinition via prov:hadPlan." ;
+            sh:minCount 1 ;
+            sh:name "hadPlan" ;
+            sh:path prov:hadPlan ],
+        [ sh:class tcs:DockerContainer ;
+            sh:message "dct:hasPart on a PipelineBuild must point at a tcs:DockerContainer." ;
+            sh:name "hasPart" ;
+            sh:path dct:hasPart ],
+        [ sh:class spdx:File ;
+            sh:message "tcs:compiledFile must point at an spdx:File." ;
+            sh:name "compiledFile" ;
+            sh:path tcs:compiledFile ] ;
+    sh:targetClass tcs:PipelineBuild .
+
+tcs:PipelineComponentShape a sh:NodeShape ;
+    rdfs:label "PipelineComponent application-profile shape" ;
+    sh:message "Checks that a PipelineComponent's tcs:config/dct:requires are well-typed, it has at most one DefaultConfig per Config subtype, and it is transitively deployable via dct:requires+." ;
+    sh:property [ sh:class tcs:Config ;
+            sh:message "tcs:config must point at a tcs:Config." ;
+            sh:name "config" ;
+            sh:path tcs:config ],
+        [ sh:message "dct:requires on a PipelineComponent must point at a tcs:PipelineComponent or spdx:Package." ;
+            sh:name "requires" ;
+            sh:or ( [ sh:class tcs:PipelineComponent ] [ sh:class spdx:Package ] ) ;
+            sh:path dct:requires ] ;
+    sh:sparql [ sh:message "PipelineComponent {?this} is not deployable: neither it nor any component reachable via dct:requires+ carries a tcs:DockerComposeConfig." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:PipelineComponent .\r
+                FILTER NOT EXISTS {\r
+                    ?this dct:requires* ?deployable .\r
+                    ?deployable tcs:config ?cfg .\r
+                    ?cfg a tcs:DockerComposeConfig .\r
+                }\r
+            }\r
+        """ ],
+        [ sh:message "PipelineComponent {?this} has more than one tcs:DefaultConfig of subtype {?subtype} — at most one default per Config subtype." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this ?subtype WHERE {\r
+                ?this tcs:config ?d1, ?d2 .\r
+                FILTER ( STR(?d1) < STR(?d2) )\r
+                ?d1 a tcs:DefaultConfig, ?subtype .\r
+                ?d2 a tcs:DefaultConfig, ?subtype .\r
+                ?subtype rdfs:subClassOf tcs:Config .\r
+                FILTER ( ?subtype != tcs:Config && ?subtype != tcs:DefaultConfig )\r
+            }\r
+        """ ] ;
+    sh:targetClass tcs:PipelineComponent .
+
+tcs:PipelineDefinitionShape a sh:NodeShape ;
+    rdfs:label "PipelineDefinition application-profile shape" ;
+    sh:message "Checks that a PipelineDefinition has at least one step referencing it via p-plan:isStepOfPlan." ;
+    sh:sparql [ sh:message "PipelineDefinition {?this} has no steps — at least one tcs:InstancePipelineComponent must reference it via p-plan:isStepOfPlan." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:PipelineDefinition .\r
+                FILTER NOT EXISTS { ?step p-plan:isStepOfPlan ?this . }\r
+            }\r
+        """ ] ;
+    sh:targetClass tcs:PipelineDefinition .
+
+tcs:PipelineGenerator rdfs:subClassOf prov:SoftwareAgent .
+
+tcs:RdfcMandatoryReaderWiringShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect mandatory reader wiring shape" ;
+    sh:property [ sh:message "{?this}'s component declares a mandatory rdfc:Reader config path but the step has no tcs:readsFrom wiring — it cannot run without one." ;
+            sh:minCount 1 ;
+            sh:name "readsFrom" ;
+            sh:path tcs:readsFrom ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?component .\r
+                ?component dcat:qualifiedRelation ?rel .\r
+                ?rel dcat:hadRole tcs:configShape ;\r
+                     dct:relation ?shape .\r
+                ?shape sh:property ?prop .\r
+                ?prop sh:class tcs:Channel ;\r
+                      tcs:upstreamClass rdfc:Reader ;\r
+                      tcs:upstreamMinCount ?minCount .\r
+                FILTER (?minCount >= 1)\r
+            }\r
+        """ ] .
+
+tcs:RdfcMandatoryWriterWiringShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect mandatory writer wiring shape" ;
+    sh:property [ sh:message "{?this}'s component declares a mandatory rdfc:Writer config path but the step has no tcs:writesTo wiring — it cannot run without one." ;
+            sh:minCount 1 ;
+            sh:name "writesTo" ;
+            sh:path tcs:writesTo ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?component .\r
+                ?component dcat:qualifiedRelation ?rel .\r
+                ?rel dcat:hadRole tcs:configShape ;\r
+                     dct:relation ?shape .\r
+                ?shape sh:property ?prop .\r
+                ?prop sh:class tcs:Channel ;\r
+                      tcs:upstreamClass rdfc:Writer ;\r
+                      tcs:upstreamMinCount ?minCount .\r
+                FILTER (?minCount >= 1)\r
+            }\r
+        """ ] .
+
+tcs:RdfcOrchestratorConfigShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect orchestrator config shape" ;
+    sh:sparql [ sh:message "rdfc:Orchestrator must carry at least one tcs:DockerComposeConfig — without it the compose aggregator cannot start the container." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                FILTER NOT EXISTS {\r
+                    ?this tcs:config ?cfg .\r
+                    ?cfg a tcs:DockerComposeConfig .\r
+                }\r
+            }\r
+        """ ],
+        [ sh:message "rdfc:Orchestrator must carry at least one tcs:DockerImageConfig — without it RdfcDockerFileCompiler cannot emit a Dockerfile for the RDFC container." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                FILTER NOT EXISTS {\r
+                    ?this tcs:config ?cfg .\r
+                    ?cfg a tcs:DockerImageConfig .\r
+                }\r
+            }\r
+        """ ] ;
+    sh:targetNode rdfc:Orchestrator .
+
+tcs:RdfcPackageManagerShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect package manager shape" ;
+    sh:property [ sh:in ( :pip :npm ) ;
+            sh:message "spdx:Package {?this} is part of the RDF-Connect dependency closure; its spdx:suppliedBy must be :pip or :npm so RdfcDockerFileCompiler can route it to pyproject.toml or package.json." ;
+            sh:name "suppliedBy" ;
+            sh:path spdx:suppliedBy ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a spdx:Package .\r
+                ?owner dct:requires ?this ;\r
+                       dct:requires* rdfc:Orchestrator .\r
+            }\r
+        """ ] .
+
+tcs:RdfcProcessorShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect processor shape" ;
+    sh:property [ sh:message "RDF-Connect processor {?this} must declare owl:imports pointing at its processor.ttl — otherwise the runner cannot locate the processor definition at startup." ;
+            sh:minCount 1 ;
+            sh:name "imports" ;
+            sh:path owl:imports ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:PipelineComponent ;\r
+                      dct:requires ?runner .\r
+                ?runner a rdfc:Runner .\r
+            }\r
+        """ ] .
+
+tcs:RdfcRunnerShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect runner shape" ;
+    sh:property [ sh:hasValue rdfc:Orchestrator ;
+            sh:message "rdfc:Runner {?this} must dct:requires rdfc:Orchestrator — the compiler needs the link to place processors inside the runner's env." ;
+            sh:name "requires-orchestrator" ;
+            sh:path dct:requires ] ;
+    sh:targetClass rdfc:Runner .
+
+tcs:RdfcStepChannelWiringShape a sh:NodeShape ;
+    rdfs:label "RDF-Connect step channel wiring shape" ;
+    sh:sparql [ sh:message "Step {?this} reads from {?value} according to its config, but does not declare tcs:readsFrom {?value}. The framework-specific wiring and the framework-neutral annotation disagree." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this ?value WHERE {\r
+                ?this tcs:derivedReadsFrom ?value .\r
+                FILTER NOT EXISTS { ?this tcs:readsFrom ?value . }\r
+            }\r
+        """ ],
+        [ sh:message "Step {?this} writes to {?value} according to its config, but does not declare tcs:writesTo {?value}. The framework-specific wiring and the framework-neutral annotation disagree." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this ?value WHERE {\r
+                ?this tcs:derivedWritesTo ?value .\r
+                FILTER NOT EXISTS { ?this tcs:writesTo ?value . }\r
+            }\r
+        """ ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?component .\r
+                ?component a rdfc:Processor .\r
+            }\r
+        """ ] .
+
+tcs:SecretReferenceShape a sh:NodeShape ;
+    rdfs:label "Secret reference application-profile shape" ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:message "tcs:secretName must be a non-empty environment-variable name using letters, digits, and underscores." ;
+            sh:minCount 1 ;
+            sh:minLength 1 ;
+            sh:name "secret name" ;
+            sh:path tcs:secretName ;
+            sh:pattern "^[A-Za-z_][A-Za-z0-9_]*$" ] ;
+    sh:targetClass tcs:SecretReference .
+
+tcs:SparqlUpdateChannel rdfs:subClassOf tcs:HttpChannel .
+
+tcs:SpdxPackageShape a sh:NodeShape ;
+    rdfs:label "spdx:Package application-profile shape" ;
+    sh:message "Checks that an spdx:Package declares both spdx:name and an IRI spdx:suppliedBy, needed to emit it into pyproject.toml/package.json." ;
+    sh:property [ sh:message "spdx:Package must declare spdx:name — required for pyproject.toml / package.json emission." ;
+            sh:minCount 1 ;
+            sh:name "name" ;
+            sh:path spdx:name ],
+        [ sh:message "spdx:Package must declare spdx:suppliedBy (an IRI) — the pipeline generator routes packages to the right manifest file based on this value." ;
+            sh:minCount 1 ;
+            sh:name "suppliedBy" ;
+            sh:nodeKind sh:IRI ;
+            sh:path spdx:suppliedBy ] ;
+    sh:targetClass spdx:Package .
+
+tcs:SpecializedComponentIsCatalogedShape a sh:NodeShape ;
+    rdfs:label "Specialized component is catalogued shape" ;
+    sh:message "Checks that every step's specialized component is listed as a dcat:resource of some tcs:Catalog." ;
+    sh:sparql [ sh:message "Step {?this} specializes {?component}, which is not listed as a dcat:resource of any tcs:Catalog — likely an undefined or mistyped component reference." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this ?component WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?component .\r
+                FILTER NOT EXISTS {\r
+                    ?catalog a tcs:Catalog ;\r
+                             dcat:resource ?component .\r
+                }\r
+            }\r
+        """ ] ;
+    sh:targetClass tcs:InstancePipelineComponent .
+
+tcs:SwComponentDockerConfigShape a sh:NodeShape ;
+    rdfs:label "Semantic.works component DockerComposeConfig shape" ;
+    sh:message "Checks that every semantic.works component directly carries a tcs:DockerComposeConfig." ;
+    sh:sparql [ sh:message "Semantic.works component {?this} must directly carry a tcs:DockerComposeConfig via tcs:config — the compiler needs it to fold env vars into." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                FILTER NOT EXISTS {\r
+                    ?this tcs:config ?dc .\r
+                    ?dc a tcs:DockerComposeConfig .\r
+                }\r
+            }\r
+        """ ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:PipelineComponent .\r
+                FILTER ( STRSTARTS(STR(?this), "https://semantic.works/services/") )\r
+            }\r
+        """ ] .
+
+tcs:SwSingleInstanceShape a sh:NodeShape ;
+    rdfs:label "Semantic.works single-instance shape" ;
+    sh:message "Checks that no semantic.works component is specialized by more than one InstancePipelineComponent." ;
+    sh:sparql [ sh:message "Step {?this} specializes semantic.works component {?comp}, which is also specialized by {?other} — semantic.works components are single-tenant microservices and must not be instanced more than once." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this ?comp ?other WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?comp .\r
+                ?other a tcs:InstancePipelineComponent ;\r
+                       prov:specializationOf ?comp .\r
+                FILTER ( ?other != ?this )\r
+            }\r
+        """ ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT DISTINCT ?this WHERE {\r
+                ?this a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?comp .\r
+                FILTER ( STRSTARTS(STR(?comp), "https://semantic.works/services/") )\r
+            }\r
+        """ ] .
+
+tcs:SwStepEnvValueShape a sh:NodeShape ;
+    rdfs:label "Semantic.works step env-value literal shape" ;
+    sh:message "Checks that semantic.works step config values are RDF literals, not IRIs or blank nodes." ;
+    sh:sparql [ sh:message "Semantic.works step config {?this} has non-literal value at predicate {?p} — docker-compose environment values must be scalars, not IRIs or blank nodes." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this ?p WHERE {\r
+                ?this ?p ?v .\r
+                FILTER ( ?p != rdf:type && !isLiteral(?v) )\r
+            }\r
+        """ ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?step a tcs:InstancePipelineComponent ;\r
+                      prov:specializationOf ?comp ;\r
+                      p-plan:hasInputVar/tcs:embedded ?this .\r
+                FILTER ( STRSTARTS(STR(?comp), "https://semantic.works/services/") )\r
+            }\r
+        """ ] .
+
+tcs:UnsupportedChannelTopologyShape a sh:NodeShape ;
+    rdfs:label "UnsupportedChannelTopology application-profile shape" ;
+    sh:message "Checks that cross-container channel topology is a MVP-supported (1-writer, 1-or-2-container) shape." ;
+    sh:sparql [ sh:message "Channel {?this} has writers in more than one container — multi-container fan-in is not auto-bridged." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:Channel .\r
+                ?writer tcs:writesTo ?this .\r
+                ?container tcs:runs ?writer .\r
+            }\r
+            GROUP BY ?this\r
+            HAVING (COUNT(DISTINCT ?container) > 1)\r
+        """ ],
+        [ sh:message "Channel {?this} has readers spanning more than two containers total — multi-container fan-out is not auto-bridged." ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?this a tcs:Channel .\r
+                {\r
+                    ?reader tcs:readsFrom ?this .\r
+                    ?container tcs:runs ?reader .\r
+                }\r
+                UNION\r
+                {\r
+                    ?writer tcs:writesTo ?this .\r
+                    ?container tcs:runs ?writer .\r
+                }\r
+            }\r
+            GROUP BY ?this\r
+            HAVING (COUNT(DISTINCT ?container) > 2)\r
+        """ ] ;
+    sh:targetClass tcs:Channel .
+
+proc:JsonLdToNQuads a dcat:Resource,
+        rdfc:Processor,
+        tcs:PipelineComponent ;
+    rdfs:label "JSON-LD to N-Quads processor" ;
+    dct:requires [ a spdx:Package ;
+            spdx:downloadLocation "file:///workspace/pipeline/processors/jsonld-to-nquads" ;
+            spdx:name "jsonld-to-nquads" ;
+            spdx:suppliedBy :npm ],
+        [ a spdx:Package ;
+            spdx:name "jsonld" ;
+            spdx:suppliedBy :npm ;
+            spdx:versionInfo "^9.0.0" ],
+        rdfc:NodeRunner ;
+    rdfs:description "Parses incoming JSON-LD strings and serializes them as N-Quads for downstream RDF processors." ;
+    owl:imports <file:///workspace/pipeline/processors/jsonld-to-nquads/processor.ttl> ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation :JsonLdToNQuadsShape ;
+            dcat:hadRole tcs:configShape ],
+        [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ] ;
+            dcat:hadRole tcs:passthroughShape ] .
+
+:ChangeSemanticsShape a sh:NodeShape ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "changeTypePath" ;
+            sh:path rdfc:changeTypePath ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "createValue" ;
+            sh:path rdfc:createValue ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "deleteValue" ;
+            sh:path rdfc:deleteValue ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "updateValue" ;
+            sh:path rdfc:updateValue ] ;
+    sh:targetObjectsOf rdfc:changeSemantics .
+
+:HttpFetchAuthShape a sh:NodeShape ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "type" ;
+            sh:path rdfc:type ] ;
+    sh:targetObjectsOf rdfc:HttpFetchAuth .
+
+:HttpFetchOptionsShape a sh:NodeShape ;
+    sh:property [ sh:maxCount 1 ;
+            sh:name "auth" ;
+            sh:node :HttpFetchAuthShape ;
+            sh:path rdfc:HttpFetchAuth ],
+        [ sh:datatype xsd:string ;
+            sh:name "acceptStatusCodes" ;
+            sh:path rdfc:acceptStatusCodes ],
+        [ sh:datatype xsd:boolean ;
+            sh:maxCount 1 ;
+            sh:name "closeOnEnd" ;
+            sh:path rdfc:closeOnEnd ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "cron" ;
+            sh:path rdfc:cron ],
+        [ sh:datatype xsd:boolean ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "errorsAreFatal" ;
+            sh:path rdfc:errorsAreFatal ],
+        [ sh:datatype xsd:string ;
+            sh:name "headers" ;
+            sh:path rdfc:headers ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "method" ;
+            sh:path rdfc:method ],
+        [ sh:datatype xsd:boolean ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "outputAsBuffer" ;
+            sh:path rdfc:outputAsBuffer ],
+        [ sh:datatype xsd:boolean ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "outputAsStream" ;
+            sh:path rdfc:outputAsStream ],
+        [ sh:datatype xsd:boolean ;
+            sh:maxCount 1 ;
+            sh:name "runOnInit" ;
+            sh:path rdfc:runOnInit ],
+        [ sh:datatype xsd:integer ;
+            sh:maxCount 1 ;
+            sh:name "timeOutMilliseconds" ;
+            sh:path rdfc:timeOutMilliseconds ] ;
+    sh:targetObjectsOf rdfc:options .
+
+:HttpFetchShape a sh:NodeShape ;
+    sh:property [ sh:maxCount 1 ;
+            sh:name "options" ;
+            sh:node :HttpFetchOptionsShape ;
+            sh:path rdfc:options ],
+        [ sh:datatype xsd:string ;
+            sh:minCount 1 ;
+            sh:name "url" ;
+            sh:path rdfc:url ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "writer" ;
+            sh:path rdfc:writer ;
+            tcs:upstreamClass rdfc:Writer ;
+            tcs:upstreamMinCount 1 ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?step prov:specializationOf rdfc:HttpFetch ;\r
+                      p-plan:hasInputVar/tcs:embedded ?this .\r
+            }\r
+        """ ] .
+
+:HttpOutShape a sh:NodeShape ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "content_type" ;
+            sh:path rdfc:content_type ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "endpoint" ;
+            sh:path rdfc:endpoint ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "reader" ;
+            sh:path rdfc:reader ;
+            tcs:upstreamClass rdfc:Reader ;
+            tcs:upstreamMinCount 1 ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "writer" ;
+            sh:path rdfc:writer ;
+            tcs:upstreamClass rdfc:Writer ;
+            tcs:upstreamMinCount 0 ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?step prov:specializationOf rdfc:HttpOut ;\r
+                      p-plan:hasInputVar/tcs:embedded ?this .\r
+            }\r
+        """ ] .
+
+:HttpServerOptionsShape a sh:NodeShape ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "host" ;
+            sh:path rdfc:host ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "method" ;
+            sh:path rdfc:method ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "path" ;
+            sh:path rdfc:path ],
+        [ sh:datatype xsd:integer ;
+            sh:maxCount 1 ;
+            sh:name "streamThresholdBytes" ;
+            sh:path rdfc:streamThresholdBytes ],
+        [ sh:datatype xsd:integer ;
+            sh:maxCount 1 ;
+            sh:name "successStatusCode" ;
+            sh:path rdfc:successStatusCode ] ;
+    sh:targetObjectsOf rdfc:options .
+
+:HttpServerShape a sh:NodeShape ;
+    sh:property [ sh:maxCount 1 ;
+            sh:name "options" ;
+            sh:node :HttpServerOptionsShape ;
+            sh:path rdfc:options ],
+        [ sh:datatype xsd:integer ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "port" ;
+            sh:path rdfc:port ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "writer" ;
+            sh:path rdfc:writer ;
+            tcs:upstreamClass rdfc:Writer ;
+            tcs:upstreamMinCount 1 ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?step prov:specializationOf rdfc:HttpServer ;\r
+                      p-plan:hasInputVar/tcs:embedded ?this .\r
+            }\r
+        """ ] .
+
+:IngestConfigShape a sh:NodeShape ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "accessToken" ;
+            sh:path rdfc:accessToken ],
+        [ sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "changeSemantics" ;
+            sh:node :ChangeSemanticsShape ;
+            sh:path rdfc:changeSemantics ],
+        [ sh:datatype xsd:boolean ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "forVirtuoso" ;
+            sh:path rdfc:forVirtuoso ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "graphStoreUrl" ;
+            sh:path rdfc:graphStoreUrl ],
+        [ sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "measurePerformance" ;
+            sh:node :PerformanceConfigShape ;
+            sh:path rdfc:measurePerformance ],
+        [ sh:datatype xsd:integer ;
+            sh:maxCount 1 ;
+            sh:name "memberBatchSize" ;
+            sh:path rdfc:memberBatchSize ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "memberShape" ;
+            sh:path rdfc:memberShape ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "operationMode" ;
+            sh:path rdfc:operationMode ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "targetNamedGraph" ;
+            sh:path rdfc:targetNamedGraph ],
+        [ sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "transactionConfig" ;
+            sh:node :TransactionConfigShape ;
+            sh:path rdfc:transactionConfig ] ;
+    sh:targetObjectsOf rdfc:ingestConfig .
+
+:JsonLdToNQuadsShape a sh:NodeShape ;
+    sh:property [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "reader" ;
+            sh:path rdfc:reader ;
+            tcs:upstreamClass rdfc:Reader ;
+            tcs:upstreamMinCount 1 ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "writer" ;
+            sh:path rdfc:writer ;
+            tcs:upstreamClass rdfc:Writer ;
+            tcs:upstreamMinCount 1 ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?step <http://www.w3.org/ns/prov#specializationOf>\r
+                          <http://dishacled.example.org/processors#JsonLdToNQuads> ;\r
+                      <http://purl.org/net/p-plan#hasInputVar>/<https://w3id.org/toolchain#embedded>\r
+                          ?this .\r
+            }\r
+        """ ] .
+
+:LdioDefaultDockerComposeConfig a tcs:Config,
+        tcs:DefaultConfig,
+        tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """\r
+ldio-workbench:\r
+    container_name: ldio-workbench\r
+    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT\r
+    ports:\r
+      - "8080:8080"\r
+    volumes:\r
+      - ./ldio/application.yml:/ldio/application.yml:ro\r
+      - ./ldio/pipelines/:/ldio/pipelines/:ro\r
+""" .
+
+:LogProcessorJsShape a sh:NodeShape ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "label" ;
+            sh:path rdfc:label ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "level" ;
+            sh:path rdfc:level ],
+        [ sh:datatype xsd:boolean ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "raw" ;
+            sh:path rdfc:raw ],
+        [ sh:datatype xsd:boolean ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "readAsStream" ;
+            sh:path rdfc:readAsStream ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "reader" ;
+            sh:path rdfc:reader ;
+            tcs:upstreamClass rdfc:Reader ;
+            tcs:upstreamMinCount 1 ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "writer" ;
+            sh:path rdfc:writer ;
+            tcs:upstreamClass rdfc:Writer ;
+            tcs:upstreamMinCount 0 ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?step prov:specializationOf rdfc:LogProcessorJs ;\r
+                      p-plan:hasInputVar/tcs:embedded ?this .\r
+            }\r
+        """ ] .
+
+:LogProcessorPyShape a sh:NodeShape ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "label" ;
+            sh:path rdfc:label ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "level" ;
+            sh:path rdfc:level ],
+        [ sh:datatype xsd:boolean ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "raw" ;
+            sh:path rdfc:raw ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "reader" ;
+            sh:path rdfc:reader ;
+            tcs:upstreamClass rdfc:Reader ;
+            tcs:upstreamMinCount 1 ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "writer" ;
+            sh:path rdfc:writer ;
+            tcs:upstreamClass rdfc:Writer ;
+            tcs:upstreamMinCount 0 ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?step prov:specializationOf rdfc:LogProcessorPy ;\r
+                      p-plan:hasInputVar/tcs:embedded ?this .\r
+            }\r
+        """ ] .
+
+:MetadataConfigShape a sh:NodeShape ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "description" ;
+            sh:path rdfc:description ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "shape" ;
+            sh:path rdfc:shape ],
+        [ sh:maxCount 1 ;
+            sh:name "shapeIri" ;
+            sh:nodeKind sh:IRI ;
+            sh:path rdfc:shapeIri ;
+            tcs:upstreamDatatype xsd:iri ],
+        [ sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "streamId" ;
+            sh:nodeKind sh:IRI ;
+            sh:path rdfc:streamId ;
+            tcs:upstreamDatatype xsd:iri ],
+        [ sh:maxCount 1 ;
+            sh:name "timestampPath" ;
+            sh:nodeKind sh:IRI ;
+            sh:path rdfc:timestampPath ;
+            tcs:upstreamDatatype xsd:iri ],
+        [ sh:maxCount 1 ;
+            sh:name "versionOfPath" ;
+            sh:nodeKind sh:IRI ;
+            sh:path rdfc:versionOfPath ;
+            tcs:upstreamDatatype xsd:iri ] ;
+    sh:targetObjectsOf rdfc:metadataConfig .
+
+:PerformanceConfigShape a sh:NodeShape ;
+    sh:property [ sh:datatype xsd:boolean ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "failureIsFatal" ;
+            sh:path rdfc:failureIsFatal ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "name" ;
+            sh:path rdfc:name ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "outputPath" ;
+            sh:path rdfc:outputPath ],
+        [ sh:datatype xsd:integer ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "queryTimeout" ;
+            sh:path rdfc:queryTimeout ] ;
+    sh:targetObjectsOf rdfc:measurePerformance .
+
+:RdfcOrchestratorDockerCompose a tcs:Config,
+        tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """\r
+  rdfc:\r
+    container_name: rdfc\r
+    image: rdf-connect:latest\r
+    build: ../../resources/rdfc-docker\r
+    volumes:\r
+      - ./rdfc_pipeline.ttl:/workspace/pipeline/pipeline.ttl:ro\r
+    environment:\r
+      LOG_LEVEL: debug\r
+    command: npx rdfc /workspace/pipeline/pipeline.ttl\r
+""" .
+
+:RdfcOrchestratorDockerImage a tcs:Config,
+        tcs:DockerImageConfig ;
+    dct:format "text/x-dockerfile" ;
+    tcs:literal """\r
+# Base: Alpine with Python 3.13\r
+FROM python:3.13-slim-trixie AS rdfc-base\r
+\r
+# Install system dependencies\r
+RUN apt-get update && apt-get install -y --no-install-recommends \\\r
+    bash \\\r
+    curl \\\r
+    wget \\\r
+    unzip \\\r
+    git \\\r
+    openjdk-21-jdk-headless \\\r
+    nodejs \\\r
+    npm \\\r
+    make \\\r
+    g++ \\\r
+    libc-dev \\\r
+    && rm -rf /var/lib/apt/lists/*\r
+\r
+# Install Gradle 8.10.2\r
+ARG GRADLE_VERSION=8.10.2\r
+RUN wget https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -P /tmp \\\r
+    && unzip /tmp/gradle-${GRADLE_VERSION}-bin.zip -d /opt \\\r
+    && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/bin/gradle \\\r
+    && rm -rf /tmp/*.zip\r
+\r
+# Install Python tools Hatch and uv\r
+RUN pip install --no-cache-dir hatch uv\r
+\r
+# Set working directory\r
+WORKDIR /workspace\r
+\r
+# Copy package.json and package-lock.json for npm caching\r
+COPY package.json ./pipeline/\r
+\r
+# Install all processors listed in package.json\r
+RUN cd pipeline && npm install\r
+\r
+# Set default working dir\r
+WORKDIR /workspace/pipeline\r
+\r
+# Keep container interactive\r
+CMD ["/bin/bash"]\r
+""" .
+
+:SPARQLIngestShape a sh:NodeShape ;
+    sh:property [ sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "config" ;
+            sh:node :IngestConfigShape ;
+            sh:path rdfc:ingestConfig ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "memberStream" ;
+            sh:path rdfc:memberStream ;
+            tcs:upstreamClass rdfc:Reader ;
+            tcs:upstreamMinCount 1 ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "sparqlWriter" ;
+            sh:path rdfc:sparqlWriter ;
+            tcs:upstreamClass rdfc:Writer ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?step prov:specializationOf rdfc:SPARQLIngest ;\r
+                      p-plan:hasInputVar/tcs:embedded ?this .\r
+            }\r
+        """ ] .
+
+:SdsifyShape a sh:NodeShape ;
+    sh:property [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "input" ;
+            sh:path rdfc:input ;
+            tcs:upstreamClass rdfc:Reader ;
+            tcs:upstreamMinCount 1 ],
+        [ sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "metadataConfig" ;
+            sh:node :MetadataConfigShape ;
+            sh:path rdfc:metadataConfig ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "metadataOutput" ;
+            sh:path rdfc:metadataOutput ;
+            tcs:upstreamClass rdfc:Writer ;
+            tcs:upstreamMinCount 1 ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "output" ;
+            sh:path rdfc:output ;
+            tcs:upstreamClass rdfc:Writer ;
+            tcs:upstreamMinCount 1 ],
+        [ sh:datatype xsd:boolean ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "readAsStream" ;
+            sh:path rdfc:readAsStream ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 0 ;
+            sh:name "shape" ;
+            sh:path rdfc:shape ],
+        [ sh:minCount 0 ;
+            sh:name "types" ;
+            sh:nodeKind sh:IRI ;
+            sh:path rdfc:typeFilter ;
+            tcs:upstreamDatatype xsd:iri ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?step prov:specializationOf rdfc:Sdsify ;\r
+                      p-plan:hasInputVar/tcs:embedded ?this .\r
+            }\r
+        """ ] .
+
+:ShaclPathListShape a sh:NodeShape ;
+    rdfs:label "RDF list of SHACL property paths" ;
+    sh:property [ sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:node :ShaclPathShape ;
+            sh:path rdf:first ],
+        [ sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:path rdf:rest ] .
+
+:SkolemizationProcessorShape a sh:NodeShape ;
+    sh:property [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "incoming" ;
+            sh:path rdfc:incoming ;
+            tcs:upstreamClass rdfc:Reader ;
+            tcs:upstreamMinCount 1 ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "MIME type" ;
+            sh:path rdfc:mime ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "outgoing" ;
+            sh:path rdfc:outgoing ;
+            tcs:upstreamClass rdfc:Writer ;
+            tcs:upstreamMinCount 1 ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?step prov:specializationOf rdfc:SkolemizationProcessor ;\r
+                      p-plan:hasInputVar/tcs:embedded ?this .\r
+            }\r
+        """ ] .
+
+:ThresholdMonitorJsShape a sh:NodeShape ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:name "label" ;
+            sh:path rdfs:label ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "reader" ;
+            sh:path rdfc:reader ;
+            tcs:upstreamClass rdfc:Reader ;
+            tcs:upstreamMinCount 1 ],
+        [ sh:class tcs:Channel ;
+            sh:maxCount 1 ;
+            sh:name "writer" ;
+            sh:path rdfc:writer ;
+            tcs:upstreamClass rdfc:Writer ;
+            tcs:upstreamMinCount 1 ],
+        [ sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "creator" ;
+            sh:nodeKind sh:IRI ;
+            sh:path tm:creator ;
+            tcs:upstreamDatatype xsd:iri ],
+        [ sh:datatype xsd:double ;
+            sh:maxCount 1 ;
+            sh:name "max" ;
+            sh:path tm:max ],
+        [ sh:datatype xsd:double ;
+            sh:maxCount 1 ;
+            sh:name "min" ;
+            sh:path tm:min ],
+        [ sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "path" ;
+            sh:node :ShaclPathShape ;
+            sh:path tm:path ;
+            tcs:upstreamClass rdfl:PathLens ],
+        [ sh:maxCount 1 ;
+            sh:name "streamId" ;
+            sh:nodeKind sh:IRI ;
+            sh:path tm:stream ;
+            tcs:upstreamDatatype xsd:iri ] ;
+    sh:target [ a sh:SPARQLTarget ;
+            sh:prefixes tcs:prefixes ;
+            sh:select """\r
+            SELECT ?this WHERE {\r
+                ?step prov:specializationOf tm:ThresholdMonitorJs ;\r
+                      p-plan:hasInputVar/tcs:embedded ?this .\r
+            }\r
+        """ ] .
+
+:TransactionConfigShape a sh:NodeShape ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "transactionEndPath" ;
+            sh:path rdfc:transactionEndPath ],
+        [ sh:datatype xsd:string ;
+            sh:maxCount 1 ;
+            sh:minCount 1 ;
+            sh:name "transactionIdPath" ;
+            sh:path rdfc:transactionIdPath ] ;
+    sh:targetObjectsOf rdfc:transactionConfig .
+
+ldio:AmqpIn a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:AmqpIn" ;
+    ldio:type "Input" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "The LDIO AMQP In listens to messages from an AMQP 1.0 queue." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-amqp-in" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "URI to the AMQP queue." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "remote-url" ;
+                            sh:path ldio:remote-url ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Name of the queue." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "queue" ;
+                            sh:path ldio:queue ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Username used in authentication." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "username" ;
+                            sh:path ldio:username ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Password used in the authentication." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "password" ;
+                            sh:path ldio:password ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Content-type suggestion for received messages of the queue. Overridden by the message's own 'contentType' header when present. Defaults to application/n-quads." ;
+                            sh:maxCount 1 ;
+                            sh:name "content-type" ;
+                            sh:path ldio:content-type ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:AmqpOut a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:AmqpOut" ;
+    ldio:type "Output" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "Sends messages to an AMQP 1.0 queue. The configured rdf-writer.content-type is added as a 'contentType' message header." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-outputs/ldio-amqp-out" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "URI to the AMQP queue." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "remote-url" ;
+                            sh:path ldio:remote-url ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Name of the queue." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "queue" ;
+                            sh:path ldio:queue ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Username used in authentication." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "username" ;
+                            sh:path ldio:username ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Password used in the authentication." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "password" ;
+                            sh:path ldio:password ],
+                        [ sh:description "RDF Writer properties, controlling how the model is serialized before it is sent." ;
+                            sh:maxCount 1 ;
+                            sh:name "rdf-writer" ;
+                            sh:node ldio:RdfWriterShape ;
+                            sh:path ldio:rdf-writer ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:ChangeDetectionFilter a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:ChangeDetectionFilter" ;
+    ldio:type "Transformer" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "Keeps track of the last-seen model hash per subject and drops a member if its content hasn't changed since the previous member with the same subject (avoids spamming downstream with duplicate state objects)." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-change-detection-filter" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:node ldio:StatePersistenceShape ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:ConsoleOut a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:ConsoleOut" ;
+    ldio:type "Output" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "The LDIO Console Out will output its given model to the console." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-outputs/ldio-console-out" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:description "RDF Writer properties, controlling how the model is serialized to the console." ;
+                            sh:maxCount 1 ;
+                            sh:name "rdf-writer" ;
+                            sh:node ldio:RdfWriterShape ;
+                            sh:path ldio:rdf-writer ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:GeoJsonToWktTransformer a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:GeoJsonToWktTransformer" ;
+    ldio:type "Transformer" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "Transforms GeoJSON geometry statements (https://purl.org/geojson/vocab#geometry) into WKT literals, optionally in RDF+WKT format." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-geojson-to-wkt" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:boolean ;
+                            sh:description "Transform GeoJSON to RDF+WKT format. Defaults to false, in which case plain WKT is used." ;
+                            sh:maxCount 1 ;
+                            sh:name "transform-to-rdf+wkt-enabled" ;
+                            sh:path <http://example.org/example/ldio/transform-to-rdf+wkt-enabled> ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:HttpEnricher a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:HttpEnricher" ;
+    ldio:type "Transformer" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "Fires a GET or POST HTTP request to a URL taken from the model, converts the response via a configurable nested LDIO Adapter, and merges the result back into the model." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-http-enricher" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:node ldio:HttpRequesterShape ;
+                    sh:property [ sh:description "The nested LDIO Adapter used to convert the http response into a linked data model." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "adapter" ;
+                            sh:node [ a sh:NodeShape ;
+                                    sh:property [ sh:description "The name of the LDIO Adapter to use, e.g. Ldio:RdfAdapter." ;
+                                            sh:maxCount 1 ;
+                                            sh:minCount 1 ;
+                                            sh:name "name" ;
+                                            sh:path ldio:name ],
+                                        [ sh:description "Optional config required by the nested adapter." ;
+                                            sh:maxCount 1 ;
+                                            sh:name "config" ;
+                                            sh:path ldio:config ] ] ;
+                            sh:path ldio:adapter ],
+                        [ sh:description "Property path defining the url that needs to be selected on the model for the http request." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "url-property-path" ;
+                            sh:path ldio:url-property-path ],
+                        [ sh:description "Property path defining the headers that need to be selected on the model for the http request." ;
+                            sh:maxCount 1 ;
+                            sh:name "header-property-path" ;
+                            sh:path ldio:header-property-path ],
+                        [ sh:description "Property path defining the body that needs to be selected on the model, added when a POST http request is used." ;
+                            sh:maxCount 1 ;
+                            sh:name "body-property-path" ;
+                            sh:path ldio:body-property-path ],
+                        [ sh:description "Property path defining the http method (GET or POST) that needs to be selected on the model for the http request. Defaults to GET." ;
+                            sh:maxCount 1 ;
+                            sh:name "http-method-property-path" ;
+                            sh:path ldio:http-method-property-path ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:HttpIn a dcat:Resource,
+        tcs:EntryBoundaryComponent,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:HttpIn" ;
+    ldio:type "Input" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:comment "This component has no config properties documented on the landing page." ;
+    rdfs:description "The LDIO Http In is a basic Http Listener. Data can be written to http://{hostname}:{port}/{pipeline name}." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-http-in" ;
+    tcs:channelType tcs:HttpChannel .
+
+ldio:HttpOut a dcat:Resource,
+        tcs:ExitBoundaryComponent,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:HttpOut" ;
+    ldio:type "Output" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "The LDIO HTTP Out is a basic Http Client that will send the given Linked Data model to a target url." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-outputs/ldio-http-out" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed." ;
+                    sh:node ldio:HttpRequesterShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "Target url." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "endpoint" ;
+                            sh:path ldio:endpoint ],
+                        [ sh:description "RDF Writer properties, controlling how the model is serialized before it is sent." ;
+                            sh:maxCount 1 ;
+                            sh:name "rdf-writer" ;
+                            sh:node ldio:RdfWriterShape ;
+                            sh:path ldio:rdf-writer ] ] ;
+            dcat:hadRole tcs:configShape ],
+        [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:message "HttpOut serializes and POSTs the incoming model verbatim — a pure passthrough at the RDF level, no constraint on its shape." ] ;
+            dcat:hadRole tcs:passthroughShape ] ;
+    tcs:channelType tcs:HttpChannel .
+
+ldio:JsonToLdAdapter a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:JsonToLdAdapter" ;
+    ldio:type "Adapter" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "The json-to-ld-adapter receives json messages and adds a linked data context to transform the messages to json-ld." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.13.0/ldio/ldio-adapters/ldio-json-to-json-ld" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:message "Checks that ldio:JsonToLdAdapter's wiring (context/force-content-type/max-jsonld-cache-capacity) is well-typed." ;
+                    sh:property [ sh:description "URI of a JSON-LD context, or an inline JSON-LD context object." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "context" ;
+                            sh:path ldio:context ],
+                        [ sh:datatype xsd:boolean ;
+                            sh:description "Flag that indicates if application/json should be forced as the mime type." ;
+                            sh:maxCount 1 ;
+                            sh:name "force-content-type" ;
+                            sh:path ldio:force-content-type ],
+                        [ sh:datatype xsd:integer ;
+                            sh:description "After retrieving an external JSON-LD context, it is cached for reuse. This property allows specifying the size of this cache (number of stored contexts)." ;
+                            sh:maxCount 1 ;
+                            sh:name "max-jsonld-cache-capacity" ;
+                            sh:path ldio:max-jsonld-cache-capacity ] ] ;
+            dcat:hadRole tcs:configShape ],
+        [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:message "JsonToLdAdapter's output fully depends on the @context supplied per instance — no generic claim holds across every possible configuration." ] ;
+            dcat:hadRole tcs:outputShape ] .
+
+ldio:KafkaIn a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:KafkaIn" ;
+    ldio:type "Input" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "The LDIO Kafka In listens to messages from a Kafka topic." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-kafka-in" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "Any content type supported by Apache Jena." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "content-type" ;
+                            sh:path ldio:content-type ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Comma separated list of uris of the bootstrap servers." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "bootstrap-servers" ;
+                            sh:path ldio:bootstrap-servers ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Names of the topics (comma separated)." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "topics" ;
+                            sh:path ldio:topics ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Group identifier the consumer belongs to. Defaults to a generated value." ;
+                            sh:maxCount 1 ;
+                            sh:name "group-id" ;
+                            sh:path ldio:group-id ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Security protocol used to connect to the kafka broker. Defaults to NO_AUTH." ;
+                            sh:in ( "NO_AUTH" "SASL_SSL_PLAIN" ) ;
+                            sh:maxCount 1 ;
+                            sh:name "security-protocol" ;
+                            sh:path ldio:security-protocol ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Username used in the security protocol." ;
+                            sh:maxCount 1 ;
+                            sh:name "sasl-jaas-user" ;
+                            sh:path ldio:sasl-jaas-user ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Password used in the security protocol." ;
+                            sh:maxCount 1 ;
+                            sh:name "sasl-jaas-password" ;
+                            sh:path ldio:sasl-jaas-password ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:KafkaOut a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:KafkaOut" ;
+    ldio:type "Output" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "Sends messages to a Kafka topic." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-outputs/ldio-kafka-out" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "Comma separated list of uris of the bootstrap servers." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "bootstrap-servers" ;
+                            sh:path ldio:bootstrap-servers ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Name of the topic." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "topic" ;
+                            sh:path ldio:topic ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Optional property path to extract the kafka message key from the data model." ;
+                            sh:maxCount 1 ;
+                            sh:name "key-property-path" ;
+                            sh:path ldio:key-property-path ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Security protocol used to connect to the kafka broker. Defaults to NO_AUTH." ;
+                            sh:in ( "NO_AUTH" "SASL_SSL_PLAIN" ) ;
+                            sh:maxCount 1 ;
+                            sh:name "security-protocol" ;
+                            sh:path ldio:security-protocol ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Username used in the security protocol." ;
+                            sh:maxCount 1 ;
+                            sh:name "sasl-jaas-user" ;
+                            sh:path ldio:sasl-jaas-user ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Password used in the security protocol." ;
+                            sh:maxCount 1 ;
+                            sh:name "sasl-jaas-password" ;
+                            sh:path ldio:sasl-jaas-password ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "RDF type of the objects that need to be included for JSON-LD framing." ;
+                            sh:maxCount 1 ;
+                            sh:name "frame-type" ;
+                            sh:path ldio:frame-type ],
+                        [ sh:description "RDF Writer properties, controlling how the model is serialized before it is sent." ;
+                            sh:maxCount 1 ;
+                            sh:name "rdf-writer" ;
+                            sh:node ldio:RdfWriterShape ;
+                            sh:path ldio:rdf-writer ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:LdesClient a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:LdesClient" ;
+    ldio:type "Input" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "Replicates and synchronizes an LDES, keeping track of processed fragments/members; supports version materialisation, exactly-once/latest-state filtering and pluggable state persistence (memory/SQLite/Postgres)." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-ldes-client" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:node ldio:HttpRequesterShape,
+                        ldio:LdesClientShape,
+                        ldio:StatePersistenceShape ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:LdesClientConnector a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:LdesClientConnector" ;
+    ldio:type "Input" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "An EDC (Eclipse Dataspace Connector) wrapper around Ldio:LdesClient. Exposes /transfer and /token endpoints and waits for an EDC token before starting; inherits the full Ldio:LdesClient configuration." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-ldes-client-connector" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:node ldio:HttpRequesterShape,
+                        ldio:LdesClientShape,
+                        ldio:StatePersistenceShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "The transfer url of the EDC connector which has to be called to start a transfer." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "connector-transfer-url" ;
+                            sh:path ldio:connector-transfer-url ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Part of the LDES url that should be replaced when proxying (temporary workaround until client/server support relative urls). Defaults to an empty string." ;
+                            sh:maxCount 1 ;
+                            sh:name "proxy-url-to-replace" ;
+                            sh:path ldio:proxy-url-to-replace ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "The replacement url part used when proxying." ;
+                            sh:maxCount 1 ;
+                            sh:name "proxy-url-replacement" ;
+                            sh:path ldio:proxy-url-replacement ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:NgsiV2ToLdAdapter a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:NgsiV2ToLdAdapter" ;
+    ldio:type "Adapter" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "Transforms an NGSI-v2 (JSON) input into NGSI-LD." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-adapters/ldio-ngsiv2-to-ld" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "URI of a core JSON-LD context." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "core-context" ;
+                            sh:path ldio:core-context ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "URI of a custom JSON-LD context." ;
+                            sh:maxCount 1 ;
+                            sh:name "ld-context" ;
+                            sh:path ldio:ld-context ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Identifier that points to the data in the provided json." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "data-identifier" ;
+                            sh:path ldio:data-identifier ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:RepositoryMaterialiser a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:RepositoryMaterialiser" ;
+    ldio:type "Output" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "Materialises an LDES stream directly into an RDF4J-compatible triplestore, with configurable batching." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-outputs/ldio-repository-materialiser" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "The url of the server hosting the repository." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "sparql-host" ;
+                            sh:path ldio:sparql-host ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "The RDF4J repository id." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "repository-id" ;
+                            sh:path ldio:repository-id ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "If set, the triples will be written to this named graph." ;
+                            sh:maxCount 1 ;
+                            sh:name "named-graph" ;
+                            sh:path ldio:named-graph ],
+                        [ sh:datatype xsd:integer ;
+                            sh:description "Number of members or models that will be committed at once. Defaults to 500." ;
+                            sh:maxCount 1 ;
+                            sh:name "batch-size" ;
+                            sh:path ldio:batch-size ],
+                        [ sh:datatype xsd:integer ;
+                            sh:description "If the batch size has not been reached within this number of milliseconds, the members will be committed anyway. Defaults to 120000." ;
+                            sh:maxCount 1 ;
+                            sh:name "batch-timeout" ;
+                            sh:path ldio:batch-timeout ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:RmlAdapter a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:RmlAdapter" ;
+    ldio:type "Adapter" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "The RML Adapter allows a user to transform a non-LD object (json/CSV/XML) to an RDF object by providing an RML mapping file." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-adapters/ldio-rml-adapter" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "Path to content of RML mapping, or the content of the RML mapping itself." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "mapping" ;
+                            sh:path ldio:mapping ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:SparqlConstructTransformer a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:SparqlConstructTransformer" ;
+    ldio:type "Transformer" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "The SPARQL Construct Transformer will modify the model based on the given SPARQL Construct Query." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-sparql-construct" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:message "Checks that ldio:SparqlConstructTransformer's wiring (query/infer) is well-typed." ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "Path to content of SPARQL Query, or the content of the SPARQL query itself." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "query" ;
+                            sh:path ldio:query ],
+                        [ sh:datatype xsd:boolean ;
+                            sh:description "Include original model in end result." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 0 ;
+                            sh:name "infer" ;
+                            sh:path ldio:infer ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:VersionMaterialiser a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:VersionMaterialiser" ;
+    ldio:type "Transformer" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "Transforms a Version Object back into a State Object, removing the versionOf statement." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-version-materializer" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "Property that points to the versionOf path." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "versionOf-property" ;
+                            sh:path ldio:versionOf-property ],
+                        [ sh:datatype xsd:boolean ;
+                            sh:description "Only return the statements of the node containing the versionOf property, including potential nested blank nodes. Defaults to false." ;
+                            sh:maxCount 1 ;
+                            sh:name "restrict-to-members" ;
+                            sh:path ldio:restrict-to-members ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+ldio:VersionObjectCreator a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:VersionObjectCreator" ;
+    ldio:type "Transformer" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "Transforms a State Object into a Version Object by minting a unique member IRI and adding timestamp/versionOf statements." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-transformers/ldio-version-object-creator" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "Property path pointing to a literal used as the timestamp path. Defaults to the current timestamp." ;
+                            sh:maxCount 1 ;
+                            sh:name "date-observed-property" ;
+                            sh:path ldio:date-observed-property ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "The RDF type(s) of the object to transform into a version object." ;
+                            sh:minCount 1 ;
+                            sh:name "member-type" ;
+                            sh:path ldio:member-type ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Defines how the version object id is constructed: versionOf + delimiter + dateObserved. Defaults to '/'." ;
+                            sh:maxCount 1 ;
+                            sh:name "delimiter" ;
+                            sh:path ldio:delimiter ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Property used for the generatedAt statement added to the model. Defaults to http://www.w3.org/ns/prov#generatedAtTime." ;
+                            sh:maxCount 1 ;
+                            sh:name "generatedAt-property" ;
+                            sh:path ldio:generatedAt-property ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Property used for the versionOf statement added to the model. Defaults to http://purl.org/dc/terms/isVersionOf." ;
+                            sh:maxCount 1 ;
+                            sh:name "versionOf-property" ;
+                            sh:path ldio:versionOf-property ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+demo:Parse a tcs:InstancePipelineComponent ;
+    p-plan:isPrecededBy demo:Poll ;
+    p-plan:isStepOfPlan demo:SemanticsDemoPipeline ;
+    prov:specializationOf ldio:RdfAdapter ;
+    tcs:readsFrom _:N6a049600c3094bb6a2f3954f89b398c8 ;
+    tcs:writesTo _:N4db941bbb21f4d5eae375027a77d442c .
+
+demo:Poll a tcs:InstancePipelineComponent ;
+    p-plan:hasInputVar [ a tcs:Config,
+                tcs:PipelineConfig ;
+            tcs:embedded [ ldio:cron "*/5 * * * * *" ;
+                    ldio:url "https://www.w3.org/People/Berners-Lee/card.ttl" ] ] ;
+    p-plan:isStepOfPlan demo:SemanticsDemoPipeline ;
+    prov:specializationOf ldio:HttpInPoller ;
+    tcs:writesTo _:N6a049600c3094bb6a2f3954f89b398c8 .
+
+rdfc:HttpFetch a dcat:Resource,
+        rdfc:Processor,
+        tcs:PipelineComponent ;
+    rdfs:label "HTTP Fetch processor" ;
+    dct:requires [ a spdx:Package ;
+            spdx:name "@rdfc/http-utils-processor-ts" ;
+            spdx:suppliedBy :npm ;
+            spdx:versionInfo "^1.2.0-alpha.1" ],
+        rdfc:NodeRunner ;
+    rdfs:description "This processor fetches a URL and writes the response to the output channel. It supports various options such as HTTP method, headers, authentication, and scheduling with cron expressions." ;
+    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/http-utils-processor-ts/processors.ttl> ;
+    dcat:landingPage "https://github.com/rdf-connect/http-utils-processor-ts" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation :HttpFetchShape ;
+            dcat:hadRole tcs:configShape ] .
+
+rdfc:HttpIn a dcat:Resource,
+        rdfc:Processor,
+        tcs:PipelineComponent ;
+    rdfs:label "RDF Connect Http In" ;
+    dct:requires rdfc:PyRunner ;
+    owl:imports <file:///usr/local/lib/python3.13/site-packages/rdfc_http_in/processor.ttl> .
+
+rdfc:HttpOut a dcat:Resource,
+        rdfc:Processor,
+        tcs:ExitBoundaryComponent,
+        tcs:PipelineComponent ;
+    rdfs:label "Http Out Processor" ;
+    dct:requires [ a spdx:Package ;
+            spdx:downloadLocation "file:///workspace/pipeline/local_processors/rdfc_http_out" ;
+            spdx:name "rdfc_http_out" ;
+            spdx:suppliedBy :pip ],
+        rdfc:PyRunner ;
+    rdfs:description "Processor to forward data to a http endpoint via POST." ;
+    owl:imports <file:///usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl> ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation :HttpOutShape ;
+            dcat:hadRole tcs:configShape ] ;
+    tcs:channelType tcs:HttpChannel .
+
+rdfc:HttpServer a dcat:Resource,
+        rdfc:Processor,
+        tcs:EntryBoundaryComponent,
+        tcs:PipelineComponent ;
+    rdfs:label "HTTP Server processor" ;
+    dct:requires [ a spdx:Package ;
+            spdx:name "@rdfc/http-utils-processor-ts" ;
+            spdx:suppliedBy :npm ;
+            spdx:versionInfo "^1.2.0-alpha.1" ],
+        rdfc:NodeRunner ;
+    rdfs:description "This processor starts an HTTP server and writes the body of every incoming request to the output channel. It supports configuring the bind address, accepted HTTP method, path, and the status code returned to clients." ;
+    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/http-utils-processor-ts/server.ttl> ;
+    dcat:landingPage "https://github.com/rdf-connect/http-utils-processor-ts" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation :HttpServerShape ;
+            dcat:hadRole tcs:configShape ],
+        [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ] ;
+            dcat:hadRole tcs:passthroughShape ] ;
+    tcs:channelType tcs:HttpChannel .
+
+rdfc:LogProcessorPy a dcat:Resource,
+        rdfc:Processor,
+        tcs:PipelineComponent ;
+    rdfs:label "Python Log Processor" ;
+    dct:requires [ a spdx:Package ;
+            spdx:name "rdfc_log-processor" ;
+            spdx:suppliedBy :pip ;
+            spdx:versionInfo ">=1.0.0" ],
+        rdfc:PyRunner ;
+    rdfs:description "A simple Python processor to log an incoming stream to the RDF-Connect logging system." ;
+    owl:imports <file:///usr/local/lib/python3.13/site-packages/rdfc_log_processor/processor.ttl> ;
+    dcat:landingPage "https://rdf-connect.github.io" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation :LogProcessorPyShape ;
+            dcat:hadRole tcs:configShape ] .
+
+rdfc:SPARQLIngest a dcat:Resource,
+        rdfc:Processor,
+        tcs:PipelineComponent ;
+    rdfs:label "SPARQL Ingest Processor" ;
+    dct:requires [ a spdx:Package ;
+            spdx:name "@rdfc/sparql-ingest-processor-ts" ;
+            spdx:suppliedBy :npm ;
+            spdx:versionInfo "^2.1.7" ],
+        rdfc:NodeRunner ;
+    rdfs:description "A processor that ingests RDF data into a SPARQL endpoint" ;
+    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/sparql-ingest-processor-ts/processors.ttl> ;
+    dcat:landingPage "https://github.com/rdf-connect/sparql-ingest-processor-ts" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation :SPARQLIngestShape ;
+            dcat:hadRole tcs:configShape ] .
+
+rdfc:Sdsify a dcat:Resource,
+        rdfc:Processor,
+        tcs:PipelineComponent ;
+    rdfs:label "Sdsify processor" ;
+    dct:requires [ a spdx:Package ;
+            spdx:name "@rdfc/sds-processors-ts" ;
+            spdx:suppliedBy :npm ;
+            spdx:versionInfo "^3.0.1" ],
+        rdfc:NodeRunner ;
+    rdfs:description "Ingest a stream of RDF dumps and produce a stream of SDS records, based on the provided configuration." ;
+    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/sds-processors-ts/configs/sdsify.ttl> ;
+    dcat:landingPage "https://github.com/rdf-connect/sds-processors-ts" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation :SdsifyShape ;
+            dcat:hadRole tcs:configShape ],
+        [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ] ;
+            dcat:hadRole tcs:outputShape ] .
+
+rdfc:SkolemizationProcessor a dcat:Resource,
+        rdfc:Processor,
+        tcs:PipelineComponent ;
+    rdfs:label "Skolemization Processor" ;
+    dct:requires [ a spdx:Package ;
+            spdx:name "@rdfc/skolemization-processor-ts" ;
+            spdx:suppliedBy :npm ;
+            spdx:versionInfo "^1.0.0" ],
+        rdfc:NodeRunner ;
+    rdfs:description "A processor that converts a RDF data to a skolemized form (removing blank nodes)." ;
+    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/skolemization-processor-ts/processor.ttl> ;
+    dcat:landingPage "https://github.com/rdf-connect/skolemization-processor-ts" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation :SkolemizationProcessorShape ;
+            dcat:hadRole tcs:configShape ],
+        [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ] ;
+            dcat:hadRole tcs:passthroughShape ] .
+
+rdfc:thresholdMonitoringProcessor a dcat:Resource,
+        rdfc:Processor,
+        tcs:PipelineComponent ;
+    dct:requires rdfc:NodeRunner ;
+    owl:imports <file:///usr/local/lib/python3.13/site-packages/rdfc_threshold_monitoring/processor.ttl> .
+
+tm:ThresholdMonitorJs a dcat:Resource,
+        rdfc:Processor,
+        tcs:PipelineComponent ;
+    rdfs:label "JS/TS Threshold Monitor Processor" ;
+    dct:requires [ a spdx:Package ;
+            spdx:name "@rdfc/threshold-monitor-processor-ts" ;
+            spdx:suppliedBy :npm ;
+            spdx:versionInfo "^0.0.1-alpha.2" ],
+        rdfc:NodeRunner ;
+    rdfs:description "Reads a stream of SDS members, extracts a value at a configured SHACL path, and writes a tm:ThresholdViolation alert whenever that value falls outside the configured min/max bounds." ;
+    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/threshold-monitor-processor-ts/processor.ttl> ;
+    dcat:landingPage "https://github.com/rdf-connect/threshold-monitor-processor-ts" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation :ThresholdMonitorJsShape ;
+            dcat:hadRole tcs:configShape ] .
+
+tcs:DefaultConfig rdfs:subClassOf tcs:Config .
+
+tcs:DockerImageConfig rdfs:subClassOf tcs:Config .
+
+tcs:PipelineBuild rdfs:subClassOf spdx:Build,
+        prov:SoftwareAgent .
+
+tcs:PipelineConfig rdfs:subClassOf tcs:Config .
+
+ldio:HttpInPoller a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:HttpInPoller" ;
+    ldio:type "Input" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "The LDIO Http In Poller is a basic Http Poller that will poll a target URL on a specified interval." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-inputs/ldio-http-in-poller" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed." ;
+                    sh:node ldio:HttpRequesterShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "Target URL to poll from." ;
+                            sh:minCount 1 ;
+                            sh:name "url" ;
+                            sh:path ldio:url ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Cron expression to declare when the polling should take place. Schedules are in UTC timezone." ;
+                            sh:maxCount 1 ;
+                            sh:minCount 1 ;
+                            sh:name "cron" ;
+                            sh:path ldio:cron ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Polling interval declared in ISO 8601 format." ;
+                            sh:maxCount 1 ;
+                            sh:name "interval" ;
+                            sh:path ldio:interval ],
+                        [ sh:datatype xsd:boolean ;
+                            sh:description "Indicates if polling should continue if a previous poll resulted in failure." ;
+                            sh:maxCount 1 ;
+                            sh:name "continueOnFail" ;
+                            sh:path ldio:continueOnFail ] ] ;
+            dcat:hadRole tcs:configShape ],
+        [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:message "HttpInPoller relays the raw HTTP response body verbatim — not yet RDF at this point, so no constraint can be asserted." ] ;
+            dcat:hadRole tcs:outputShape ] .
+
+ldio:LdesClientShape a sh:NodeShape ;
+    rdfs:comment "General + version-materialisation config properties of Ldio:LdesClient, reused by Ldio:LdesClientConnector." ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:description "List of URLs of the LDES data sources. If more than one is configured, they must be part of the same LDES." ;
+            sh:minCount 1 ;
+            sh:name "urls" ;
+            sh:path ldio:urls ],
+        [ sh:datatype xsd:string ;
+            sh:description "The 'Content-Type' that should be requested from the server. Defaults to text/turtle." ;
+            sh:maxCount 1 ;
+            sh:name "source-format" ;
+            sh:path ldio:source-format ],
+        [ sh:datatype xsd:string ;
+            sh:description "The property-path used to determine the timestamp on which members are ordered, and used for the latest-state-filter when enabled." ;
+            sh:maxCount 1 ;
+            sh:name "timestamp-path" ;
+            sh:path ldio:timestamp-path ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "Indicates whether a member must be sent exactly once or at least once. Defaults to true." ;
+            sh:maxCount 1 ;
+            sh:name "enable-exactly-once" ;
+            sh:path ldio:enable-exactly-once ],
+        [ sh:description "Version materialisation properties." ;
+            sh:maxCount 1 ;
+            sh:name "materialisation" ;
+            sh:node [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:boolean ;
+                            sh:description "Indicates if the client should return state-objects (true) or version-objects (false). Defaults to false." ;
+                            sh:maxCount 1 ;
+                            sh:name "enabled" ;
+                            sh:path ldio:enabled ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Property that points to the versionOfPath. Defaults to http://purl.org/dc/terms/isVersionOf." ;
+                            sh:maxCount 1 ;
+                            sh:name "version-of-property" ;
+                            sh:path ldio:version-of-property ],
+                        [ sh:datatype xsd:boolean ;
+                            sh:description "Indicates whether all state or only the latest state must be sent. Defaults to true." ;
+                            sh:maxCount 1 ;
+                            sh:name "enable-latest-state" ;
+                            sh:path ldio:enable-latest-state ] ] ;
+            sh:path ldio:materialisation ] .
+
+ldio:RdfAdapter a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Ldio:RdfAdapter" ;
+    ldio:type "Adapter" ;
+    dct:requires ldio:LinkedDataInteractionsOrchestrator ;
+    rdfs:description "As the most basic adapter, the RDF Adapter will take in an RDF string and convert it into an internal Linked Data model based on the given content type." ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/ldio/ldio-adapters/ldio-rdf-adapter" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:integer ;
+                            sh:description "After retrieving an external JSON-LD context, it is cached for reuse. This property allows specifying the size of this cache (number of stored contexts)." ;
+                            sh:maxCount 1 ;
+                            sh:name "max-jsonld-cache-capacity" ;
+                            sh:path ldio:max-jsonld-cache-capacity ] ] ;
+            dcat:hadRole tcs:configShape ] .
+
+rdfc:LogProcessorJs a dcat:Resource,
+        rdfc:Processor,
+        tcs:PipelineComponent ;
+    rdfs:label "JS/TS Log Processor" ;
+    dct:requires [ a spdx:Package ;
+            spdx:name "@rdfc/log-processor-ts" ;
+            spdx:suppliedBy :npm ;
+            spdx:versionInfo "^2.0.3" ],
+        rdfc:NodeRunner ;
+    rdfs:description "A simple JS/TS processor to log an incoming stream to the RDF-Connect logging system." ;
+    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/log-processor-ts/processor.ttl> ;
+    dcat:landingPage "https://github.com/rdf-connect/log-processor-ts" ;
+    dcat:qualifiedRelation [ a dcat:Relationship ;
+            dct:relation :LogProcessorJsShape ;
+            dcat:hadRole tcs:configShape ] .
+
+tcs:Catalog rdfs:subClassOf dcat:Catalog .
+
+tcs:DockerComposeConfig rdfs:subClassOf tcs:Config .
+
+ldio:StatePersistenceShape a sh:NodeShape ;
+    rdfs:comment "Shared state-persistence config properties, used by both Ldio:LdesClient and Ldio:ChangeDetectionFilter." ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:description "'memory', 'sqlite' or 'postgres' to indicate how the state should be persisted. Defaults to memory." ;
+            sh:in ( "memory" "sqlite" "postgres" ) ;
+            sh:maxCount 1 ;
+            sh:name "state" ;
+            sh:path ldio:state ],
+        [ sh:datatype xsd:boolean ;
+            sh:description "Indicates if the state should be persisted on shutdown (n/a for in-memory states). Defaults to false." ;
+            sh:maxCount 1 ;
+            sh:name "keep-state" ;
+            sh:path ldio:keep-state ],
+        [ sh:description "SQLite persistence properties, used when state = 'sqlite'." ;
+            sh:maxCount 1 ;
+            sh:name "sqlite" ;
+            sh:node [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "Directory wherein the .db file can be saved." ;
+                            sh:maxCount 1 ;
+                            sh:name "directory" ;
+                            sh:path ldio:directory ] ] ;
+            sh:path ldio:sqlite ],
+        [ sh:description "Postgres persistence properties, used when state = 'postgres'." ;
+            sh:maxCount 1 ;
+            sh:name "postgres" ;
+            sh:node [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "JDBC URL of the Postgres database." ;
+                            sh:maxCount 1 ;
+                            sh:name "url" ;
+                            sh:path ldio:url ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Username used to connect to the Postgres database." ;
+                            sh:maxCount 1 ;
+                            sh:name "username" ;
+                            sh:path ldio:username ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Password used to connect to the Postgres database." ;
+                            sh:maxCount 1 ;
+                            sh:name "password" ;
+                            sh:path ldio:password ] ] ;
+            sh:path ldio:postgres ] .
+
+demo:SemanticsDemoPipeline a tcs:PipelineDefinition ;
+    rdfs:label "SEMANTiCS 2026 demo pipeline" ;
+    rdfs:comment """Minimal cross-framework pipeline for the practitioners\r
+        track demo video. Polls a public Turtle URL from an LDIO workbench,\r
+        parses it into RDF, and forwards it over an auto-inserted HTTP\r
+        bridge to an RDF-Connect log processor. No local files, no\r
+        triple store, no email service — just enough to show a Docker\r
+        Compose stack come up and data flow across two frameworks.""" .
+
+ldio:RdfWriterShape a sh:NodeShape ;
+    rdfs:comment "Shared RDF Writer config properties, used by both Ldio:HttpOut and Ldio:ConsoleOut." ;
+    sh:property [ sh:datatype xsd:string ;
+            sh:description "Target content type. Defaults to text/turtle; any type supported by Apache Jena is accepted." ;
+            sh:maxCount 1 ;
+            sh:name "content-type" ;
+            sh:path ldio:content-type ],
+        [ sh:description "Additional JSON-LD Frame to format the outputted JSON-LD Object." ;
+            sh:maxCount 1 ;
+            sh:name "frame" ;
+            sh:path ldio:frame ] .
+
+rdfc:PyRunner a dcat:Resource,
+        rdfc:Runner,
+        tcs:PipelineComponent ;
+    rdfs:label "RDF Connect Python Runner" ;
+    dct:requires [ a spdx:Package ;
+            spdx:name "rdfc-runner" ;
+            spdx:suppliedBy :pip ;
+            spdx:versionInfo ">=1.0.0" ],
+        rdfc:Orchestrator ;
+    owl:imports <file:///usr/local/lib/python3.13/site-packages/rdfc_runner/index.ttl> .
+
+tcs:EntryBoundaryComponent rdfs:subClassOf tcs:PipelineComponent .
+
+tcs:ExitBoundaryComponent rdfs:subClassOf tcs:PipelineComponent .
+
+ldio:HttpRequesterShape a sh:NodeShape ;
+    rdfs:comment "Shared config properties of the LDIO Http Requester client, used by both Ldio:HttpInPoller and Ldio:HttpOut." ;
+    sh:property [ sh:description "Retry properties for the http client." ;
+            sh:maxCount 1 ;
+            sh:name "retries" ;
+            sh:node [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:boolean ;
+                            sh:description "Indicates if the http client should retry http requests when the server cannot be reached. Defaults to true." ;
+                            sh:maxCount 1 ;
+                            sh:name "enabled" ;
+                            sh:path ldio:enabled ],
+                        [ sh:datatype xsd:integer ;
+                            sh:description "Max number of retries the http client should do when retries.enabled = true. Defaults to 5." ;
+                            sh:maxCount 1 ;
+                            sh:name "max" ;
+                            sh:path ldio:max ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Custom comma-separated list of http status codes that can trigger a retry in the http client. Note: 429 and 5xx are always retried regardless of this setting." ;
+                            sh:maxCount 1 ;
+                            sh:name "statuses-to-retry" ;
+                            sh:path ldio:statuses-to-retry ] ] ;
+            sh:path ldio:retries ],
+        [ sh:description "Rate limit properties for the http client." ;
+            sh:maxCount 1 ;
+            sh:name "rate-limit" ;
+            sh:node [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:boolean ;
+                            sh:description "Indicates if the http client should limit http requests when calling the server. Defaults to false." ;
+                            sh:maxCount 1 ;
+                            sh:name "enabled" ;
+                            sh:path ldio:enabled ],
+                        [ sh:datatype xsd:integer ;
+                            sh:description "Limit of requests per period (see `period`) that the http client should do when rate-limit.enabled = true. Defaults to 500." ;
+                            sh:maxCount 1 ;
+                            sh:name "limit" ;
+                            sh:path ldio:limit ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "Period, in ISO 8601 Duration format, in which the configured `limit` of requests can be reached when rate-limit.enabled = true. Defaults to PT1M." ;
+                            sh:maxCount 1 ;
+                            sh:name "period" ;
+                            sh:path ldio:period ] ] ;
+            sh:path ldio:rate-limit ],
+        [ sh:description "Additional http client properties." ;
+            sh:maxCount 1 ;
+            sh:name "http" ;
+            sh:node [ a sh:NodeShape ;
+                    sh:property [ sh:description "A list of custom http headers. A key and value has to be provided for every header." ;
+                            sh:name "headers" ;
+                            sh:node [ a sh:NodeShape ;
+                                    sh:property [ sh:datatype xsd:string ;
+                                            sh:maxCount 1 ;
+                                            sh:name "key" ;
+                                            sh:path ldio:key ],
+                                        [ sh:datatype xsd:string ;
+                                            sh:maxCount 1 ;
+                                            sh:name "value" ;
+                                            sh:path ldio:value ] ] ;
+                            sh:path ldio:headers ] ] ;
+            sh:path ldio:http ],
+        [ sh:description "Authentication properties for the http client." ;
+            sh:maxCount 1 ;
+            sh:name "auth" ;
+            sh:node [ a sh:NodeShape ;
+                    sh:property [ sh:datatype xsd:string ;
+                            sh:description "The header for the api key when using auth.type 'API_KEY'. Defaults to X-API-KEY." ;
+                            sh:maxCount 1 ;
+                            sh:name "api-key-header" ;
+                            sh:path ldio:api-key-header ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "The client identifier when using auth.type 'OAUTH2_CLIENT_CREDENTIALS'." ;
+                            sh:maxCount 1 ;
+                            sh:name "client-id" ;
+                            sh:path ldio:client-id ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "The client secret when using auth.type 'OAUTH2_CLIENT_CREDENTIALS'." ;
+                            sh:maxCount 1 ;
+                            sh:name "client-secret" ;
+                            sh:path ldio:client-secret ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "The token endpoint when using auth.type 'OAUTH2_CLIENT_CREDENTIALS'." ;
+                            sh:maxCount 1 ;
+                            sh:name "token-endpoint" ;
+                            sh:path ldio:token-endpoint ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "The Oauth2 scope when using auth.type 'OAUTH2_CLIENT_CREDENTIALS'." ;
+                            sh:maxCount 1 ;
+                            sh:name "scope" ;
+                            sh:path ldio:scope ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "The type of authentication required by the LDES server. Defaults to NO_AUTH." ;
+                            sh:in ( "NO_AUTH" "API_KEY" "OAUTH2_CLIENT_CREDENTIALS" ) ;
+                            sh:maxCount 1 ;
+                            sh:name "type" ;
+                            sh:path ldio:type ],
+                        [ sh:datatype xsd:string ;
+                            sh:description "The api key when using auth.type 'API_KEY'." ;
+                            sh:maxCount 1 ;
+                            sh:name "api-key" ;
+                            sh:path ldio:api-key ] ] ;
+            sh:path ldio:auth ] .
+
+:pip rdfs:label "pip" ;
+    rdfs:comment "Python package manager. Packages annotated with this end up in pyproject.toml." .
+
+rdfc:Orchestrator a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "RDF Connect Orchestrator" ;
+    dct:requires [ a spdx:Package ;
+            spdx:name "rdfc-proto" ;
+            spdx:suppliedBy :pip ;
+            spdx:versionInfo ">=1.0.0" ],
+        [ a spdx:Package ;
+            spdx:name "@rdfc/orchestrator-js" ;
+            spdx:suppliedBy :npm ;
+            spdx:versionInfo "^2.2.1" ] ;
+    tcs:config :RdfcOrchestratorDockerCompose,
+        :RdfcOrchestratorDockerImage .
+
+tcs:HttpChannel rdfs:subClassOf tcs:Channel .
+
+tcs:PipelineDefinition rdfs:subClassOf p-plan:Plan .
+
+:ShaclPathShape a sh:NodeShape ;
+    rdfs:label "SHACL property path" ;
+    rdfs:comment "Value space of rdfl:PathLens: the subset of SHACL property paths that rdf-lens can interpret." ;
+    sh:or ( [ sh:nodeKind sh:IRI ] [ sh:nodeKind sh:BlankNode ;
+                sh:property [ sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:node :ShaclPathShape ;
+                        sh:path rdf:first ] ] [ sh:nodeKind sh:BlankNode ;
+                sh:property [ sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:node :ShaclPathListShape ;
+                        sh:path sh:alternativePath ] ] [ sh:nodeKind sh:BlankNode ;
+                sh:property [ sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:node :ShaclPathShape ;
+                        sh:path sh:inversePath ] ] [ sh:nodeKind sh:BlankNode ;
+                sh:property [ sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:node :ShaclPathShape ;
+                        sh:path sh:zeroOrMorePath ] ] [ sh:nodeKind sh:BlankNode ;
+                sh:property [ sh:maxCount 1 ;
+                        sh:minCount 1 ;
+                        sh:node :ShaclPathShape ;
+                        sh:path sh:zeroOrOnePath ] ] ) .
+
+tcs:InstancePipelineComponent rdfs:subClassOf p-plan:Step .
+
+rdfc:NodeRunner a dcat:Resource,
+        rdfc:Runner,
+        tcs:PipelineComponent ;
+    rdfs:label "RDF Connect Javascript Node Runner" ;
+    dct:requires [ a spdx:Package ;
+            spdx:name "@rdfc/js-runner" ;
+            spdx:suppliedBy :npm ;
+            spdx:versionInfo "^3.2.0" ],
+        rdfc:Orchestrator ;
+    owl:imports <file:///workspace/pipeline/node_modules/@rdfc/js-runner/index.ttl> .
+
+:npm rdfs:label "npm" ;
+    rdfs:comment "Node.js package manager. Packages annotated with this end up in package.json." .
+
+ldio:LinkedDataInteractionsOrchestrator a dcat:Resource,
+        tcs:PipelineComponent ;
+    rdfs:label "Linked Data Interactions Orchestrator" ;
+    spdx:versionInfo "2.8.0-SNAPSHOT" ;
+    dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
+    tcs:config :LdioDefaultDockerComposeConfig .
+
+tcs:prefixes sh:declare [ sh:namespace "http://example.org/example/" ;
+            sh:prefix "" ],
+        [ sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#" ;
+            sh:prefix "rdf" ],
+        [ sh:namespace "https://w3id.org/rdf-connect#" ;
+            sh:prefix "rdfc" ],
+        [ sh:namespace "http://www.w3.org/2000/01/rdf-schema#" ;
+            sh:prefix "rdfs" ],
+        [ sh:namespace "http://www.w3.org/ns/shacl#" ;
+            sh:prefix "sh" ],
+        [ sh:namespace "http://spdx.org/rdf/terms#" ;
+            sh:prefix "spdx" ],
+        [ sh:namespace "https://w3id.org/toolchain#" ;
+            sh:prefix "tcs" ],
+        [ sh:namespace "https://w3id.org/rdf-connect/threshold-monitor#" ;
+            sh:prefix "tm" ],
+        [ sh:namespace "http://www.w3.org/2001/XMLSchema#" ;
+            sh:prefix "xsd" ],
+        [ sh:namespace "http://www.w3.org/ns/dcat#" ;
+            sh:prefix "dcat" ],
+        [ sh:namespace "http://purl.org/dc/terms/" ;
+            sh:prefix "dct" ],
+        [ sh:namespace "http://example.org/example/ldio/" ;
+            sh:prefix "ldio" ],
+        [ sh:namespace "http://example.org/example/nifi/" ;
+            sh:prefix "nifi" ],
+        [ sh:namespace "http://www.w3.org/2002/07/owl#" ;
+            sh:prefix "owl" ],
+        [ sh:namespace "http://purl.org/net/p-plan#" ;
+            sh:prefix "p-plan" ],
+        [ sh:namespace "http://dishacled.example.org/processors#" ;
+            sh:prefix "proc" ],
+        [ sh:namespace "http://www.w3.org/ns/prov#" ;
+            sh:prefix "prov" ],
+        [ sh:namespace "http://example.org/example/"^^xsd:anyURI ;
+            sh:prefix "" ],
+        [ sh:namespace "https://w3id.org/rdf-connect#"^^xsd:anyURI ;
+            sh:prefix "rdfc" ],
+        [ sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ;
+            sh:prefix "rdfs" ],
+        [ sh:namespace "http://spdx.org/rdf/terms#"^^xsd:anyURI ;
+            sh:prefix "spdx" ],
+        [ sh:namespace "https://w3id.org/toolchain#"^^xsd:anyURI ;
+            sh:prefix "tcs" ],
+        [ sh:namespace "http://www.w3.org/ns/dcat#"^^xsd:anyURI ;
+            sh:prefix "dcat" ],
+        [ sh:namespace "http://purl.org/dc/terms/"^^xsd:anyURI ;
+            sh:prefix "dct" ],
+        [ sh:namespace "http://example.org/example/ldio/"^^xsd:anyURI ;
+            sh:prefix "ldio" ],
+        [ sh:namespace "http://example.org/example/nifi/"^^xsd:anyURI ;
+            sh:prefix "nifi" ],
+        [ sh:namespace "http://www.w3.org/2002/07/owl#"^^xsd:anyURI ;
+            sh:prefix "owl" ],
+        [ sh:namespace "http://purl.org/net/p-plan#"^^xsd:anyURI ;
+            sh:prefix "p-plan" ],
+        [ sh:namespace "http://www.w3.org/ns/prov#"^^xsd:anyURI ;
+            sh:prefix "prov" ],
+        [ sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ;
+            sh:prefix "rdf" ] .
+
+_:N4db941bbb21f4d5eae375027a77d442c a tcs:Channel .
+
+_:N6a049600c3094bb6a2f3954f89b398c8 a tcs:Channel .
+

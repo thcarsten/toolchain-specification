@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@rdfc/http-utils-processor-ts": "^1.2.0-alpha.1",
+    "@rdfc/js-runner": "^3.2.0",
+    "@rdfc/log-processor-ts": "^2.0.3",
+    "@rdfc/orchestrator-js": "^2.2.1"
+  }
+}

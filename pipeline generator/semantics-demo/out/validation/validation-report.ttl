@@ -1,0 +1,166 @@
+@base <file:///workspace/pipeline/> .
+@prefix : <http://example.org/example/> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:ChangeSemanticsShape tcs:passed true .
+
+:HttpFetchAuthShape tcs:passed true .
+
+:HttpFetchOptionsShape tcs:passed true .
+
+:HttpFetchShape tcs:passed true .
+
+:HttpOutShape tcs:passed true .
+
+:HttpServerOptionsShape tcs:passed true .
+
+:HttpServerShape tcs:passed true .
+
+:IngestConfigShape tcs:passed true .
+
+:JsonLdToNQuadsShape tcs:passed true .
+
+:LogProcessorJsShape tcs:passed true .
+
+:LogProcessorPyShape tcs:passed true .
+
+:MetadataConfigShape tcs:passed true .
+
+:PerformanceConfigShape tcs:passed true .
+
+:SPARQLIngestShape tcs:passed true .
+
+:SdsifyShape tcs:passed true .
+
+:SkolemizationProcessorShape tcs:passed true .
+
+:ThresholdMonitorJsShape tcs:passed true .
+
+:TransactionConfigShape tcs:passed true .
+
+:throughputresult_0 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_27 ;
+    tcs:inputShape [ ] ;
+    tcs:matches "unknown" ;
+    tcs:outputShape [ ] .
+
+:throughputresult_1 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_bridge_1 ;
+    tcs:inputShape [ ] ;
+    tcs:matches "unknown" ;
+    tcs:outputShape [ ] .
+
+:throughputresult_2 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_bridge_0 ;
+    tcs:inputShape [ ] ;
+    tcs:matches "unknown" ;
+    tcs:outputShape [ ] .
+
+:throughputresult_3 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_64 ;
+    tcs:inputShape [ ] ;
+    tcs:matches "unknown" ;
+    tcs:outputShape [ ] .
+
+tcs:AcyclicGraphShape sh:message "Checks that no step transitively reads from a channel it also writes to (no cycles in the readsFrom/writesTo channel graph)." ;
+    tcs:passed true .
+
+tcs:BoundaryChannelTypeShape sh:message "Checks that a boundary component declares at most one tcs:channelType." ;
+    tcs:passed true .
+
+tcs:CatalogMissingBridgeShape sh:message "Checks that every cross-container channel has a bridge step on both sides." ;
+    tcs:passed true .
+
+tcs:CatalogShape sh:message "Checks that every dcat:resource of a Catalog is a tcs:PipelineComponent." ;
+    tcs:passed true .
+
+tcs:ConfigShape sh:message "Checks that a Config carries exactly one of tcs:embedded/tcs:literal, and that a tcs:literal body also declares dct:format." ;
+    tcs:passed true .
+
+tcs:DockerContainerShape sh:message "Checks that a DockerContainer instantiates at least one PipelineComponent and that tcs:runs points at an InstancePipelineComponent." ;
+    tcs:passed true .
+
+tcs:InstancePipelineComponentShape sh:message "Checks that a step belongs to exactly one PipelineDefinition, specializes exactly one PipelineComponent, has at most one hasInputVar, and that any readsFrom/writesTo point at a tcs:Channel." ;
+    tcs:passed true .
+
+tcs:LdioComponentTypeShape sh:message "Checks that every LDIO processing component declares exactly one ldio:type (Input/Adapter/Transformer/Output) and an rdfs:label." ;
+    tcs:passed true .
+
+tcs:LdioSingularStepShape sh:message "Checks that a segment has at most one LDIO Input step and at most one LDIO Adapter step (LDIO's input:/input.adapter: YAML keys are singular)." ;
+    tcs:passed true .
+
+tcs:LdioStepOrderingShape sh:message "Checks that an LDIO Output step is terminal and an LDIO Input step is initial within its LDIO segment." ;
+    tcs:passed true .
+
+tcs:LdioStepSerialityShape sh:message "Checks that every LDIO step has at most one upstream and one downstream channel (LDIO pipelines are strictly serial)." ;
+    tcs:passed true .
+
+tcs:NifiCatalogMetadataShape sh:message "NiFi component {?this} must provide complete metadata for its processor, funnel, or controller-service kind." ;
+    tcs:passed true .
+
+tcs:NifiChannelTopologyShape tcs:passed true .
+
+tcs:NifiControllerServiceReferenceShape tcs:passed true .
+
+tcs:NifiDeploymentModeShape tcs:passed true .
+
+tcs:NifiRouteShape tcs:passed true .
+
+tcs:NifiStepScheduledStateShape tcs:passed true .
+
+tcs:PipelineBuildShape sh:message "Checks that a PipelineBuild links to exactly one PipelineDefinition, and that dct:hasPart/tcs:compiledFile point at a DockerContainer/spdx:File respectively." ;
+    tcs:passed true .
+
+tcs:PipelineComponentShape sh:message "Checks that a PipelineComponent's tcs:config/dct:requires are well-typed, it has at most one DefaultConfig per Config subtype, and it is transitively deployable via dct:requires+." ;
+    tcs:passed true .
+
+tcs:PipelineDefinitionShape sh:message "Checks that a PipelineDefinition has at least one step referencing it via p-plan:isStepOfPlan." ;
+    tcs:passed true .
+
+tcs:RdfcMandatoryReaderWiringShape tcs:passed true .
+
+tcs:RdfcMandatoryWriterWiringShape tcs:passed true .
+
+tcs:RdfcOrchestratorConfigShape tcs:passed true .
+
+tcs:RdfcPackageManagerShape tcs:passed true .
+
+tcs:RdfcProcessorShape tcs:passed true .
+
+tcs:RdfcRunnerShape tcs:passed true .
+
+tcs:RdfcStepChannelWiringShape tcs:passed true .
+
+tcs:SecretReferenceShape tcs:passed true .
+
+tcs:SpdxPackageShape sh:message "Checks that an spdx:Package declares both spdx:name and an IRI spdx:suppliedBy, needed to emit it into pyproject.toml/package.json." ;
+    tcs:passed true .
+
+tcs:SpecializedComponentIsCatalogedShape sh:message "Checks that every step's specialized component is listed as a dcat:resource of some tcs:Catalog." ;
+    tcs:passed true .
+
+tcs:SwComponentDockerConfigShape sh:message "Checks that every semantic.works component directly carries a tcs:DockerComposeConfig." ;
+    tcs:passed true .
+
+tcs:SwSingleInstanceShape sh:message "Checks that no semantic.works component is specialized by more than one InstancePipelineComponent." ;
+    tcs:passed true .
+
+tcs:SwStepEnvValueShape sh:message "Checks that semantic.works step config values are RDF literals, not IRIs or blank nodes." ;
+    tcs:passed true .
+
+tcs:UnsupportedChannelTopologyShape sh:message "Checks that cross-container channel topology is a MVP-supported (1-writer, 1-or-2-container) shape." ;
+    tcs:passed true .
+
+[] sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed." ;
+    tcs:passed true .
+
+[] a sh:ValidationReport ;
+    sh:conforms true .
+
+[] sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed." ;
+    tcs:passed true .
+
+[] tcs:passed true .
+

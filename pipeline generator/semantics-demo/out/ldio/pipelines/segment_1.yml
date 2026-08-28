@@ -1,0 +1,14 @@
+name: segment_1
+input:
+  adapter:
+    name: Ldio:RdfAdapter
+  name: Ldio:HttpInPoller
+  config:
+    cron: '*/5 * * * * *'
+    url: https://www.w3.org/People/Berners-Lee/card.ttl
+outputs:
+- name: Ldio:HttpOut
+  config:
+    endpoint: http://rdfc:9000/bridgestep_1
+    rdf-writer:
+      content-type: application/ld+json

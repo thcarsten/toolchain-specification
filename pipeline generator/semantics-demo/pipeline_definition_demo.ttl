@@ -1,0 +1,77 @@
+@prefix demo: <http://example.org/example/semantics-demo/> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+
+
+###############################################################################
+# SEMANTiCS 2026 demo pipeline — "public FOAF card → log"
+#
+# Three declared steps, spanning two frameworks:
+#
+#   [LDIO]   HttpInPoller  ─►  RdfAdapter  ─►  ─ ─ ─ ─ ─ ─ ─
+#                                                          │
+#                                          (auto-inserted  │
+#                                           LdioHttpOut ↔  │
+#                                           RdfcHttpServer)│
+#                                                          ▼
+#   [RDF-Connect]                                     LogProcessorJs
+#
+# The cross-container edge between `demo:Parse` (LDIO) and `demo:Log`
+# (RDF-Connect) is intentionally left implicit — `BridgeTransportCompiler`
+# expands it into an `LdioHttpOut` on the LDIO side and an `rdfc:HttpServer`
+# on the RDF-Connect side, connected by an anonymous `tcs:Channel`.
+#
+# Source: Tim Berners-Lee's public FOAF card. Small (~50 triples), stable,
+# pure Turtle, no auth. Poll every 5 s.
+###############################################################################
+
+
+demo:SemanticsDemoPipeline a tcs:PipelineDefinition ;
+    rdfs:label "SEMANTiCS 2026 demo pipeline" ;
+    rdfs:comment """Minimal cross-framework pipeline for the practitioners
+        track demo video. Polls a public Turtle URL from an LDIO workbench,
+        parses it into RDF, and forwards it over an auto-inserted HTTP
+        bridge to an RDF-Connect log processor. No local files, no
+        triple store, no email service — just enough to show a Docker
+        Compose stack come up and data flow across two frameworks.""" .
+
+
+#################################################################
+# LDIO segment
+#################################################################
+
+
+demo:Poll a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:HttpInPoller ;
+    p-plan:isStepOfPlan demo:SemanticsDemoPipeline ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:url "https://www.w3.org/People/Berners-Lee/card.ttl" ;
+            ldio:cron "*/5 * * * * *"
+        ]
+    ] .
+
+
+# Turns the raw Turtle response body into an RDF model.
+demo:Parse a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:RdfAdapter ;
+    p-plan:isStepOfPlan demo:SemanticsDemoPipeline ;
+    p-plan:isPrecededBy demo:Poll .
+
+
+#################################################################
+# RDF-Connect segment
+#################################################################
+
+
+# Writes each incoming record to stdout — visible via
+# `docker compose logs -f rdfc`.
+demo:Log a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:LogProcessorJs ;
+    p-plan:isStepOfPlan demo:SemanticsDemoPipeline ;
+    p-plan:isPrecededBy demo:Parse .
