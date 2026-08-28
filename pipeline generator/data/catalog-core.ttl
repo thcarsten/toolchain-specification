@@ -152,7 +152,6 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
     ldio:RepositoryMaterialiser,
     # LDIO — Orchestrator
     ldio:LinkedDataInteractionsOrchestrator,
-    ldio:LdioPipelineStarterService ,
     # RDF Connect entries are NOT listed here. They are contributed by
     # catalog-rdfc.ttl (generated) and catalog-rdfc-manual.ttl, each
     # alongside the definitions it owns, so the list cannot outlive the

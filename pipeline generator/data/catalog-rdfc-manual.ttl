@@ -143,12 +143,13 @@ CMD ["/bin/bash"]
 #################################################################
 # 2. Runners
 #
-# `owl:imports` on a runner is never emitted into the generated
-# pipeline.ttl: RdfcConfigCompiler.describe_pipeline only copies imports
-# from subjects that themselves `dct:requires` a runner. Kept anyway
-# because the runner's own definition file is part of how the image is
-# assembled, and `tcs:RdfcProcessorShape` exempts runners from the
-# owl:imports requirement rather than forbidding it.
+# A runner's ``owl:imports`` (e.g. ``@rdfc/js-runner/index.ttl``)
+# IS emitted into the generated pipeline.ttl by
+# RdfcConfigCompiler.describe_pipeline — the orchestrator needs the
+# runner's ``rdfc:CommandRunner`` typing and its ``rdfc:command``
+# instruction to know how to launch it. ``tcs:RdfcProcessorShape``
+# exempts runners from carrying an owl:imports themselves at catalog
+# authoring time (the emitter still copies them out to the pipeline).
 #################################################################
 
 rdfc:NodeRunner a tcs:PipelineComponent, rdfc:Runner, dcat:Resource ;

@@ -7,8 +7,7 @@
 # shared across multiple LDIO components (`ldio:HttpRequesterShape`,
 # `ldio:RdfWriterShape`, `ldio:StatePersistenceShape`,
 # `ldio:LdesClientShape`) and the LDIO `tcs:Config` docker-compose
-# bodies (`:LdioDefaultDockerComposeConfig`,
-# `:LdioPipelineStarterDockerComposeConfig`).
+# body (`:LdioDefaultDockerComposeConfig`).
 #
 # Meant to be loaded together with catalog-core.ttl (which owns
 # `:DishacledCatalog`'s base declaration + the full `dcat:resource`
