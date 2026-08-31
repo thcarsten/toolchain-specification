@@ -304,7 +304,7 @@ A useful side effect: because provenance is attached *while the loop is running*
 | Compiler | Trigger (`applies_to`) | Reads from the build | Writes to the build |
 | --- | --- | --- | --- |
 | `PipelineSeeder` | *(bootstrap — explicit call, always runs first)* | the catalog | `<pipeline>_build a tcs:PipelineBuild ; prov:hadPlan <pipeline>`; blank-node subjects renamed to stable IRIs |
-| `PipelineAssembler` | exactly one `tcs:PipelineDefinition` in the graph and it has at least one step (`p-plan:isStepOfPlan`) | the seeded pipeline + catalog | `tcs:DockerContainer`, `dct:hasPart`, `tcs:instantiates`, `tcs:runs` |
+| `PipelineAssembler` | the seeded plan (`<build> prov:hadPlan ?pipeline`) has at least one step (`p-plan:isStepOfPlan`) | the seeded pipeline + catalog | `tcs:DockerContainer`, `dct:hasPart`, `tcs:instantiates`, `tcs:runs` |
 | `PipelineEnricher` | `<build> dct:creator tcs:PipelineAssembler` present | steps and channels | synthesized `tcs:Channel`s from `p-plan:isPrecededBy`, and a `tcs:PipelineConfig` slot on every step that lacks one |
 | `BridgeTransportCompiler` | `<build> dct:creator tcs:PipelineEnricher` present, and some `tcs:Channel` crosses container boundaries | cross-container channels + the catalog of boundary components | inserted Entry/Exit boundary steps (where neither side is already a boundary). See [§4.8](#48-boundary-components-and-cross-container-bridges). |
 | `SegmentTagger` | `<build> dct:creator tcs:BridgeTransportCompiler` present | the final step → channel graph | `tcs:segment` on every `tcs:InstancePipelineComponent` |

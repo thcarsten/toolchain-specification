@@ -1,8 +1,9 @@
 from rdflib import Graph
 
-from rdfine import GraphReader, receive_first
+from rdfine import GraphReader
 
 from ..base import Compiler
+from ..utils import lookup_seeded_pipeline_id
 
 
 class PipelineAssembler(Compiler):
@@ -19,22 +20,20 @@ class PipelineAssembler(Compiler):
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Runs once there is exactly one ``tcs:PipelineDefinition`` with at
-        least one step (a ``p-plan:isStepOfPlan`` edge pointing at it).
-        Does not depend on the graph having been narrowed to just this
-        pipeline — component scoping is done internally via
-        :meth:`_lookup_relevant_components`.
+        """Runs once ``PipelineSeeder`` has bound a plan that has steps.
+
+        Other ``tcs:PipelineDefinition`` nodes may still sit in the
+        catalog graph (two plans in one Turtle file). Scoping is
+        ``prov:hadPlan``, not "exactly one definition in the graph".
         """
-        pipelines = (
-            graph_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition")
-            .df["sub"]
-            .unique()
+        pipelines = graph_reader.select(
+            "?pipeline",
+            """
+            ?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .
+            ?step p-plan:isStepOfPlan ?pipeline .
+            """,
         )
-        if len(pipelines) != 1:
-            return False
-        return not graph_reader.filter(
-            pred="p-plan:isStepOfPlan", obj=pipelines[0]
-        ).df.empty
+        return not pipelines.empty
 
     def compile(self) -> Graph:
         self.lookup_pipeline_id()
@@ -43,15 +42,8 @@ class PipelineAssembler(Compiler):
         return self.output_reader.graph
 
     def lookup_pipeline_id(self) -> None:
-        """Locate the single ``tcs:PipelineDefinition`` node in the build
-        graph (guaranteed to exist and be unique by :meth:`applies_to`)
-        and stash it on :attr:`pipeline_id` for the other steps to use.
-        """
-        self.pipeline_id = receive_first(
-            self.output_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
-                "sub"
-            ],
-        )
+        """Stash the seeded plan on :attr:`pipeline_id`."""
+        self.pipeline_id = lookup_seeded_pipeline_id(self.output_reader)
 
     def describe_docker_container(self) -> None:
         """
@@ -157,11 +149,12 @@ class PipelineAssembler(Compiler):
             - tcs:DockerContainer tcs:runs tcs:InstancePipelineComponent
         """
 
-        step_description = """
+        step_description = f"""
         ?microservice a tcs:DockerContainer .
-        ?microservice tcs:instantiates ?component . 
-        ?step a tcs:InstancePipelineComponent .
-        ?step prov:specializationOf ?component .
+        ?microservice tcs:instantiates ?component .
+        ?step a tcs:InstancePipelineComponent ;
+              p-plan:isStepOfPlan {self.pipeline_id} ;
+              prov:specializationOf ?component .
         """
 
         new_triples = self.output_reader.construct(

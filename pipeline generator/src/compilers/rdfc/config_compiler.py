@@ -3,7 +3,7 @@ from rdfine import GraphReader, GraphDict, receive_first
 import re
 
 from ..base import Compiler
-from ..utils import attach_file, extract_config, rewrite_compose_volume_host_path
+from ..utils import attach_file, extract_config, rewrite_compose_volume_host_path, lookup_seeded_pipeline_id
 
 # The RDF-Connect Python / Node runners mount their pipeline
 # definition at this fixed container path. Kept next to the
@@ -75,8 +75,8 @@ class RdfcConfigCompiler(Compiler):
         return unconfigured.empty
 
     def compile(self) -> Graph:
-        self.initialize_rdfc_reader()
         self.lookup_pipeline_id()
+        self.initialize_rdfc_reader()
         self.describe_pipeline()
         self.describe_processors()
         self.describe_channel_wiring()
@@ -91,20 +91,17 @@ class RdfcConfigCompiler(Compiler):
         triple every ``describe_*`` step below adds to.
         """
         self.rdfc_reader = self.input_reader.construct(
-            "?pipeline a rdfc:Pipeline .",
-            "?pipeline a tcs:PipelineDefinition",
+            f"{self.pipeline_id} a rdfc:Pipeline .",
+            f"{self.pipeline_id} a tcs:PipelineDefinition",
         )
 
     def lookup_pipeline_id(self) -> None:
-        """Locate the single ``tcs:PipelineDefinition`` node being
-        compiled, needed both by the ``describe_*`` steps and to
-        anchor the ``<>`` self-reference in :meth:`serialize_pipeline_ttl`.
+        """Stash the seeded plan (``prov:hadPlan``), needed both by
+        the ``describe_*`` steps and to anchor the ``<>`` self-reference
+        in :meth:`serialize_pipeline_ttl`. Other plans may still sit
+        in the catalog graph.
         """
-        self.pipeline_id = receive_first(
-            self.input_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
-                "sub"
-            ],
-        )
+        self.pipeline_id = lookup_seeded_pipeline_id(self.input_reader)
 
     def describe_pipeline(self) -> None:
         """
@@ -136,7 +133,8 @@ class RdfcConfigCompiler(Compiler):
                 f"""
                     ?processor dct:requires {runner_id} .
                     ?processor owl:imports ?import .
-                    ?step prov:specializationOf ?processor . 
+                    ?step p-plan:isStepOfPlan {self.pipeline_id} ;
+                          prov:specializationOf ?processor .
                     """,
             )
 

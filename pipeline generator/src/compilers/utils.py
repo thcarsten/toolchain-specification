@@ -312,6 +312,39 @@ def parse_docker_compose_config(
     return normalized
 
 
+def prefer_non_default_compose_configs(
+    reader: GraphReader, config_ids: list[str]
+) -> list[str]:
+    """Drop ``tcs:DefaultConfig`` compose bodies when a non-default exists.
+
+    Grouping by component is the caller's job. A pipeline definition can
+    attach a second ``tcs:DockerComposeConfig`` on a catalog component
+    that already has a default; this keeps the default as fallback and
+    uses the override when both are present (``tcs:DefaultConfig``
+    semantics). One id, or only defaults, is returned unchanged.
+    """
+    unique = list(dict.fromkeys(config_ids))
+    if len(unique) <= 1:
+        return unique
+    overrides = [c for c in unique if not reader.ask(f"{c} a tcs:DefaultConfig .")]
+    return overrides if overrides else unique
+
+
+def lookup_seeded_pipeline_id(reader: GraphReader) -> str:
+    """Return the ``tcs:PipelineDefinition`` ``PipelineSeeder`` bound to this build.
+
+    The catalog graph may still contain other plans (the fietsstallingen
+    file has two). Compilers must key off ``prov:hadPlan``, not "the
+    only ``tcs:PipelineDefinition`` in the graph".
+    """
+    return receive_first(
+        reader.select(
+            "?pipeline",
+            "?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .",
+        )["pipeline"]
+    )
+
+
 def lookup_container_service_name(reader: GraphReader, container_id: str) -> str | None:
     """Return the compose service name for ``container_id``, or ``None``.
 
@@ -332,7 +365,9 @@ def lookup_container_service_name(reader: GraphReader, container_id: str) -> str
         ?config a tcs:DockerComposeConfig .
         """,
     )
-    configs = rows["config"].drop_duplicates().to_list()
+    configs = prefer_non_default_compose_configs(
+        reader, rows["config"].drop_duplicates().to_list()
+    )
     if not configs:
         return None
     normalized = parse_docker_compose_config(reader, configs[0])
@@ -483,13 +518,16 @@ def rewrite_compose_volume_host_path(
         host_path: The host-side path to rewrite matching volumes
             to (e.g. ``\"./rdfc/pipeline.ttl\"``).
     """
-    compose_ids = reader.select(
-        "?compose_config",
-        f"""
+    compose_ids = prefer_non_default_compose_configs(
+        reader,
+        reader.select(
+            "?compose_config",
+            f"""
             {component_iri} tcs:config ?compose_config .
             ?compose_config a tcs:DockerComposeConfig .
         """,
-    )["compose_config"].to_list()
+        )["compose_config"].to_list(),
+    )
     if not compose_ids:
         return reader
     compose_config_id = compose_ids[0]

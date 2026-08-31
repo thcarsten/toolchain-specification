@@ -3,6 +3,7 @@ from rdflib import Graph
 from rdfine import GraphReader
 
 from ..base import Compiler
+from ..utils import lookup_seeded_pipeline_id
 
 
 class BridgeTransportCompiler(Compiler):
@@ -211,11 +212,7 @@ class BridgeTransportCompiler(Compiler):
         return candidates[0] if len(candidates) == 1 else None
 
     def _lookup_pipeline_id(self) -> str:
-        return (
-            self.output_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition")
-            .df["sub"]
-            .to_list()[0]
-        )
+        return lookup_seeded_pipeline_id(self.output_reader)
 
     def _rewrite_writer_side(
         self,

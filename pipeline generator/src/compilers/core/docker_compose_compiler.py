@@ -1,8 +1,14 @@
+from collections import defaultdict
+
 from rdflib import Graph
 from rdfine import GraphReader, GraphDict
 
 from ..base import Compiler
-from ..utils import attach_file, parse_docker_compose_config
+from ..utils import (
+    attach_file,
+    parse_docker_compose_config,
+    prefer_non_default_compose_configs,
+)
 
 # Top-level compose keys whose values are name-to-body mappings. Their
 # member order is meaningless to Docker, so they are sorted by name to
@@ -77,17 +83,25 @@ class DockerComposeCompiler(Compiler):
         # the order services appear in the emitted file. Without the
         # sort the same build graph produces a different (if equivalent)
         # docker-compose.yml on each run.
-        config_list = sorted(
-            set(
-                self.output_reader.select(
-                    "?config",
-                    """
+        by_component: dict[str, list[str]] = defaultdict(list)
+        rows = self.output_reader.select(
+            "?component ?config",
+            """
             ?container a tcs:DockerContainer ; tcs:instantiates ?component .
             ?component tcs:config ?config .
             ?config a tcs:DockerComposeConfig .
             """,
-                )["config"]
-            )
+        )
+        for component, config in zip(rows["component"], rows["config"]):
+            by_component[component].append(config)
+        config_list = sorted(
+            {
+                config
+                for configs in by_component.values()
+                for config in prefer_non_default_compose_configs(
+                    self.output_reader, configs
+                )
+            }
         )
 
         # Every ``tcs:DockerComposeConfig`` is normalized to the same
