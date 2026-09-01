@@ -83,9 +83,7 @@ class LdioHttpInConfigCompiler(Compiler):
         # is the ``name:`` key in its yaml — LdioConfigCompiler emits that as
         # the step's ``tcs:segment`` local name.
         segments = (
-            self.output_reader.filter(sub=step, pred="tcs:segment")
-            .df["obj"]
-            .to_list()
+            self.output_reader.filter(sub=step, pred="tcs:segment").df["obj"].to_list()
         )
         source = segments[0] if segments else step
         local = source.rsplit(":", 1)[-1].rsplit("/", 1)[-1]

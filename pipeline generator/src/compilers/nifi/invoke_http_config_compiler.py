@@ -79,7 +79,7 @@ class NifiInvokeHttpConfigCompiler(Compiler):
     ) -> None:
         config_id = self._mint_config_id()
         content_type_line = (
-            f"; nifi:contentType \"{content_type}\"" if content_type else ""
+            f'; nifi:contentType "{content_type}"' if content_type else ""
         )
         new_triples = self.output_reader.construct(
             f"""
