@@ -41,25 +41,25 @@
 :TransactionConfigShape tcs:passed true .
 
 :throughputresult_0 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_27 ;
-    tcs:inputShape [ ] ;
-    tcs:matches "unknown" ;
-    tcs:outputShape [ ] .
-
-:throughputresult_1 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_bridge_1 ;
-    tcs:inputShape [ ] ;
-    tcs:matches "unknown" ;
-    tcs:outputShape [ ] .
-
-:throughputresult_2 a tcs:ThroughputMatchResult ;
     tcs:forChannel :channel_bridge_0 ;
     tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
+:throughputresult_1 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_11 ;
+    tcs:inputShape [ ] ;
+    tcs:matches "unknown" ;
+    tcs:outputShape [ ] .
+
+:throughputresult_2 a tcs:ThroughputMatchResult ;
+    tcs:forChannel :channel_47 ;
+    tcs:inputShape [ ] ;
+    tcs:matches "unknown" ;
+    tcs:outputShape [ ] .
+
 :throughputresult_3 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_64 ;
+    tcs:forChannel :channel_bridge_1 ;
     tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
@@ -153,14 +153,14 @@ tcs:SwStepEnvValueShape sh:message "Checks that semantic.works step config value
 tcs:UnsupportedChannelTopologyShape sh:message "Checks that cross-container channel topology is a MVP-supported (1-writer, 1-or-2-container) shape." ;
     tcs:passed true .
 
-[] sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed." ;
+[] tcs:passed true .
+
+[] sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed." ;
     tcs:passed true .
 
 [] a sh:ValidationReport ;
     sh:conforms true .
 
-[] sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed." ;
+[] sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed." ;
     tcs:passed true .
-
-[] tcs:passed true .
 
