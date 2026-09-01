@@ -3,27 +3,28 @@
 Every concrete compiler enriches a ``tcs:PipelineBuild`` graph and
 returns it. Execution order among compilers is not fixed by any
 class-level rank — it emerges from each compiler's :meth:`applies_to`
-trigger condition, which is evaluated by :class:`PipelineGenerator`
-against the current state of the build graph on every iteration of a
-fixpoint loop. A compiler runs as soon as its trigger becomes true and
-does not run again once it has (its class is marked as "ran" for the
-remainder of the compilation).
+trigger condition, which is evaluated by
+:class:`compilers.runner.CompilationRunner` against the current state
+of the build graph on every iteration of a fixpoint loop. A compiler
+runs as soon as its trigger becomes true and does not run again once
+it has (its class is marked as "ran" for the remainder of the
+compilation).
+
+Which compilers a run considers — for the fixpoint loop and as
+explicit finalize calls after it settles — is declared on a
+:class:`compilers.config.CompilationConfig`, not by any global
+registry on this base class. The two presets in
+:mod:`compilers.presets` populate the config for the two supported
+modes; :func:`compilers.pipeline_generator.PipelineGenerator` and
+:func:`compilers.pipeline_generator.PipelineValidator` are just
+factories over those presets.
 
 Provenance (``dct:creator`` on the build) is written by
-:class:`PipelineGenerator` immediately after each compiler runs — the
+:class:`CompilationRunner` immediately after each compiler runs — the
 compiler itself does not need to concern itself with it.
-
-For compilers that must run only after the fixpoint loop has
-terminated (for example :class:`DockerComposeCompiler` and
-:class:`ValidationReportCompiler`), set ``is_explicit_call = True``
-on the subclass. Such compilers are excluded from the registry and
-invoked directly by :class:`PipelineGenerator` at fixed positions
-after the loop settles.
 """
 
-import inspect
 from abc import ABC, abstractmethod
-from typing import ClassVar
 
 from rdflib import Graph
 from rdfine import GraphReader
@@ -47,8 +48,9 @@ class Compiler(ABC):
       from ``compile()``.
     - Overrides :meth:`applies_to` to declare the graph-state
       condition under which the compiler should run. The default
-      returns ``False``, so every concrete compiler must declare its
-      trigger explicitly.
+      returns ``False``, so every concrete compiler listed in a
+      :class:`CompilationConfig`'s ``loop_compilers`` must declare
+      its trigger explicitly.
 
     Every compiler has two readers over the build graph:
 
@@ -70,28 +72,10 @@ class Compiler(ABC):
     to register their output as an ``spdx:File`` on the
     ``tcs:PipelineBuild`` node.
 
-    All concrete subclasses auto-register on :attr:`_registry` via
-    :meth:`__init_subclass__`, so :class:`PipelineGenerator` can
-    discover them without an explicit list.
+    Concrete compilers do not self-register. Membership in a run is
+    declared on the :class:`compilers.config.CompilationConfig` handed
+    to :class:`compilers.runner.CompilationRunner`.
     """
-
-    _registry: ClassVar[list[type["Compiler"]]] = []
-
-    #: Set to True on subclasses that PipelineGenerator invokes
-    #: directly (not via the registry fixpoint loop) — e.g.
-    #: DockerComposeCompiler, ValidationReportCompiler. Excludes the
-    #: class from ``_registry`` at __init_subclass__ time.
-    is_explicit_call: ClassVar[bool] = False
-
-    def __init_subclass__(cls, **kwargs) -> None:
-        super().__init_subclass__(**kwargs)
-        # Skip abstract intermediates; only concrete compilers register.
-        # Explicit-call compilers stay Compiler subclasses (for the
-        # shared compile/applies_to/output_reader contract) but are
-        # deliberately kept out of the registry loop.
-        if inspect.isabstract(cls) or cls.is_explicit_call:
-            return
-        Compiler._registry.append(cls)
 
     def __init__(self, graph: Graph) -> None:
         # ``input_reader`` is the immutable "before" snapshot, stored
@@ -124,16 +108,17 @@ class Compiler(ABC):
     def applies_to(cls, graph_reader: GraphReader) -> bool:
         """Whether this compiler should run against the given build graph.
 
-        Default: never applicable. Every concrete compiler must
-        override this to declare the graph-state condition that
-        triggers it — typically by looking for the presence (or
-        absence) of a specific node type or predicate in the graph.
+        Default: never applicable. Every concrete compiler listed in a
+        :class:`CompilationConfig`'s ``loop_compilers`` must override
+        this to declare the graph-state condition that triggers it —
+        typically by looking for the presence (or absence) of a
+        specific node type or predicate in the graph.
 
-        Compilers that must run only after the fixpoint loop has
-        settled (e.g. :class:`GraphReducer`,
-        :class:`ValidationReportCompiler`, :class:`DockerComposeCompiler`)
-        instead set ``is_explicit_call = True`` on the class, which
-        excludes them from the registry loop entirely.
+        Compilers listed in a config's ``finalize_compilers`` are
+        instead invoked unconditionally by
+        :class:`CompilationRunner` after the fixpoint loop settles;
+        their ``applies_to`` is not consulted, though overriding it
+        remains harmless.
         """
         return False
 

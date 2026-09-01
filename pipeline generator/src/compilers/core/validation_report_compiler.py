@@ -32,11 +32,11 @@ from ..utils import attach_file
 
 class ValidationReportCompiler(Compiler):
     """
-    Invoked explicitly by :class:`PipelineGenerator` after the fixpoint
-    loop terminates and before :class:`DockerComposeCompiler`. Not
-    registry-triggered — kept out via ``is_explicit_call``, since it
-    must see every shaping compiler's contribution and would otherwise
-    race with them for eligibility in the loop.
+    Invoked as the finalize call of a validation run — see
+    :func:`compilers.presets.default_validation_config`. Runs after the
+    fixpoint loop terminates, so it sees every shaping compiler's
+    contribution to the (validation-mode) build. Not used in the
+    generation preset.
 
     Generic application-profile shapes in
     ``catalog-application-profile-shapes.ttl`` (e.g.
@@ -49,8 +49,6 @@ class ValidationReportCompiler(Compiler):
     :meth:`validate_normal_shapes` sees both these and
     component-attached configShapes.
     """
-
-    is_explicit_call = True
 
     #: Override on a subclass to change where the report is attached.
     filename = "validation-report.ttl"

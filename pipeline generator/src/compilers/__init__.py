@@ -1,4 +1,5 @@
 from .base import Compiler
+from .config import CompilationConfig
 from .core.pipeline_seeder import PipelineSeeder
 from .core.pipeline_enricher import PipelineEnricher
 from .core.pipeline_assembler import PipelineAssembler
@@ -26,11 +27,27 @@ from .sw.mu_dispatcher_compiler import MuDispatcherCompiler
 from .sw.mu_delta_notifier_compiler import MuDeltaNotifierCompiler
 from .sw.mu_authorization_compiler import MuAuthorizationCompiler
 from .sw.error_alert_compiler import ErrorAlertCompiler
-from .pipeline_generator import PipelineGenerator
+from .presets import (
+    DEFAULT_CATALOG_FILES,
+    DEFAULT_INFERENCE_FILES,
+    default_generation_config,
+    default_validation_config,
+)
+from .runner import CompilationRunner
+from .pipeline_generator import PipelineGenerator, PipelineValidator
 from .project_builder import ProjectBuilder
 
 __all__ = [
     "Compiler",
+    "CompilationConfig",
+    "CompilationRunner",
+    "PipelineGenerator",
+    "PipelineValidator",
+    "ProjectBuilder",
+    "default_generation_config",
+    "default_validation_config",
+    "DEFAULT_CATALOG_FILES",
+    "DEFAULT_INFERENCE_FILES",
     "PipelineSeeder",
     "GraphReducer",
     "PipelineEnricher",
@@ -53,8 +70,6 @@ __all__ = [
     "MuDeltaNotifierCompiler",
     "MuAuthorizationCompiler",
     "ErrorAlertCompiler",
-    "PipelineGenerator",
-    "ProjectBuilder",
     "NifiConfigCompiler",
     "NifiDockerfileCompiler",
     "NifiInvokeHttpConfigCompiler",

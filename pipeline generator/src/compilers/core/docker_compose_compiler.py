@@ -33,14 +33,14 @@ class DockerComposeCompiler(Compiler):
     """
     Compiles the docker compose configuration file.
 
-    Invoked explicitly by :class:`PipelineGenerator` after the
-    fixpoint loop terminates, so every other compiler that may still
-    be editing ``tcs:DockerComposeConfig`` bodies (e.g.
+    Invoked as an explicit finalize call by
+    :class:`compilers.runner.CompilationRunner` after the fixpoint
+    loop terminates, so every other compiler that may still be
+    editing ``tcs:DockerComposeConfig`` bodies (e.g.
     :class:`SemanticWorksEnvVarCompiler`) has already finished.
-    Deliberately kept out of the registry via ``is_explicit_call``.
+    Membership in the generation preset's ``finalize_compilers`` is
+    what makes this ordering fixed, not any per-class flag.
     """
-
-    is_explicit_call = True
 
     def __init__(self, graph: Graph) -> None:
         super().__init__(graph)
