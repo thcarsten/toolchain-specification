@@ -1,0 +1,181 @@
+{
+    "maxTimerDrivenThreadCount": 10,
+    "rootGroup": {
+        "identifier": "67890bcc-61cf-5011-b797-a31afd23ee28",
+        "instanceIdentifier": "023b3671-a98a-558f-9ff8-8b0f9e511eaf",
+        "name": "NiFi \u2192 LDIO automatic HTTP bridge",
+        "comments": "Minimal cross-framework pipeline: a NiFi GenerateFlowFile\r\n        emits one N-Triples line every 10 s; LDIO receives it and prints it to\r\n        its container stdout via ConsoleOut. Neither side declares a boundary\r\n        component \u2014 BridgeTransportCompiler auto-inserts nifi:InvokeHTTP on the\r\n        NiFi side and ldio:HttpIn on the LDIO side, and the paired per-boundary\r\n        config compilers agree the transport metadata through the shared\r\n        channel.",
+        "position": {
+            "x": 0.0,
+            "y": 0.0
+        },
+        "processGroups": [],
+        "remoteProcessGroups": [],
+        "processors": [
+            {
+                "identifier": "a38920a0-eb93-5d99-9aff-cc6105f67740",
+                "instanceIdentifier": "aef2d0b7-7b7e-55bd-8dac-808b98c6bc51",
+                "name": "demo_nl:Emit",
+                "comments": "",
+                "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "type": "org.apache.nifi.processors.standard.GenerateFlowFile",
+                "bundle": {
+                    "group": "org.apache.nifi",
+                    "artifact": "nifi-standard-nar",
+                    "version": "2.10.0"
+                },
+                "properties": {
+                    "Custom Text": "<urn:s> <urn:p> <urn:o> ."
+                },
+                "propertyDescriptors": {
+                    "Custom Text": {
+                        "name": "Custom Text",
+                        "displayName": "Custom Text",
+                        "identifiesControllerService": false,
+                        "sensitive": false,
+                        "dynamic": false
+                    }
+                },
+                "style": {},
+                "schedulingPeriod": "10 sec",
+                "schedulingStrategy": "TIMER_DRIVEN",
+                "executionNode": "ALL",
+                "penaltyDuration": "30 sec",
+                "yieldDuration": "1 sec",
+                "bulletinLevel": "WARN",
+                "runDurationMillis": 0,
+                "concurrentlySchedulableTaskCount": 1,
+                "autoTerminatedRelationships": [],
+                "scheduledState": "RUNNING",
+                "retryCount": 10,
+                "retriedRelationships": [],
+                "backoffMechanism": "PENALIZE_FLOWFILE",
+                "maxBackoffPeriod": "10 mins",
+                "componentType": "PROCESSOR",
+                "groupIdentifier": "67890bcc-61cf-5011-b797-a31afd23ee28"
+            },
+            {
+                "identifier": "03cf49ff-f40f-512b-968c-20e803f6b19b",
+                "instanceIdentifier": "f29eff3a-3a1e-55c2-8c01-44141b8091ff",
+                "name": "bridgestep_0",
+                "comments": "",
+                "position": {
+                    "x": 650.0,
+                    "y": 0.0
+                },
+                "type": "org.apache.nifi.processors.standard.InvokeHTTP",
+                "bundle": {
+                    "group": "org.apache.nifi",
+                    "artifact": "nifi-standard-nar",
+                    "version": "2.10.0"
+                },
+                "properties": {
+                    "HTTP URL": "http://ldio-workbench:8080/segment_0",
+                    "HTTP Method": "POST",
+                    "Request Content-Type": "application/n-triples"
+                },
+                "propertyDescriptors": {
+                    "HTTP URL": {
+                        "name": "HTTP URL",
+                        "displayName": "HTTP URL",
+                        "identifiesControllerService": false,
+                        "sensitive": false,
+                        "dynamic": false
+                    },
+                    "HTTP Method": {
+                        "name": "HTTP Method",
+                        "displayName": "HTTP Method",
+                        "identifiesControllerService": false,
+                        "sensitive": false,
+                        "dynamic": false
+                    },
+                    "Request Content-Type": {
+                        "name": "Request Content-Type",
+                        "displayName": "Request Content-Type",
+                        "identifiesControllerService": false,
+                        "sensitive": false,
+                        "dynamic": false
+                    }
+                },
+                "style": {},
+                "schedulingPeriod": "60 sec",
+                "schedulingStrategy": "TIMER_DRIVEN",
+                "executionNode": "ALL",
+                "penaltyDuration": "30 sec",
+                "yieldDuration": "1 sec",
+                "bulletinLevel": "WARN",
+                "runDurationMillis": 0,
+                "concurrentlySchedulableTaskCount": 1,
+                "autoTerminatedRelationships": [
+                    "Failure",
+                    "No Retry",
+                    "Original",
+                    "Response",
+                    "Retry"
+                ],
+                "scheduledState": "RUNNING",
+                "retryCount": 10,
+                "retriedRelationships": [],
+                "backoffMechanism": "PENALIZE_FLOWFILE",
+                "maxBackoffPeriod": "10 mins",
+                "componentType": "PROCESSOR",
+                "groupIdentifier": "67890bcc-61cf-5011-b797-a31afd23ee28"
+            }
+        ],
+        "inputPorts": [],
+        "outputPorts": [],
+        "connections": [
+            {
+                "identifier": "52c53cb5-283b-5a62-8b16-5bfc43eae0d2",
+                "instanceIdentifier": "5f598283-47d4-5d68-81b2-d0bc55b1b8bf",
+                "name": "channel_bridge_0",
+                "source": {
+                    "id": "a38920a0-eb93-5d99-9aff-cc6105f67740",
+                    "type": "PROCESSOR",
+                    "groupId": "67890bcc-61cf-5011-b797-a31afd23ee28"
+                },
+                "destination": {
+                    "id": "03cf49ff-f40f-512b-968c-20e803f6b19b",
+                    "type": "PROCESSOR",
+                    "groupId": "67890bcc-61cf-5011-b797-a31afd23ee28"
+                },
+                "labelIndex": 1,
+                "zIndex": 0,
+                "selectedRelationships": [
+                    "success"
+                ],
+                "backPressureObjectThreshold": 10000,
+                "backPressureDataSizeThreshold": "1 GB",
+                "flowFileExpiration": "0 sec",
+                "prioritizers": [],
+                "bends": [],
+                "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+                "partitioningAttribute": "",
+                "loadBalanceCompression": "DO_NOT_COMPRESS",
+                "componentType": "CONNECTION",
+                "groupIdentifier": "67890bcc-61cf-5011-b797-a31afd23ee28"
+            }
+        ],
+        "labels": [],
+        "funnels": [],
+        "controllerServices": [],
+        "defaultFlowFileExpiration": "0 sec",
+        "defaultBackPressureObjectThreshold": 10000,
+        "defaultBackPressureDataSizeThreshold": "1 GB",
+        "scheduledState": "ENABLED",
+        "executionEngine": "INHERITED",
+        "maxConcurrentTasks": 1,
+        "statelessFlowTimeout": "1 min",
+        "flowFileConcurrency": "UNBOUNDED",
+        "flowFileOutboundPolicy": "STREAM_WHEN_AVAILABLE",
+        "componentType": "PROCESS_GROUP"
+    },
+    "externalControllerServices": {},
+    "parameterContexts": [],
+    "flowEncodingVersion": "1.0",
+    "parameterProviders": [],
+    "latest": false
+}

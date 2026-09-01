@@ -1,0 +1,30 @@
+services:
+  ldio-workbench:
+    container_name: ldio-workbench
+    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
+    ports:
+    - 8080:8080
+    volumes:
+    - ./ldio/application.yml:/ldio/application.yml:ro
+    - ./ldio/pipelines/:/ldio/pipelines/:ro
+    depends_on:
+    - nifip
+  nifip:
+    container_name: nifip
+    image: dishacled/nifi:2.10.0-ldi-2.12.0
+    build: ./nifi
+    environment:
+      SINGLE_USER_CREDENTIALS_USERNAME: root
+      SINGLE_USER_CREDENTIALS_PASSWORD: rootrootrootroot
+      NIFI_SENSITIVE_PROPS_KEY: dishacled-nifi-dev-key
+    ports:
+    - 8443:8443
+    volumes:
+    - ./nifi/flow.json:/opt/nifi/bootstrap/flow.json:ro
+    entrypoint:
+    - /bin/bash
+    - -c
+    - |-
+      set -e
+      gzip -c /opt/nifi/bootstrap/flow.json > /opt/nifi/nifi-current/conf/flow.json.gz
+      exec /opt/nifi/scripts/start.sh

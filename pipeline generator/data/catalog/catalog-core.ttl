@@ -173,5 +173,6 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
     nifi:CreateVersionObjectProcessor,
     nifi:AzureStorageCredentialsControllerService_v12,
     nifi:Funnel,
+    nifi:ListenHTTP,
     nifi:InvokeHTTP,
     nifi:Orchestrator .

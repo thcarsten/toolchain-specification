@@ -75,10 +75,11 @@ def new(generated: str) -> Graph:
 
 
 @pytest.fixture(scope="module")
-def manual(data_dir: Path) -> Graph:
+def manual(catalog_data_dir: Path) -> Graph:
     graph = Graph()
     graph.parse(
-        data_dir / "catalog-rdfc-manual.ttl", publicID="file:///workspace/pipeline/"
+        catalog_data_dir / "catalog-rdfc-manual.ttl",
+        publicID="file:///workspace/pipeline/",
     )
     return graph
 
@@ -202,9 +203,11 @@ def test_dangling_catalog_entries_are_gone(new: Graph, manual: Graph):
     }
     for iri in (f"{RDFC}HttpFetch", f"{RDFC}LogProcessorPy"):
         assert iri in listed, f"{iri} should be listed"
-        assert (URIRef(iri), RDF.type, PIPELINE_COMPONENT) in new, (
-            f"{iri} listed but not defined"
-        )
+        assert (
+            URIRef(iri),
+            RDF.type,
+            PIPELINE_COMPONENT,
+        ) in new, f"{iri} listed but not defined"
 
 
 def test_catalog_membership_matches_definitions(new: Graph, manual: Graph):

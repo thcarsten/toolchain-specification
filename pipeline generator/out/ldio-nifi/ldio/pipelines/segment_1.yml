@@ -1,0 +1,19 @@
+name: segment_1
+input:
+  adapter:
+    name: Ldio:JsonToLdAdapter
+    config:
+      context: '{ "@context": { "@vocab": "https://schema.org/" } }'
+      force-content-type:
+        '@type': boolean
+        '@value': true
+  name: Ldio:HttpInPoller
+  config:
+    cron: '*/10 * * * * *'
+    url: https://jsonplaceholder.typicode.com/posts/1
+outputs:
+- name: Ldio:HttpOut
+  config:
+    endpoint: http://nifip:9000/bridgestep_1
+    rdf-writer:
+      content-type: application/ld+json

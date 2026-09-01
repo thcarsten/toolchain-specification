@@ -9,7 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from testing_helpers import PIPELINE_ID, INFERENCE_RULES, NOTEBOOK_FILES, load_reader
+from testing_helpers import (
+    INFERENCE_RULES,
+    NOTEBOOK_FILES,
+    PIPELINE_ID,
+    RULES_DIR,
+    load_reader,
+)
 
 
 @pytest.fixture(scope="module")
@@ -29,10 +35,10 @@ def test_notebook_file_list_matches_this_test(repo_root: Path):
     notebook = json.loads((repo_root / "src/demo.ipynb").read_text(encoding="utf-8"))
     source = "".join(notebook["cells"][2]["source"])
     for name in NOTEBOOK_FILES:
-        assert f'"{name}"' in source, f"{name} missing from demo.ipynb load list"
+        assert name in source, f"{name} missing from demo.ipynb load list"
 
 
-def test_notebook_rule_list_matches_this_test(repo_root: Path, data_dir: Path):
+def test_notebook_rule_list_matches_this_test(repo_root: Path):
     """Same for the rule files, and that the set is the whole set.
 
     Splitting the RDF-Connect rules out of inference_rules.yaml made it
@@ -47,9 +53,9 @@ def test_notebook_rule_list_matches_this_test(repo_root: Path, data_dir: Path):
     notebook = json.loads((repo_root / "src/demo.ipynb").read_text(encoding="utf-8"))
     source = "".join(notebook["cells"][2]["source"])
     for name in INFERENCE_RULES:
-        assert f'"{name}"' in source, f"{name} missing from demo.ipynb infer list"
+        assert name in source, f"{name} missing from demo.ipynb infer list"
 
-    on_disk = {path.name for path in data_dir.glob("*inference_rules.yaml")}
+    on_disk = {path.name for path in RULES_DIR.glob("*.yaml")}
     assert on_disk == set(INFERENCE_RULES), (
         f"rule files on disk {sorted(on_disk)} do not match "
         f"INFERENCE_RULES {sorted(INFERENCE_RULES)}"
@@ -84,9 +90,7 @@ def test_pipeline_still_compiles(catalog_reader):
     assert "DockerComposeCompiler" in ran
 
     files = ProjectBuilder(build).files
-    produced = {
-        f"{row['filepath']}/{row['filename']}" for _, row in files.iterrows()
-    }
+    produced = {f"{row['filepath']}/{row['filename']}" for _, row in files.iterrows()}
     assert "rdfc/pipeline.ttl" in produced
     assert "rdfc/package.json" in produced
     assert "rdfc/pyproject.toml" in produced

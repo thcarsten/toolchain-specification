@@ -1,0 +1,100 @@
+@prefix : <http://example.org/example/> .
+@prefix demo_nl: <http://example.org/example/nifi-ldio/> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix nifi: <http://example.org/example/nifi/> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+
+
+###############################################################################
+# NiFi → LDIO automatic HTTP bridge — smoke pipeline (reverse of _ldio_nifi)
+#
+# Two containers, two frameworks, one cross-container channel that NEITHER
+# side names as a boundary. Compile-time behaviour under test:
+#
+#   1. ``BridgeTransportCompiler`` sees the NiFi→LDIO channel crossing
+#      containers with no boundary on either side, and picks the single
+#      HTTP-typed pair whose ``dct:requires`` chain reaches each side's
+#      orchestrator: ``nifi:InvokeHTTP`` on the NiFi side and
+#      ``ldio:HttpIn`` on the LDIO side.
+#   2. ``LdioHttpInConfigCompiler`` writes the LDIO endpoint (host + port
+#      + path derived from the auto-inserted step's local name) onto the
+#      shared channel via ``tcs:endpoint``.
+#   3. ``NifiInvokeHttpConfigCompiler`` reads that endpoint back off the
+#      channel and fills in the paired ``nifi:InvokeHTTP``'s config
+#      (``nifi:httpMethod "POST" ; nifi:httpUrl <endpoint>``).
+#
+# Runtime observability (after ``docker compose up``):
+#
+#   * NiFi's UI at ``https://localhost:8443/nifi`` (login
+#     ``root`` / ``rootrootrootroot``) shows the ``GenerateFlowFile``
+#     processor firing every 10 s and its output being POSTed by the
+#     auto-inserted ``InvokeHTTP`` — the visible sign that the bridge
+#     is wiring the two containers.
+#   * ``docker compose logs -f ldio-workbench`` shows LDIO's HttpIn
+#     receiving each POST and the terminal ``ConsoleOut`` printing the
+#     received triple.
+###############################################################################
+
+
+demo_nl:NifiLdioBridgePipeline a tcs:PipelineDefinition ;
+    rdfs:label "NiFi → LDIO automatic HTTP bridge" ;
+    rdfs:comment """Minimal cross-framework pipeline: a NiFi GenerateFlowFile
+        emits one N-Triples line every 10 s; LDIO receives it and prints it to
+        its container stdout via ConsoleOut. Neither side declares a boundary
+        component — BridgeTransportCompiler auto-inserts nifi:InvokeHTTP on the
+        NiFi side and ldio:HttpIn on the LDIO side, and the paired per-boundary
+        config compilers agree the transport metadata through the shared
+        channel.""" .
+
+
+#################################################################
+# NiFi segment — emit one N-Triples line every 10 s
+#################################################################
+
+
+demo_nl:Emit a tcs:InstancePipelineComponent ;
+    prov:specializationOf nifi:GenerateFlowFile ;
+    p-plan:isStepOfPlan demo_nl:NifiLdioBridgePipeline ;
+    nifi:scheduledState "RUNNING" ;
+    nifi:schedulingPeriod "10 sec" ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            nifi:customText "<urn:s> <urn:p> <urn:o> ."
+        ]
+    ] .
+
+
+#################################################################
+# LDIO segment — parse incoming RDF and print to stdout
+#
+# LDIO requires exactly one Adapter between an Input and the pipeline
+# body. Since the Bridge-inserted ldio:HttpIn is the segment's Input,
+# an explicit adapter still has to be hand-authored on the LDIO side —
+# hence Ldio:RdfAdapter sitting between the (auto-inserted) HttpIn and
+# the terminal ConsoleOut.
+#################################################################
+
+
+demo_nl:Parse a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:RdfAdapter ;
+    p-plan:isStepOfPlan demo_nl:NifiLdioBridgePipeline ;
+    p-plan:isPrecededBy demo_nl:Emit ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded []
+    ] .
+
+
+demo_nl:Log a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:ConsoleOut ;
+    p-plan:isStepOfPlan demo_nl:NifiLdioBridgePipeline ;
+    p-plan:isPrecededBy demo_nl:Parse ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded []
+    ] .

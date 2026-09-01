@@ -21,7 +21,14 @@ from pathlib import Path
 import pytest
 from rdflib import Graph
 
-from testing_helpers import CATALOG_FILES, DATA_DIR, NOTEBOOK_FILES, SHAPES_FILE
+from testing_helpers import (
+    CATALOG_DIR,
+    CATALOG_FILES,
+    DATA_DIR,
+    NOTEBOOK_FILES,
+    PIPELINES_DIR,
+    SHAPES_FILE,
+)
 
 ROOT = DATA_DIR.parent
 
@@ -33,7 +40,7 @@ def catalog_graph() -> Graph:
     into this via `parse_extra`."""
     g = Graph()
     for filename in CATALOG_FILES:
-        g.parse(str(DATA_DIR / filename), publicID="file:///workspace/pipeline/")
+        g.parse(str(CATALOG_DIR / filename), publicID="file:///workspace/pipeline/")
     return g
 
 
@@ -41,7 +48,7 @@ def catalog_graph() -> Graph:
 def catalog_with_shapes(catalog_graph: Graph) -> Graph:
     """Catalog + the application-profile SHACL shapes, for violation tests."""
     catalog_graph.parse(
-        str(DATA_DIR / SHAPES_FILE), publicID="file:///workspace/pipeline/"
+        str(CATALOG_DIR / SHAPES_FILE), publicID="file:///workspace/pipeline/"
     )
     return catalog_graph
 
@@ -52,7 +59,7 @@ def demonstrator_graph(catalog_with_shapes: Graph) -> Graph:
     for tests that exercise the actual demonstrator pipeline rather than
     a synthetic snippet."""
     catalog_with_shapes.parse(
-        str(DATA_DIR / "pipeline_definition.ttl"),
+        str(PIPELINES_DIR / "pipeline_definition.ttl"),
         publicID="file:///workspace/pipeline/",
     )
     return catalog_with_shapes
@@ -70,20 +77,25 @@ def data_dir() -> Path:
 
 
 @pytest.fixture(scope="session")
+def catalog_data_dir() -> Path:
+    return CATALOG_DIR
+
+
+@pytest.fixture(scope="session")
 def notebook_files() -> list[str]:
     return list(NOTEBOOK_FILES)
 
 
 @pytest.fixture(scope="session")
-def snapshot_dir(data_dir: Path) -> Path:
-    return data_dir / "rdfc_harvest"
+def snapshot_dir(catalog_data_dir: Path) -> Path:
+    return catalog_data_dir / "rdfc_harvest"
 
 
 @pytest.fixture(scope="session")
-def requests(data_dir: Path):
+def requests(catalog_data_dir: Path):
     from rdfc_catalog_harvest.requests import load_requests
 
-    return load_requests(data_dir / "catalog-rdfc-requests.ttl")
+    return load_requests(catalog_data_dir / "catalog-rdfc-requests.ttl")
 
 
 @pytest.fixture(scope="session")

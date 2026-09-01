@@ -11,7 +11,9 @@ from rdfc_catalog_harvest.requests import load_requests
 
 
 def test_output_is_valid_turtle(generated: str):
-    Graph().parse(data=generated, format="turtle", publicID="file:///workspace/pipeline/")
+    Graph().parse(
+        data=generated, format="turtle", publicID="file:///workspace/pipeline/"
+    )
 
 
 def test_generation_is_byte_stable(requests, snapshot_dir: Path):
@@ -20,16 +22,16 @@ def test_generation_is_byte_stable(requests, snapshot_dir: Path):
     assert len(runs) == 1
 
 
-def test_committed_catalog_is_current(generated: str, data_dir: Path):
+def test_committed_catalog_is_current(generated: str, catalog_data_dir: Path):
     """`python -m rdfc_catalog_harvest generate --check` in test form.
 
-    Fails when data/catalog-rdfc.ttl was hand-edited or a harvest landed
+    Fails when data/catalog/catalog-rdfc.ttl was hand-edited or a harvest landed
     without regenerating.
     """
-    on_disk = (data_dir / "catalog-rdfc.ttl").read_text(encoding="utf-8")
-    assert on_disk == generated, (
-        "data/catalog-rdfc.ttl is stale - run `python -m rdfc_catalog_harvest generate`"
-    )
+    on_disk = (catalog_data_dir / "catalog-rdfc.ttl").read_text(encoding="utf-8")
+    assert (
+        on_disk == generated
+    ), "data/catalog/catalog-rdfc.ttl is stale - run `python -m rdfc_catalog_harvest generate`"
 
 
 def test_generated_file_is_marked_do_not_edit(generated: str):
@@ -83,7 +85,7 @@ def test_python_import_path_climbs_out_of_the_workdir():
     )
 
 
-def test_python_version_matches_the_dockerfile(data_dir: Path):
+def test_python_version_matches_the_dockerfile(catalog_data_dir: Path):
     """PYTHON_VERSION is baked into generated IRIs; drift breaks imports silently.
 
     Nothing validates an owl:imports value (tcs:RdfcProcessorShape only
@@ -91,7 +93,7 @@ def test_python_version_matches_the_dockerfile(data_dir: Path):
     image's interpreter would produce a catalog that looks fine and a
     pipeline that cannot boot.
     """
-    manual = (data_dir / "catalog-rdfc-manual.ttl").read_text(encoding="utf-8")
+    manual = (catalog_data_dir / "catalog-rdfc-manual.ttl").read_text(encoding="utf-8")
     assert f"FROM python:{emitter.PYTHON_VERSION}-slim" in manual
 
 
@@ -128,9 +130,9 @@ def test_missing_harvest_record_names_the_fix(tmp_path: Path):
         emitter.generate([request], tmp_path)
 
 
-def test_requests_are_order_independent(data_dir: Path, snapshot_dir: Path):
+def test_requests_are_order_independent(catalog_data_dir: Path, snapshot_dir: Path):
     """Shuffling the request file must not change the output."""
-    requests = load_requests(data_dir / "catalog-rdfc-requests.ttl")
+    requests = load_requests(catalog_data_dir / "catalog-rdfc-requests.ttl")
     forward = emitter.generate(requests, snapshot_dir)
     backward = emitter.generate(list(reversed(requests)), snapshot_dir)
     assert forward == backward

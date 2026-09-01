@@ -132,7 +132,7 @@ def test_unknown_foreign_class_is_demoted_to_annotation():
     assert ("tcs:upstreamClass", "<https://example.invalid/vocab#Mystery>") in pairs
 
 
-def test_external_shape_registry_targets_a_real_shape(data_dir):
+def test_external_shape_registry_targets_a_real_shape(catalog_data_dir):
     """Every EXTERNAL_SHAPES value must actually exist in the manual file.
 
     A typo here would emit sh:node at a shape that does not exist, which
@@ -145,10 +145,12 @@ def test_external_shape_registry_targets_a_real_shape(data_dir):
     from rdfc_catalog_harvest.shapes import EXTERNAL_SHAPES
 
     graph = Graph()
-    graph.parse(data_dir / "catalog-rdfc-manual.ttl")
+    graph.parse(catalog_data_dir / "catalog-rdfc-manual.ttl")
     declared = {
         str(s)
-        for s in graph.subjects(RDF.type, URIRef("http://www.w3.org/ns/shacl#NodeShape"))
+        for s in graph.subjects(
+            RDF.type, URIRef("http://www.w3.org/ns/shacl#NodeShape")
+        )
     }
     for klass, shape_iri in EXTERNAL_SHAPES.items():
         expanded = shape_iri.replace(":", "http://example.org/example/", 1)
@@ -227,8 +229,6 @@ def test_property_order_is_stable_across_runs():
                    [ sh:path rdfc:alpha ; sh:name "a" ; sh:datatype xsd:string ] ,
                    [ sh:path rdfc:mango ; sh:name "m" ; sh:datatype xsd:string ] .
     """
-    runs = [
-        [o for p, o in _flat(_translate(body)) if p == "sh:path"] for _ in range(5)
-    ]
+    runs = [[o for p, o in _flat(_translate(body)) if p == "sh:path"] for _ in range(5)]
     assert runs[0] == ["rdfc:alpha", "rdfc:mango", "rdfc:zebra"]
     assert all(run == runs[0] for run in runs)

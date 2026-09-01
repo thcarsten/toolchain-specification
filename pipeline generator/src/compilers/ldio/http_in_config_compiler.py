@@ -28,6 +28,12 @@ class LdioHttpInConfigCompiler(Compiler):
     """
 
     orchestrator_port: int = 8080
+    #: Content-Type advertised to the paired Exit compiler through the
+    #: channel's ``tcs:contentType``; the Exit compiler forwards it as the
+    #: outbound HTTP request's Content-Type header so LDIO's RdfAdapter
+    #: can pick a parser. N-Triples is the smallest RDF serialisation the
+    #: adapter accepts and a safe default for auto-inserted bridges.
+    default_content_type: str = "application/n-triples"
 
     def __init__(self, graph: Graph) -> None:
         super().__init__(graph)
@@ -35,6 +41,11 @@ class LdioHttpInConfigCompiler(Compiler):
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
+        segments_tagged = not graph_reader.filter(
+            pred="dct:creator", obj="tcs:SegmentTagger"
+        ).df.empty
+        if not segments_tagged:
+            return False
         return not graph_reader.select(
             "?step",
             """
@@ -68,7 +79,16 @@ class LdioHttpInConfigCompiler(Compiler):
                 self._annotate_channel(channel, service, path)
 
     def _derive_path(self, step: str) -> str:
-        local = step.rsplit(":", 1)[-1].rsplit("/", 1)[-1]
+        # LDIO serves each pipeline at ``/{pipeline_name}`` where pipeline_name
+        # is the ``name:`` key in its yaml — LdioConfigCompiler emits that as
+        # the step's ``tcs:segment`` local name.
+        segments = (
+            self.output_reader.filter(sub=step, pred="tcs:segment")
+            .df["obj"]
+            .to_list()
+        )
+        source = segments[0] if segments else step
+        local = source.rsplit(":", 1)[-1].rsplit("/", 1)[-1]
         return f"/{local}"
 
     def _lookup_shared_channel(self, step: str) -> str | None:
@@ -96,7 +116,8 @@ class LdioHttpInConfigCompiler(Compiler):
         new_triples = self.output_reader.construct(
             f"""
             {channel} tcs:endpoint "{endpoint}" ;
-                      tcs:port {self.orchestrator_port} .
+                      tcs:port {self.orchestrator_port} ;
+                      tcs:contentType "{self.default_content_type}" .
             """,
             f"{channel} a tcs:Channel .",
         ).graph

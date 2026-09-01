@@ -9,7 +9,7 @@
 [7. How To](#7-how-to) <br>
 
 ## 1. Introduction
-In this repo you find the codebase for the tool "pipeline generator". As the name suggests, the pipeline generator automatically generates pipelines based on a semantic description of a pipeline. The pipeline generator accepts pipeline definitions which are written in RDF and follow the [semantic model](https://github.com/thcarsten/toolchain-specification/tree/main/semantic%20model) of the toolchain specification. Based on the pipeline definition, it looks up components and their dependencies in a component catalog, and generates a Docker Compose file wiring together the containers that resolve these dependencies. It also generates the framework-specific configuration files necessary to run the pipelines. In the [data-folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/data), you can find the pipeline definitions and the catalog used for [the demo](https://github.com/thcarsten/toolchain-specification/blob/main/pipeline%20generator/src/demo.ipynb). Currently three frameworks are supported: RDF-Connect, LDIO and semantic.works.
+In this repo you find the codebase for the tool "pipeline generator". As the name suggests, the pipeline generator automatically generates pipelines based on a semantic description of a pipeline. The pipeline generator accepts pipeline definitions which are written in RDF and follow the [semantic model](https://github.com/thcarsten/toolchain-specification/tree/main/semantic%20model) of the toolchain specification. Based on the pipeline definition, it looks up components and their dependencies in a component catalog, and generates a Docker Compose file wiring together the containers that resolve these dependencies. It also generates the framework-specific configuration files necessary to run the pipelines. The [data folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/data) is split into `catalog/` (framework catalogs + SHACL shapes + the committed `rdfc_harvest/` snapshot), `pipelines/` (the pipeline definitions used by the demos), and `inference_rules/` (RDFS/channel entailment rules loaded before compilation). Currently four frameworks are supported: RDF-Connect, LDIO, Apache NiFi and semantic.works.
 
 The codebase is found in the [src-folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/src). It consists of three packages: `rdfine` provides ergonomic graph IO and transformation primitives (see its own [README](src/rdfine/README.md)); `compilers` is the pipeline generator itself, built around a small `Compiler` ABC and a self-registering dispatch system orchestrated by `PipelineGenerator`; `rdfc_catalog_harvest` is a pre-compile step that generates the RDF-Connect section of the component catalog from the packages' own published definitions (see [§3.1](#31-generating-the-rdf-connect-catalog)). Section 4 describes the architecture in detail.
 
@@ -58,7 +58,7 @@ pip install "./src/rdfine[dev]"
 PYTHONPATH=src pytest tests/ -q
 ```
 
-The tests cover the catalog generator (see [§3.1](#31-generating-the-rdf-connect-catalog)) and an end-to-end check that the merged catalog validates and the demonstrator pipeline still compiles. They need no network — catalog generation runs off the committed snapshot in `data/rdfc_harvest/`.
+The tests cover the catalog generator (see [§3.1](#31-generating-the-rdf-connect-catalog)) and an end-to-end check that the merged catalog validates and the demonstrator pipeline still compiles. They need no network — catalog generation runs off the committed snapshot in `data/catalog/rdfc_harvest/`.
 
 ## 3. Workflow
 The `PipelineGenerator` class wraps the full compilation flow. After loading the catalog into a `GraphReader` and enriching it with inference rules, instantiate `PipelineGenerator` with the id of the pipeline to compile and the catalog graph, then call `compile()`:
@@ -99,7 +99,7 @@ The `rdfc_catalog_harvest` package is deliberately **not** part of the `Compiler
 | [rdfc_catalog_harvest/semver.py](src/rdfc_catalog_harvest/semver.py) | Resolve a version range to a concrete version (npm caret/tilde/prerelease rules). |
 | [rdfc_catalog_harvest/registries.py](src/rdfc_catalog_harvest/registries.py) | Fetch from npm / PyPI / a local checkout. The only module that touches the network. |
 | [rdfc_catalog_harvest/harvester.py](src/rdfc_catalog_harvest/harvester.py) | Pick the Turtle file that declares the requested component, freeze it into the snapshot. |
-| [rdfc_catalog_harvest/snapshot.py](src/rdfc_catalog_harvest/snapshot.py) | Read/write the committed `data/rdfc_harvest/` records. |
+| [rdfc_catalog_harvest/snapshot.py](src/rdfc_catalog_harvest/snapshot.py) | Read/write the committed `data/catalog/rdfc_harvest/` records. |
 | [rdfc_catalog_harvest/shapes.py](src/rdfc_catalog_harvest/shapes.py) | Translate an upstream SHACL shape into a toolchain config shape (the four rewrites). |
 | [rdfc_catalog_harvest/emitter.py](src/rdfc_catalog_harvest/emitter.py) | Render the catalog file. Pure function of requests + snapshot. |
 | [rdfc_catalog_harvest/turtle.py](src/rdfc_catalog_harvest/turtle.py) | Deterministic Turtle text emission, for stable diffs. |
@@ -125,6 +125,8 @@ The `rdfc_catalog_harvest` package is deliberately **not** part of the `Compiler
 | [ldio/http_out_config_compiler.py](src/compilers/ldio/http_out_config_compiler.py) | `LdioHttpOutConfigCompiler` | Per-boundary config compiler: reads `tcs:endpoint` off the channel a `ldio:HttpOut` step writes to and folds it into the step's config. |
 | [nifi/config_compiler.py](src/compilers/nifi/config_compiler.py) | `NifiConfigCompiler` | Produce NiFi `flow.json` and local post-start configuration artifacts. |
 | [nifi/dockerfile_compiler.py](src/compilers/nifi/dockerfile_compiler.py) | `NifiDockerfileCompiler` | Produce the local NiFi Dockerfile. |
+| [nifi/invoke_http_config_compiler.py](src/compilers/nifi/invoke_http_config_compiler.py) | `NifiInvokeHttpConfigCompiler` | Per-boundary config compiler: reads `tcs:endpoint` (and optional `tcs:contentType`) off the channel a `nifi:InvokeHTTP` step writes to and folds them into the step's config. |
+| [nifi/listen_http_config_compiler.py](src/compilers/nifi/listen_http_config_compiler.py) | `NifiListenHttpConfigCompiler` | Per-boundary config compiler: allocates a port for each `nifi:ListenHTTP` step and writes `tcs:port` + `tcs:endpoint` onto the channel it reads from. |
 | [nifi/remote_compiler.py](src/compilers/nifi/remote_compiler.py) | `NifiRemoteCompiler` | Replace local deployment with the one-shot remote NiFi deployer. |
 | [rdfc/config_compiler.py](src/compilers/rdfc/config_compiler.py) | `RdfcConfigCompiler` | Produce the RDF-Connect `pipeline.ttl` and attach it to the build. |
 | [rdfc/dockerfile_compiler.py](src/compilers/rdfc/dockerfile_compiler.py) | `RdfcDockerFileCompiler` | Produce the RDF-Connect `Dockerfile`, `pyproject.toml` and `package.json` under `rdfc/`. The Dockerfile is verbatim from a `tcs:DockerImageConfig`; the two dependency files are synthesised from `spdx:Package` annotations on the components the pipeline actually uses. |
@@ -150,7 +152,9 @@ from compilers import (
     RdfcConfigCompiler, RdfcDockerFileCompiler,
     RdfcHttpServerConfigCompiler, RdfcHttpOutConfigCompiler,
     SemanticWorksEnvVarCompiler,
-    NifiConfigCompiler, NifiDockerfileCompiler, NifiRemoteCompiler,
+    NifiConfigCompiler, NifiDockerfileCompiler,
+    NifiInvokeHttpConfigCompiler, NifiListenHttpConfigCompiler,
+    NifiRemoteCompiler,
     VirtuosoCompiler, MuClResourcesCompiler, MuDispatcherCompiler,
     MuDeltaNotifierCompiler, MuAuthorizationCompiler, ErrorAlertCompiler,
 )
@@ -311,8 +315,10 @@ A useful side effect: because provenance is attached *while the loop is running*
 | `GraphReducer` | `<build> dct:creator tcs:SegmentTagger` present | the full build graph | narrows the build down to just triples reachable from `<build>` and its shape subgraph |
 | `RdfcHttpServerConfigCompiler` | any `rdfc:HttpServer` step present | the step and its channel | `tcs:endpoint`/`tcs:port` on the channel; `rdfc:port`/`rdfc:options` on the step |
 | `RdfcHttpOutConfigCompiler` | any `rdfc:HttpOut` step present with an outgoing channel carrying `tcs:endpoint` | the step and its channel | `rdfc:endpoint` on the step |
-| `LdioHttpInConfigCompiler` | any `ldio:HttpIn` step present | the step and its channel | `tcs:endpoint` on the channel |
+| `LdioHttpInConfigCompiler` | any `ldio:HttpIn` step present and `<build> dct:creator tcs:SegmentTagger` (so the step's `tcs:segment` is available for path derivation — LDIO serves each pipeline at `/{segment_name}`) | the step and its channel | `tcs:endpoint`/`tcs:port`/`tcs:contentType` on the channel |
 | `LdioHttpOutConfigCompiler` | any `ldio:HttpOut` step present with an outgoing channel carrying `tcs:endpoint` | the step and its channel | `ldio:endpoint` and `ldio:rdf-writer` on the step |
+| `NifiListenHttpConfigCompiler` | any `nifi:ListenHTTP` step present | the step and its channel | `tcs:endpoint`/`tcs:port` on the channel; `nifi:listeningPort`/`nifi:basePath` on the step |
+| `NifiInvokeHttpConfigCompiler` | any `nifi:InvokeHTTP` step present with an outgoing channel carrying `tcs:endpoint` | the step and its channel | `nifi:httpMethod`/`nifi:httpUrl` (and `nifi:contentType` when the channel carries `tcs:contentType`) on the step |
 | `SemanticWorksEnvVarCompiler` | any `tcs:PipelineComponent` in the `sw:` namespace, and at least one `tcs:DockerContainer` exists | step configs + docker configs of `sw:` components | updated `tcs:literal` on each affected `tcs:DockerComposeConfig` |
 | `VirtuosoCompiler` | a container instantiates `sw:triple-store` | the `:VirtuosoIniDefault` config body | `spdx:File` named `semantic-works/config/virtuoso/virtuoso.ini` |
 | `MuClResourcesCompiler` | a container instantiates `sw:mu-cl-resources` | the three `mu-cl-resources` default config bodies | `spdx:File`s named `semantic-works/config/resources/{domain.json,domain.lisp,repository.lisp}` |
@@ -323,7 +329,7 @@ A useful side effect: because provenance is attached *while the loop is running*
 | `LdioConfigCompiler` | a container instantiates `ldio:LinkedDataInteractionsOrchestrator`, every LDIO step carries a `tcs:segment`, and every LDIO step's `p-plan:hasInputVar` has been populated | LDIO components and their configs | `spdx:File`s named `ldio/pipelines/<segment>.yml` (one per segment) and `ldio/application.yml` |
 | `RdfcConfigCompiler` | a container instantiates `rdfc:Orchestrator` | RDF-Connect components, runners and step graph | `spdx:File` named `rdfc/pipeline.ttl` |
 | `RdfcDockerFileCompiler` | a container instantiates `rdfc:Orchestrator` and a `tcs:DockerImageConfig` is present | the Dockerfile literal + every `spdx:Package` reachable via `dct:requires` from components in the container | `spdx:File`s named `rdfc/Dockerfile`, `rdfc/pyproject.toml`, `rdfc/package.json` |
-| `NifiConfigCompiler` | a container instantiates `nifi:Orchestrator` | NiFi steps, component metadata, configs and channels | persisted `spdx:File` named `nifi/flow.json`; for local builds, secret references also produce a one-shot `nifi-configure` service and `nifi/configure_local.py` |
+| `NifiConfigCompiler` | a container instantiates `nifi:Orchestrator`, `<build> dct:creator tcs:BridgeTransportCompiler` (so any Bridge-inserted boundary steps are visible), and every NiFi step whose specialized component is typed `tcs:EntryBoundaryComponent`/`tcs:ExitBoundaryComponent` already has a `p-plan:hasInputVar` (so the paired per-boundary config compilers have finished) | NiFi steps, component metadata, configs and channels | persisted `spdx:File` named `nifi/flow.json`; for local builds, secret references also produce a one-shot `nifi-configure` service and `nifi/configure_local.py` |
 | `NifiDockerfileCompiler` | local NiFi deployment and a NiFi `tcs:DockerImageConfig` is present | the NiFi Dockerfile literal | `spdx:File` named `nifi/Dockerfile` |
 | `NifiRemoteCompiler` | `nifi:deploymentMode "remote"` and `nifi/flow.json` is present | the persisted flow, deployment config, secret references and NiFi compose config | upload-format `nifi/flow_definition.json`, stdlib-only `nifi/deploy_flow.py`, and a one-shot deployer using native Compose secret mounts |
 | `ValidationReportCompiler` | *(finalize — explicit call, `is_explicit_call = True`)* | the fully shaped build + shapes graph | `spdx:File` named `validation/validation-report.ttl` |
@@ -333,7 +339,7 @@ A useful side effect: because provenance is attached *while the loop is running*
 
 A `tcs:Channel` connects an [InstancePipelineComponent](../../semantic%20model/README.md#instancepipelinecomponent) that writes to it with one or more that read from it. When both live in the same container, nothing special is needed — the framework's own runtime carries the data. When they live in *different* containers, an explicit transport hop is required. The pipeline generator handles this via **boundary components** and an auto-insertion compiler.
 
-**Boundary components.** A catalog component typed either [tcs:EntryBoundaryComponent](../../semantic%20model/README.md#entryboundarycomponent) (a receiver, e.g. `rdfc:HttpServer`, `ldio:HttpIn`) or [tcs:ExitBoundaryComponent](../../semantic%20model/README.md#exitboundarycomponent) (a sender, e.g. `rdfc:HttpOut`, `ldio:HttpOut`) declares which transport it speaks via [tcs:channelType](../../semantic%20model/README.md#tcschanneltype), pointing at a subclass of `tcs:Channel` (e.g. `tcs:HttpChannel`, `tcs:SparqlUpdateChannel`). Both flags travel through pure RDFS subclass entailment: any component typed `EntryBoundaryComponent` is also a `PipelineComponent`, and any channel typed `HttpChannel` is also a `Channel`.
+**Boundary components.** A catalog component typed either [tcs:EntryBoundaryComponent](../../semantic%20model/README.md#entryboundarycomponent) (a receiver, e.g. `rdfc:HttpServer`, `ldio:HttpIn`, `nifi:ListenHTTP`) or [tcs:ExitBoundaryComponent](../../semantic%20model/README.md#exitboundarycomponent) (a sender, e.g. `rdfc:HttpOut`, `ldio:HttpOut`, `nifi:InvokeHTTP`) declares which transport it speaks via [tcs:channelType](../../semantic%20model/README.md#tcschanneltype), pointing at a subclass of `tcs:Channel` (e.g. `tcs:HttpChannel`, `tcs:SparqlUpdateChannel`). Both flags travel through pure RDFS subclass entailment: any component typed `EntryBoundaryComponent` is also a `PipelineComponent`, and any channel typed `HttpChannel` is also a `Channel`.
 
 **`BridgeTransportCompiler`** examines every `tcs:Channel` whose reader and writer end up in different containers and picks one of four behaviours:
 
@@ -342,7 +348,7 @@ A `tcs:Channel` connects an [InstancePipelineComponent](../../semantic%20model/R
 3. **Exactly one side is a boundary step.** Raises: a bridge is half-declared and the author's intent is ambiguous — either declare both sides, or declare neither.
 4. **No boundary component in the catalog matches** the required `tcs:channelType`. Flagged pre-compile by `tcs:CatalogMissingBridgeShape`, so the pipeline is rejected at SHACL time rather than crashing the compiler.
 
-**Per-boundary config compilers** (`RdfcHttpServerConfigCompiler`, `LdioHttpInConfigCompiler`, `RdfcHttpOutConfigCompiler`, `LdioHttpOutConfigCompiler`) then handle the transport-metadata layer. Each Entry-side compiler allocates its own port + endpoint (framework-fixed default, bumped on collision) and writes them onto the shared channel as [tcs:endpoint](../../semantic%20model/README.md#tcsendpoint) / [tcs:port](../../semantic%20model/README.md#tcsport); each Exit-side compiler reads those from the channel to configure its own step. Entry and Exit therefore stay fully decoupled — the graph is the message bus.
+**Per-boundary config compilers** (`RdfcHttpServerConfigCompiler`, `LdioHttpInConfigCompiler`, `NifiListenHttpConfigCompiler`, `RdfcHttpOutConfigCompiler`, `LdioHttpOutConfigCompiler`, `NifiInvokeHttpConfigCompiler`) then handle the transport-metadata layer. Each Entry-side compiler allocates its own port + endpoint (framework-fixed default, bumped on collision) and writes them onto the shared channel as [tcs:endpoint](../../semantic%20model/README.md#tcsendpoint) / [tcs:port](../../semantic%20model/README.md#tcsport) (and optionally `tcs:contentType` when the Entry-side framework needs the Exit side to advertise a specific request Content-Type, as LDIO's `RdfAdapter` does); each Exit-side compiler reads those from the channel to configure its own step. Entry and Exit therefore stay fully decoupled — the graph is the message bus.
 
 **`SegmentTagger`** runs after boundary insertion and tags every [InstancePipelineComponent](../../semantic%20model/README.md#instancepipelinecomponent) with the [tcs:segment](../../semantic%20model/README.md#tcssegment) it belongs to (a maximal chain of steps in one container that data can flow through without crossing a container boundary). Framework config compilers can then emit one config artifact per segment (LDIO's Pattern A2 directory-scan, `ldio/pipelines/<segment>.yml`), and segment-scoped SHACL shapes such as `tcs:LdioSingularStepShape` become checkable per-segment rather than per-pipeline. Segments are a purely compile-time bookkeeping notion — they never appear in the deployed pipeline.
 
@@ -378,13 +384,13 @@ For a local build, catalog-marked sensitive properties remain absent from `flow.
 
 The remote build replaces the local NiFi service with a one-shot `nifi-deploy` service. A `tcs:SecretReference` contains only the logical name of a host environment variable; its value is never read by the generator or written into the build graph, flow JSON, notebook, or Compose YAML. Compose resolves each value at deployment and mounts it under `/run/secrets/` for the deployer. `nifi:parentProcessGroupId` is optional and root is used when it is absent or empty.
 
-Populate every referenced variable from the current shell, `.env`, or a CI secret store, then run `docker compose up nifi-deploy`. For the example overlay these are `DSH_USERNAME`, `DSH_PASSWORD`, `AZURE_STORAGE_ACCOUNT_NAME`, and `AZURE_SAS_TOKEN`. Compose automatically loads `.env` beside the generated `docker-compose.yml`; the generated `.env.example` lists every required name and can be copied as a starting point. See [`data/pipeline_definition_nifi.deployment.ttl`](data/pipeline_definition_nifi.deployment.ttl) for the reference-only deployment overlay.
+Populate every referenced variable from the current shell, `.env`, or a CI secret store, then run `docker compose up nifi-deploy`. For the example overlay these are `DSH_USERNAME`, `DSH_PASSWORD`, `AZURE_STORAGE_ACCOUNT_NAME`, and `AZURE_SAS_TOKEN`. Compose automatically loads `.env` beside the generated `docker-compose.yml`; the generated `.env.example` lists every required name and can be copied as a starting point. See [`data/pipelines/pipeline_definition_nifi.deployment.ttl`](data/pipelines/pipeline_definition_nifi.deployment.ttl) for the reference-only deployment overlay.
 
 ### 4.10. Generating the RDF-Connect catalog
 
-`data/catalog-rdfc.ttl` is **generated, not hand-written**. An RDF-Connect processor already publishes a `processors.ttl` describing itself, so almost everything its catalog entry needs is a restatement of facts the package ships. Transcribing those by hand is what let the catalog drift out of sync with upstream.
+`data/catalog/catalog-rdfc.ttl` is **generated, not hand-written**. An RDF-Connect processor already publishes a `processors.ttl` describing itself, so almost everything its catalog entry needs is a restatement of facts the package ships. Transcribing those by hand is what let the catalog drift out of sync with upstream.
 
-The hand-written input is one block per component in [`data/catalog-rdfc-requests.ttl`](data/catalog-rdfc-requests.ttl):
+The hand-written input is one block per component in [`data/catalog/catalog-rdfc-requests.ttl`](data/catalog/catalog-rdfc-requests.ttl):
 
 ```turtle
 rdfc:SPARQLIngest a tcs:CatalogRequest ;
@@ -408,8 +414,8 @@ Everything else is derived:
 Two commands, deliberately separate:
 
 ```
-python -m rdfc_catalog_harvest harvest     # network: resolves versions, refreshes data/rdfc_harvest/
-python -m rdfc_catalog_harvest generate    # offline + deterministic: rewrites data/catalog-rdfc.ttl
+python -m rdfc_catalog_harvest harvest     # network: resolves versions, refreshes data/catalog/rdfc_harvest/
+python -m rdfc_catalog_harvest generate    # offline + deterministic: rewrites data/catalog/catalog-rdfc.ttl
 ```
 
 `harvest` resolves each request's version range against the registry (real caret/tilde/prerelease matching, not `dist-tags.latest`), downloads the package, and freezes the Turtle file that declares the component into `data/rdfc_harvest/` next to a JSON record of the registry facts. Both are committed. `generate` reads only that snapshot, so regeneration needs no network, produces byte-identical output, and a diff shows whether a change came from upstream (the snapshot moved) or from policy (the request file moved) — the same discipline as committing a lockfile. `python -m rdfc_catalog_harvest generate --check` exits non-zero if the committed file is stale.
@@ -429,7 +435,7 @@ Rules 1 and 2 were reverse-engineered from `:SparqlIngestShape`, the one hand-wr
 
 `:ShaclPathShape` accepts the six path forms `ShaclPath` implements in rdf-lens (bare IRI, RDF-list sequence, `sh:alternativePath`, `sh:inversePath`, `sh:zeroOrMorePath`, `sh:zeroOrOnePath`) and deliberately rejects `sh:oneOrMorePath`, which SHACL defines but rdf-lens does not implement — see the note in `catalog-rdfc-manual.ttl`. Validation deliberately matches execution rather than the spec. The accept/reject matrix is the executable spec in [`tests/test_shacl_path_shape.py`](tests/test_shacl_path_shape.py).
 
-**What stays hand-written.** [`data/catalog-rdfc-manual.ttl`](data/catalog-rdfc-manual.ttl) holds everything with no upstream source: the orchestrator and its two `tcs:Config` literals (the compose fragment and the Dockerfile), the two runners, and components whose source is not resolvable from a registry or from this repo. Each of the two files contributes its own `dcat:resource` entries to `:DishacledCatalog`, so catalog membership sits next to the definitions it refers to and cannot outlive them.
+**What stays hand-written.** [`data/catalog/catalog-rdfc-manual.ttl`](data/catalog/catalog-rdfc-manual.ttl) holds everything with no upstream source: the orchestrator and its two `tcs:Config` literals (the compose fragment and the Dockerfile), the two runners, and components whose source is not resolvable from a registry or from this repo. Each of the two files contributes its own `dcat:resource` entries to `:DishacledCatalog`, so catalog membership sits next to the definitions it refers to and cannot outlive them.
 
 Scope is RDF-Connect only. LDIO and semantic.works components have no machine-readable upstream definition to derive from, so `catalog-ldio.ttl` and `catalog-sw.ttl` remain hand-written.
 
@@ -540,7 +546,7 @@ You can find a couple of examples in the catalog.ttl file in the data folder. A 
 
 ### 6.2. How to onboard your own components to the catalog
 
-**For an RDF-Connect processor, add three lines and run two commands.** The catalog entry is generated from the package's own `processors.ttl` — see [§3.1](#31-generating-the-rdf-connect-catalog). Append to `data/catalog-rdfc-requests.ttl`:
+**For an RDF-Connect processor, add three lines and run two commands.** The catalog entry is generated from the package's own `processors.ttl` — see [§3.1](#31-generating-the-rdf-connect-catalog). Append to `data/catalog/catalog-rdfc-requests.ttl`:
 
 ```turtle
 rdfc:MyProcessor a tcs:CatalogRequest ;
