@@ -48,6 +48,21 @@ class DockerComposeCompiler(Compiler):
         self.compose_file: dict = {"services": {}}
         self.config_service_name: dict[str, str] = {}
 
+    @classmethod
+    def applies_to(cls, graph_reader: GraphReader) -> bool:
+        """Applicable only in the finalize phase of a compilation run.
+
+        Gates on ``<?> tcs:runPhase tcs:FinalizePhase`` — the marker
+        that :class:`CompilationRunner` attaches to the compilation
+        request between the two fixpoint passes. Before that marker
+        appears, every ``tcs:DockerComposeConfig`` body may still be
+        edited by e.g. :class:`SemanticWorksEnvVarCompiler`, so this
+        compiler must not fire yet.
+        """
+        return not graph_reader.filter(
+            pred="tcs:runPhase", obj="tcs:FinalizePhase"
+        ).df.empty
+
     def compile(self) -> Graph:
         self.merge_docker_compose_configs()
         self.fold_in_depends_on()

@@ -6,13 +6,15 @@ from ..base import Compiler
 
 
 class PipelineSeeder(Compiler):
-    """Bootstrap compiler.
+    """Seed the ``tcs:PipelineBuild`` node from a compilation request.
 
-    Seeds the ``tcs:PipelineBuild`` node so every downstream compiler
-    (and ``PipelineGenerator`` itself, for the ``dct:creator``
-    provenance triples) has a target to attach to, then normalizes
-    blank-node identifiers so later compilers can reference the
-    resulting resources by stable IRI inside SPARQL query strings.
+    Reads the target pipeline id off a ``tcs:CompilationRequest``
+    posted to the graph by :class:`CompilationRunner`, then seeds the
+    ``tcs:PipelineBuild`` node so every downstream compiler (and the
+    runner itself, for the ``dct:creator`` provenance triples) has a
+    target to attach to. Also renames typed blank-node subjects to
+    stable IRIs so later compilers can reference the resulting
+    resources by name inside SPARQL query strings.
 
     Does not narrow the graph — the full catalog stays visible for the
     fixpoint loop so registry compilers such as
@@ -21,19 +23,31 @@ class PipelineSeeder(Compiler):
     :class:`GraphReducer`.
     """
 
-    def __init__(self, pipeline_id: str, graph: Graph) -> None:
-        super().__init__(graph)
-        self.pipeline_id = pipeline_id
-
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Always applicable — the seeder is the entry point of every run."""
-        return True
+        """Applies once a ``tcs:CompilationRequest`` has been posted."""
+        return not graph_reader.filter(
+            pred="rdf:type", obj="tcs:CompilationRequest"
+        ).df.empty
 
     def compile(self) -> Graph:
+        self.lookup_target_pipeline()
         self.seed_pipeline_build()
         self.name_blind_nodes()
         return self.output_reader.graph
+
+    def lookup_target_pipeline(self) -> None:
+        """Read the target pipeline id off the ``tcs:CompilationRequest``.
+
+        Stored on :attr:`pipeline_id` so it stays inspectable after
+        ``compile()`` — same convention as any other intermediate.
+        """
+        self.pipeline_id = receive_first(
+            self.output_reader.select(
+                "?pipeline",
+                "?req a tcs:CompilationRequest ; tcs:targetPipeline ?pipeline .",
+            )["pipeline"]
+        )
 
     def seed_pipeline_build(self) -> None:
         """

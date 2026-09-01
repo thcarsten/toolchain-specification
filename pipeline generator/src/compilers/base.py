@@ -106,19 +106,25 @@ class Compiler(ABC):
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Whether this compiler should run against the given build graph.
+        """Whether this compiler should run against the given graph.
 
-        Default: never applicable. Every concrete compiler listed in a
-        :class:`CompilationConfig`'s ``loop_compilers`` must override
-        this to declare the graph-state condition that triggers it —
-        typically by looking for the presence (or absence) of a
-        specific node type or predicate in the graph.
+        Default: never applicable. Every concrete compiler must
+        declare its trigger explicitly. :class:`CompilationRunner`
+        consults it on every iteration of a single fixpoint loop —
+        a compiler runs as soon as its trigger becomes true, and does
+        not run again once it has (its class is marked as "ran" for
+        the remainder of the compile call).
 
-        Compilers listed in a config's ``finalize_compilers`` are
-        instead invoked unconditionally by
-        :class:`CompilationRunner` after the fixpoint loop settles;
-        their ``applies_to`` is not consulted, though overriding it
-        remains harmless.
+        Typical trigger shapes look for the presence (or absence) of
+        a specific node type or predicate in the graph.
+        :class:`PipelineSeeder` gates on the ``tcs:CompilationRequest``
+        the runner posts at the start; finalize-only compilers (e.g.
+        :class:`DockerComposeCompiler`,
+        :class:`ValidationReportCompiler`) gate on
+        ``<?> tcs:runPhase tcs:FinalizePhase``, which the runner
+        attaches after the loop settles once and re-runs the fixpoint,
+        so those compilers become eligible without ever having fired
+        during the shaping loop.
         """
         return False
 

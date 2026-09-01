@@ -27,14 +27,9 @@ from .sw.mu_dispatcher_compiler import MuDispatcherCompiler
 from .sw.mu_delta_notifier_compiler import MuDeltaNotifierCompiler
 from .sw.mu_authorization_compiler import MuAuthorizationCompiler
 from .sw.error_alert_compiler import ErrorAlertCompiler
-from .presets import (
-    DEFAULT_CATALOG_FILES,
-    DEFAULT_INFERENCE_FILES,
-    default_generation_config,
-    default_validation_config,
-)
 from .runner import CompilationRunner
-from .pipeline_generator import PipelineGenerator, PipelineValidator
+from .pipeline_generator import PipelineGenerator, default_generation_config
+from .pipeline_validator import PipelineValidator, default_validation_config
 from .project_builder import ProjectBuilder
 
 __all__ = [
@@ -46,8 +41,6 @@ __all__ = [
     "ProjectBuilder",
     "default_generation_config",
     "default_validation_config",
-    "DEFAULT_CATALOG_FILES",
-    "DEFAULT_INFERENCE_FILES",
     "PipelineSeeder",
     "GraphReducer",
     "PipelineEnricher",

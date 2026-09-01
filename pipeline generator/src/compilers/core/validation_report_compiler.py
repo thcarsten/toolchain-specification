@@ -64,6 +64,20 @@ class ValidationReportCompiler(Compiler):
         # generate_validation_report() at the end of the pipeline.
         self._shacl_report: GraphReader | None = None
 
+    @classmethod
+    def applies_to(cls, graph_reader: GraphReader) -> bool:
+        """Applicable only in the finalize phase of a compilation run.
+
+        Gates on ``<?> tcs:runPhase tcs:FinalizePhase`` — the marker
+        that :class:`CompilationRunner` attaches to the compilation
+        request between the two fixpoint passes. Before that marker
+        appears, the build is still being shaped, so this compiler
+        must not fire yet.
+        """
+        return not graph_reader.filter(
+            pred="tcs:runPhase", obj="tcs:FinalizePhase"
+        ).df.empty
+
     def compile(self) -> Graph:
         self.normalize_config_shapes()
         self.validate_normal_shapes()
