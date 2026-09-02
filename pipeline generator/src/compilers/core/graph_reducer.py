@@ -25,9 +25,17 @@ class GraphReducer(Compiler):
 
     def __init__(self, graph: Graph) -> None:
         super().__init__(graph)
+        # Cross-checked against the original tcs:CompilationRequest's
+        # tcs:targetPipeline, not just the seeded build's prov:hadPlan —
+        # a build seeded against the wrong plan (a PipelineSeeder bug)
+        # then fails to resolve here instead of silently narrowing to
+        # the wrong pipeline.
         build_and_pipeline = self.output_reader.select(
             "?build ?pipeline",
-            "?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .",
+            """
+            ?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .
+            ?request a tcs:CompilationRequest ; tcs:targetPipeline ?pipeline .
+            """,
         )
         self.build_id: str = receive_first(build_and_pipeline["build"])
         self.pipeline_id: str = receive_first(build_and_pipeline["pipeline"])

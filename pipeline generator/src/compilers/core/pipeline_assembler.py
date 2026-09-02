@@ -23,16 +23,23 @@ class PipelineAssembler(Compiler):
         for a pipeline definition with at least one step (a
         ``p-plan:isStepOfPlan`` edge pointing at it).
 
-        Keyed off the seeded build's ``prov:hadPlan`` (same pattern as
-        :class:`compilers.core.graph_reducer.GraphReducer`), not a
-        graph-wide scan for "the" ``tcs:PipelineDefinition`` — the
+        Keyed off the seeded build's ``prov:hadPlan``, cross-checked
+        against the original ``tcs:CompilationRequest``'s
+        ``tcs:targetPipeline`` (same pattern as
+        :class:`compilers.core.graph_reducer.GraphReducer`) — not a
+        graph-wide scan for "the" ``tcs:PipelineDefinition``, since the
         shared production catalog intentionally bundles more than one
-        pipeline definition so any one can be selected by id, so a
-        graph-wide uniqueness check is wrong here and would never fire.
+        pipeline definition so any one can be selected by id. The
+        cross-check means a build seeded against the wrong plan (a
+        ``PipelineSeeder`` bug) fails closed here instead of silently
+        assembling the wrong pipeline.
         """
         pipelines = graph_reader.select(
             "?pipeline",
-            "?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .",
+            """
+            ?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .
+            ?request a tcs:CompilationRequest ; tcs:targetPipeline ?pipeline .
+            """,
         )["pipeline"].unique()
         if len(pipelines) != 1:
             return False
@@ -48,15 +55,20 @@ class PipelineAssembler(Compiler):
 
     def lookup_pipeline_id(self) -> None:
         """Read the target pipeline id off the seeded ``tcs:PipelineBuild``
-        node's ``prov:hadPlan`` — same pattern as :class:`GraphReducer`,
-        not a graph-wide scan for "the" ``tcs:PipelineDefinition``, which
-        breaks once the catalog bundles more than one (as the shared
-        production config intentionally does).
+        node's ``prov:hadPlan``, cross-checked against the original
+        ``tcs:CompilationRequest``'s ``tcs:targetPipeline`` — same
+        pattern as :class:`GraphReducer`, not a graph-wide scan for "the"
+        ``tcs:PipelineDefinition``, which breaks once the catalog bundles
+        more than one (as the shared production config intentionally
+        does).
         """
         self.pipeline_id = receive_first(
             self.output_reader.select(
                 "?pipeline",
-                "?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .",
+                """
+                ?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .
+                ?request a tcs:CompilationRequest ; tcs:targetPipeline ?pipeline .
+                """,
             )["pipeline"],
         )
 
