@@ -4,7 +4,8 @@
 around this file's own :func:`default_generation_config`. The config
 declares which catalog and inference files to load, and which
 compilers participate — every shaping compiler in the fixpoint loop,
-plus :class:`DockerComposeCompiler` as an explicit finalize call.
+plus :class:`ValidationReportCompiler` and
+:class:`DockerComposeCompiler` as finalize-phase compilers.
 
 Callers who already have a loaded ``catalog_graph`` (tests, the demo
 notebook) pass it directly:
@@ -37,6 +38,7 @@ from .core.pipeline_assembler import PipelineAssembler
 from .core.pipeline_enricher import PipelineEnricher
 from .core.pipeline_seeder import PipelineSeeder
 from .core.segment_tagger import SegmentTagger
+from .core.validation_report_compiler import ValidationReportCompiler
 from .ldio.config_compiler import LdioConfigCompiler
 from .ldio.http_in_config_compiler import LdioHttpInConfigCompiler
 from .ldio.http_out_config_compiler import LdioHttpOutConfigCompiler
@@ -92,10 +94,11 @@ def default_generation_config(
     """Preset config for compilation into a runnable project.
 
     Includes every shaping compiler alongside
+    :class:`ValidationReportCompiler` and
     :class:`DockerComposeCompiler` in a single flat list — the
-    :class:`CompilationRunner` fixpoint handles ordering, and
-    :class:`DockerComposeCompiler`'s ``applies_to`` (which gates on
-    the finalize phase) keeps it from firing before the loop settles.
+    :class:`CompilationRunner` fixpoint handles ordering, and both
+    finalize compilers' ``applies_to`` (which gates on the finalize
+    phase) keeps them from firing before the loop settles.
     """
     return CompilationConfig(
         pipeline_id=pipeline_id,
@@ -133,8 +136,9 @@ def default_generation_config(
             MuDeltaNotifierCompiler,
             MuAuthorizationCompiler,
             ErrorAlertCompiler,
-            # Fires only in the finalize phase, gated by its own
+            # Fire only in the finalize phase, gated by their own
             # ``applies_to`` on ``tcs:runPhase tcs:FinalizePhase``.
+            ValidationReportCompiler,
             DockerComposeCompiler,
         ],
     )

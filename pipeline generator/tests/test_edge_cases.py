@@ -4,7 +4,7 @@ checklist and the suite never drift apart."""
 import pytest
 
 from testing_helpers import (
-    DATA_DIR,
+    CATALOG_DIR,
     SHAPES_FILE,
     assert_compile_raises,
     assert_shacl_violation,
@@ -755,7 +755,10 @@ def test_rdfc_orchestrator_missing_dockercompose_config_triggers_shape():
     from rdflib import Graph
 
     g = Graph()
-    g.parse(str(DATA_DIR / SHAPES_FILE), publicID="file:///workspace/pipeline/")
+    # .as_uri() so rdflib doesn't misread a Windows ``C:\...`` path as URL scheme ``c:``.
+    g.parse(
+        (CATALOG_DIR / SHAPES_FILE).as_uri(), publicID="file:///workspace/pipeline/"
+    )
     assert_shacl_violation(
         g, message_contains="must carry at least one tcs:DockerComposeConfig"
     )
@@ -765,7 +768,9 @@ def test_rdfc_orchestrator_missing_dockerimage_config_triggers_shape():
     from rdflib import Graph
 
     g = Graph()
-    g.parse(str(DATA_DIR / SHAPES_FILE), publicID="file:///workspace/pipeline/")
+    g.parse(
+        (CATALOG_DIR / SHAPES_FILE).as_uri(), publicID="file:///workspace/pipeline/"
+    )
     assert_shacl_violation(
         g, message_contains="must carry at least one tcs:DockerImageConfig"
     )
