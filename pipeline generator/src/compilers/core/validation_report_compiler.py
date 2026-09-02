@@ -26,17 +26,20 @@ import pandas as pd
 from rdflib import BNode, Graph, Literal, URIRef
 from rdfine import GraphReader
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 from ..utils import attach_file
 
 
 class ValidationReportCompiler(Compiler):
     """
-    Invoked as the finalize call of a validation run — see
-    :func:`compilers.presets.default_validation_config`. Runs after the
-    fixpoint loop terminates, so it sees every shaping compiler's
-    contribution to the (validation-mode) build. Not used in the
-    generation preset.
+    Fires only in the finalize phase of a compilation run — its
+    :meth:`applies_to` gates on ``<?> tcs:runPhase tcs:FinalizePhase``,
+    the marker :class:`compilers.compilation_runner.CompilationRunner` attaches
+    between its two fixpoint passes. Listed in both
+    :data:`compilers.pipeline_generator.PipelineGeneratorConfig` and
+    :data:`compilers.pipeline_validator.PipelineValidatorConfig`,
+    so it sees every shaping compiler's contribution to the build
+    regardless of mode.
 
     Generic application-profile shapes in
     ``catalog-application-profile-shapes.ttl`` (e.g.

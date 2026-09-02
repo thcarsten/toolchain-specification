@@ -3,7 +3,7 @@ from rdfine import GraphReader
 import pandas as pd
 import json
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 from ..utils import extract_config, parse_docker_compose_config
 
 

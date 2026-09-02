@@ -4,7 +4,7 @@ import pandas as pd
 import re
 import yaml
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 from ..utils import attach_file, extract_config
 
 

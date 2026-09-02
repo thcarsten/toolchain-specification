@@ -1,27 +1,23 @@
 """Compiler base class.
 
 Every concrete compiler enriches a ``tcs:PipelineBuild`` graph and
-returns it. Execution order among compilers is not fixed by any
-class-level rank — it emerges from each compiler's :meth:`applies_to`
-trigger condition, which is evaluated by
-:class:`compilers.runner.CompilationRunner` against the current state
-of the build graph on every iteration of a fixpoint loop. A compiler
-runs as soon as its trigger becomes true and does not run again once
-it has (its class is marked as "ran" for the remainder of the
-compilation).
+returns it. Execution order emerges from each compiler's
+:meth:`applies_to` trigger condition, which is evaluated by
+:class:`compilers.compilation_runner.CompilationRunner` against the
+current state of the build graph on every iteration of a fixpoint
+loop. A compiler runs as soon as its trigger becomes true and does
+not run again once it has.
 
-Which compilers a run considers — for the fixpoint loop and as
-explicit finalize calls after it settles — is declared on a
-:class:`compilers.config.CompilationConfig`, not by any global
-registry on this base class. The two presets in
-:mod:`compilers.presets` populate the config for the two supported
-modes; :func:`compilers.pipeline_generator.PipelineGenerator` and
-:func:`compilers.pipeline_generator.PipelineValidator` are just
-factories over those presets.
+Which compilers a run considers is declared on a
+:class:`compilers.compilation_runner.CompilationConfig`. Two presets
+ship with the package \u2014
+:data:`compilers.pipeline_generator.PipelineGeneratorConfig` and
+:data:`compilers.pipeline_validator.PipelineValidatorConfig`;
+:func:`compilers.pipeline_generator.PipelineGenerator` and
+:func:`compilers.pipeline_validator.PipelineValidator` wrap them.
 
 Provenance (``dct:creator`` on the build) is written by
-:class:`CompilationRunner` immediately after each compiler runs — the
-compiler itself does not need to concern itself with it.
+:class:`CompilationRunner` immediately after each compiler runs.
 """
 
 from abc import ABC, abstractmethod
@@ -36,45 +32,46 @@ class Compiler(ABC):
     Every subclass:
 
     - Takes a single ``rdflib.Graph`` in ``__init__`` (the pipeline
-      build graph). May extend with additional positional arguments via
-      ``super().__init__(graph)``.
+      build graph).
     - Implements :meth:`compile`, which mutates :attr:`output_reader`
       and returns ``self.output_reader.graph``. ``compile()`` itself must
       stay a thin, ordered list of calls to the compiler's own *public*
-      methods — no inline logic. Each public method is one traceable,
+      methods \u2014 no inline logic. Each public method is one traceable,
       verb-named step (``lookup_``, ``fold_in_``, ``normalize_``,
-      ``attach_``, …); private (``_``-prefixed) methods are helpers
+      ``attach_``, \u2026); private (``_``-prefixed) methods are helpers
       subsumed by exactly one public step and are never called directly
       from ``compile()``.
     - Overrides :meth:`applies_to` to declare the graph-state
       condition under which the compiler should run. The default
       returns ``False``, so every concrete compiler listed in a
-      :class:`CompilationConfig`'s ``loop_compilers`` must declare
-      its trigger explicitly.
+      :class:`CompilationConfig`'s ``compilers`` list must declare
+      its trigger explicitly. Finalize-phase compilers additionally
+      gate on ``<?> tcs:runPhase tcs:FinalizePhase`` \u2014 the marker
+      :class:`CompilationRunner` attaches between its two fixpoint
+      passes.
 
     Every compiler has two readers over the build graph:
 
-    - :attr:`input_reader` — a snapshot of the graph as it was at
+    - :attr:`input_reader` \u2014 a snapshot of the graph as it was at
       construction time. Never mutated by the compiler, so it acts as
       the "before" reference for the compilation delta.
-    - :attr:`output_reader` — starts as the same state and is
+    - :attr:`output_reader` \u2014 starts as the same state and is
       re-assigned by :meth:`compile` as the compiler adds or removes
       triples. Its final value is what :meth:`compile` returns.
 
     Because both readers are available after :meth:`compile` has run,
     the base class exposes :attr:`added_triples` and
     :attr:`removed_triples` so callers (and tests) can inspect exactly
-    what each compiler contributed to the build graph, without any
-    per-compiler bookkeeping.
+    what each compiler contributed to the build graph.
 
     FILE-producing compilers additionally call the free helper
     :func:`compilers.utils.attach_file` from within :meth:`compile`
     to register their output as an ``spdx:File`` on the
     ``tcs:PipelineBuild`` node.
 
-    Concrete compilers do not self-register. Membership in a run is
-    declared on the :class:`compilers.config.CompilationConfig` handed
-    to :class:`compilers.runner.CompilationRunner`.
+    Membership in a run is declared on the
+    :class:`compilers.compilation_runner.CompilationConfig` handed to
+    :class:`compilers.compilation_runner.CompilationRunner`.
     """
 
     def __init__(self, graph: Graph) -> None:
@@ -144,12 +141,12 @@ class Compiler(ABC):
         Implementations must update :attr:`output_reader` (typically
         by re-assigning it to the result of ``add`` / ``remove`` /
         ``construct`` calls) and end with
-        ``return self.output_reader.graph`` so :attr:`log` can be
-        computed against :attr:`input_reader` afterwards.
+        ``return self.output_reader.graph`` so :attr:`added_triples`
+        and :attr:`removed_triples` can be computed against
+        :attr:`input_reader` afterwards.
 
-        Heavy lifting belongs here (not in ``__init__``) so the work
-        happens predictably at one moment in time and stays composable
-        under the registry dispatch.
+        Heavy lifting belongs here so the work happens predictably at
+        one moment in time.
         """
 
     # ------------------------------------------------------------------

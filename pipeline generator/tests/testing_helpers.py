@@ -16,6 +16,7 @@ Two-pillar convention (see EDGE_CASES.md):
   PipelineBuild graph looks exactly as expected (`compile_pipeline`).
 """
 
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -57,9 +58,6 @@ NOTEBOOK_FILES = [
     f"catalog/{SHAPES_FILE}",
 ]
 
-# The demonstrator pipeline every non-synthetic test compiles.
-PIPELINE_ID = "demo:DishacledPipeline"
-
 # Both rule files, in the order the notebook applies them. The
 # RDF-Connect rules were split out of the neutral set so their scope is
 # visible; the split has a quiet failure mode, which is why nothing
@@ -83,9 +81,9 @@ def parse_extra(graph: Graph, ttl: str) -> Graph:
 
 def load_reader(graph: Graph) -> GraphReader:
     """Wrap `graph` and run RDFS/channel inference — the same prep step
-    ``PipelineGenerator`` expects. Public so tests that need to invoke
-    ``PipelineGenerator`` directly (e.g. to assert on the exception
-    type) don't have to duplicate it."""
+    ``CompilationRunner.load_graph`` performs. Public so
+    ``assert_shacl_violation`` can validate without loading a
+    ``CompilationRunner``."""
     reader = GraphReader(graph)
     for rules in INFERENCE_RULES:
         reader = reader.infer(str(RULES_DIR / rules))
@@ -109,6 +107,34 @@ def assert_shacl_violation(graph: Graph, *, message_contains: str) -> None:
     )
 
 
+def _make_runner_for_graph(graph: Graph, pipeline_id: str):
+    """Serialize ``graph`` to a tempfile and build a ``CompilationRunner``
+    around a synthetic ``CompilationConfig`` whose only ``graph_files``
+    entry is that tempfile.
+
+    Every test that mutates a base catalog in memory (via ``parse_extra``)
+    goes through this so it can still hand the resulting graph to the
+    runner without violating the runner's one-input-mode contract.
+    Returns the runner plus the ``TemporaryDirectory`` object the caller
+    must keep alive until compile finishes.
+    """
+    from compilers import (
+        CompilationConfig,
+        CompilationRunner,
+        PipelineGeneratorConfig,
+    )
+
+    tmpdir = tempfile.TemporaryDirectory()
+    graph_path = Path(tmpdir.name) / "input.ttl"
+    graph.serialize(destination=str(graph_path), format="turtle")
+    config = CompilationConfig(
+        compilers=PipelineGeneratorConfig.compilers,
+        graph_files=[graph_path],
+        inference_files=[RULES_DIR / rules for rules in INFERENCE_RULES],
+    )
+    return CompilationRunner(pipeline_id, config), tmpdir
+
+
 def assert_compile_raises(
     graph: Graph,
     pipeline_id: str,
@@ -118,21 +144,23 @@ def assert_compile_raises(
 ) -> None:
     """Pillar 1b — some edge cases are caught by a compiler-level guard
     (a Python exception) instead of a SHACL shape; assert that."""
-    from compilers import PipelineGenerator
-
-    with pytest.raises(exc_type, match=match):
-        PipelineGenerator(pipeline_id, load_reader(graph).graph).compile()
+    runner, tmpdir = _make_runner_for_graph(graph, pipeline_id)
+    try:
+        with pytest.raises(exc_type, match=match):
+            runner.compile()
+    finally:
+        tmpdir.cleanup()
 
 
 def compile_pipeline(graph: Graph, pipeline_id: str):
     """Pillar 2 — run the real generator end-to-end; returns
-    (generator, GraphReader-over-build-graph) for the test to inspect."""
-    from compilers import PipelineGenerator
-
-    reader = load_reader(graph)
-    gen = PipelineGenerator(pipeline_id, reader.graph)
-    build_graph = gen.compile()
-    return gen, GraphReader(build_graph)
+    (runner, GraphReader-over-build-graph) for the test to inspect."""
+    runner, tmpdir = _make_runner_for_graph(graph, pipeline_id)
+    try:
+        build_graph = runner.compile()
+    finally:
+        tmpdir.cleanup()
+    return runner, GraphReader(build_graph)
 
 
 def pipeline_ttl_content(build: GraphReader) -> str:

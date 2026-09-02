@@ -28,32 +28,39 @@ def catalog_reader(data_dir: Path):
     return load_reader(graph)
 
 
-def test_notebook_file_list_matches_this_test(repo_root: Path):
-    """Keep the notebook's load list and this test's in sync."""
-    import json
+def test_notebook_files_match_default_config(data_dir: Path):
+    """Every file the demo tests load must also be in the shipped config."""
+    from compilers import PipelineGeneratorConfig
 
-    notebook = json.loads((repo_root / "src/demo.ipynb").read_text(encoding="utf-8"))
-    source = "".join(notebook["cells"][2]["source"])
+    config_paths = {p.resolve() for p in PipelineGeneratorConfig.graph_files}
     for name in NOTEBOOK_FILES:
-        assert name in source, f"{name} missing from demo.ipynb load list"
+        assert (
+            data_dir / name
+        ).resolve() in config_paths, (
+            f"{name} missing from PipelineGeneratorConfig.graph_files"
+        )
 
 
-def test_notebook_rule_list_matches_this_test(repo_root: Path):
-    """Same for the rule files, and that the set is the whole set.
+def test_notebook_rules_match_default_config(data_dir: Path):
+    """Every rule file the demo tests load must also be in the shipped config,
+    and the on-disk set matches ``INFERENCE_RULES``.
 
     Splitting the RDF-Connect rules out of inference_rules.yaml made it
     possible to load a graph that is *almost* fully inferred: everything
     still types correctly, but tcs:derivedReadsFrom is never derived and
     tcs:RdfcStepChannelWiringShape passes because it has nothing to check.
-    Nothing else in the suite would notice, so the directory listing is
-    checked against the list rather than only the notebook against it.
+    The directory-listing check catches a rule file added without being
+    added to ``INFERENCE_RULES``.
     """
-    import json
+    from compilers import PipelineGeneratorConfig
 
-    notebook = json.loads((repo_root / "src/demo.ipynb").read_text(encoding="utf-8"))
-    source = "".join(notebook["cells"][2]["source"])
+    config_paths = {p.resolve() for p in PipelineGeneratorConfig.inference_files}
     for name in INFERENCE_RULES:
-        assert name in source, f"{name} missing from demo.ipynb infer list"
+        assert (
+            RULES_DIR / name
+        ).resolve() in config_paths, (
+            f"{name} missing from PipelineGeneratorConfig.inference_files"
+        )
 
     on_disk = {path.name for path in RULES_DIR.glob("*.yaml")}
     assert on_disk == set(INFERENCE_RULES), (
@@ -79,9 +86,9 @@ def test_catalog_conforms_to_its_application_profile(catalog_reader):
 
 
 def test_pipeline_still_compiles(catalog_reader):
-    from compilers import PipelineGenerator, ProjectBuilder
+    from compilers import PipelineGenerator, FileMaterializer
 
-    generator = PipelineGenerator(PIPELINE_ID, catalog_reader.graph)
+    generator = PipelineGenerator(PIPELINE_ID)
     build = generator.compile()
 
     ran = {cls.__name__ for cls in generator.compilers}
@@ -89,7 +96,7 @@ def test_pipeline_still_compiles(catalog_reader):
     assert "RdfcDockerFileCompiler" in ran
     assert "DockerComposeCompiler" in ran
 
-    files = ProjectBuilder(build).files
+    files = FileMaterializer(build).files
     produced = {f"{row['filepath']}/{row['filename']}" for _, row in files.iterrows()}
     assert "rdfc/pipeline.ttl" in produced
     assert "rdfc/package.json" in produced
@@ -104,10 +111,10 @@ def test_emitted_pipeline_imports_only_used_processors(catalog_reader):
     runner and are specialised by a step, so an unused catalog entry (now
     that HttpFetch and LogProcessorPy exist) must not leak in.
     """
-    from compilers import PipelineGenerator, ProjectBuilder
+    from compilers import PipelineGenerator, FileMaterializer
 
-    build = PipelineGenerator(PIPELINE_ID, catalog_reader.graph).compile()
-    files = ProjectBuilder(build).files
+    build = PipelineGenerator(PIPELINE_ID).compile()
+    files = FileMaterializer(build).files
     pipeline_ttl = next(
         row["content"]
         for _, row in files.iterrows()
@@ -122,10 +129,10 @@ def test_emitted_pipeline_imports_only_used_processors(catalog_reader):
 def test_generated_package_json_lists_used_packages(catalog_reader):
     import json
 
-    from compilers import PipelineGenerator, ProjectBuilder
+    from compilers import PipelineGenerator, FileMaterializer
 
-    build = PipelineGenerator(PIPELINE_ID, catalog_reader.graph).compile()
-    files = ProjectBuilder(build).files
+    build = PipelineGenerator(PIPELINE_ID).compile()
+    files = FileMaterializer(build).files
     body = next(
         row["content"]
         for _, row in files.iterrows()

@@ -26,7 +26,6 @@ import pytest
 
 from testing_helpers import NOTEBOOK_FILES, load_reader
 
-
 DERIVED = """
 { ?step tcs:derivedReadsFrom ?channel . BIND('read' AS ?dir) }
 UNION
@@ -197,10 +196,10 @@ def test_miswired_step_is_rejected(data_dir: Path):
 
 def test_derived_predicates_do_not_leak_into_emitted_files(reader):
     """They are a validation aid, not part of any generated artifact."""
-    from compilers import PipelineGenerator, ProjectBuilder
+    from compilers import PipelineGenerator, FileMaterializer
 
-    build = PipelineGenerator("demo:DishacledPipeline", reader.graph).compile()
-    files = ProjectBuilder(build).files
+    build = PipelineGenerator("demo:DishacledPipeline").compile()
+    files = FileMaterializer(build).files
     for _, row in files.iterrows():
         assert "derivedReadsFrom" not in str(row["content"])
         assert "derivedWritesTo" not in str(row["content"])

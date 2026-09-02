@@ -2,7 +2,7 @@ from rdflib import BNode, Graph, URIRef
 
 from rdfine import GraphReader
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 
 
 class PipelineEnricher(Compiler):

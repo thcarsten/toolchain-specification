@@ -3,11 +3,11 @@
 ``PipelineGenerator`` produces a self-describing build graph in which
 every generated artifact is attached to the ``tcs:PipelineBuild`` as an
 ``spdx:File`` node carrying ``tcs:filename``, ``tcs:filepath`` and
-``tcs:literal``. :class:`ProjectBuilder` is the IO-side counterpart: it
-walks those nodes and writes each file out under a target directory.
+``tcs:literal``. :class:`FileMaterializer` is the IO-side counterpart:
+it walks those nodes and writes each file out under a target directory.
 
-It is intentionally not a :class:`Compiler` subclass — compilers are
-graph-to-graph transformations, while ``ProjectBuilder`` is the
+It sits outside the :class:`Compiler` hierarchy because compilers are
+graph-to-graph transformations, while ``FileMaterializer`` crosses the
 filesystem boundary.
 """
 
@@ -19,16 +19,16 @@ from rdflib import Graph
 from rdfine import GraphReader
 
 
-class ProjectBuilder:
+class FileMaterializer:
     """Write the ``spdx:File`` nodes of a build graph to a target directory.
 
     Typical use::
 
-        gen = PipelineGenerator(":DemonstratorPipeline", catalog_graph)
+        gen = PipelineGenerator("demo:DishacledPipeline")
         build_graph = gen.compile()
 
-        builder = ProjectBuilder(build_graph)
-        builder.write("./out/dishacled-full")
+        materializer = FileMaterializer(build_graph)
+        materializer.write("./out/dishacled-full")
 
     The collected file records are exposed on :attr:`files` as a
     ``pandas.DataFrame`` with columns ``filepath``, ``filename`` and
@@ -80,8 +80,5 @@ class ProjectBuilder:
         if ".env.example" in self.files["filename"].astype(str).values:
             env_file = target_root / ".env"
             if not env_file.exists():
-                print(
-                    "Deployment secrets are required. "
-                    f"Supply a {env_file}. "
-                )
+                print("Deployment secrets are required. " f"Supply a {env_file}. ")
         return written

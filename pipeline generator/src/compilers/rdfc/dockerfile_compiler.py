@@ -33,7 +33,7 @@ import pandas as pd
 from rdflib import Graph, Literal, URIRef
 from rdfine import GraphReader, receive_first
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 from ..utils import attach_file, extract_config, parse_docker_compose_config
 
 # Path (relative to the generated docker-compose.yml) at which

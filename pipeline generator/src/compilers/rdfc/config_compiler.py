@@ -2,7 +2,7 @@ from rdflib import Graph, URIRef
 from rdfine import GraphReader, GraphDict, receive_first
 import re
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 from ..utils import attach_file, extract_config, rewrite_compose_volume_host_path
 
 # The RDF-Connect Python / Node runners mount their pipeline

@@ -1,7 +1,7 @@
 from rdflib import Graph
 from rdfine import GraphReader, GraphDict
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 from ..utils import attach_file, parse_docker_compose_config
 
 # Top-level compose keys whose values are name-to-body mappings. Their
@@ -33,13 +33,14 @@ class DockerComposeCompiler(Compiler):
     """
     Compiles the docker compose configuration file.
 
-    Invoked as an explicit finalize call by
-    :class:`compilers.runner.CompilationRunner` after the fixpoint
-    loop terminates, so every other compiler that may still be
-    editing ``tcs:DockerComposeConfig`` bodies (e.g.
-    :class:`SemanticWorksEnvVarCompiler`) has already finished.
-    Membership in the generation preset's ``finalize_compilers`` is
-    what makes this ordering fixed, not any per-class flag.
+    Fires only in the finalize phase of a compilation run — its
+    :meth:`applies_to` gates on ``<?> tcs:runPhase tcs:FinalizePhase``,
+    the marker :class:`compilers.compilation_runner.CompilationRunner` attaches
+    between its two fixpoint passes. That is what fixes the ordering:
+    every other compiler that may still be editing
+    ``tcs:DockerComposeConfig`` bodies (e.g.
+    :class:`SemanticWorksEnvVarCompiler`) has already finished by
+    the time this one becomes eligible.
     """
 
     def __init__(self, graph: Graph) -> None:

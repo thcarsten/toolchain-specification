@@ -6,7 +6,7 @@ import pandas as pd
 from rdflib import Graph, Literal, URIRef
 from rdfine import GraphReader, receive_first
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 from ..utils import attach_file
 
 

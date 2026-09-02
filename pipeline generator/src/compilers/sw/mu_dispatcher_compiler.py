@@ -9,7 +9,7 @@ still TODO in the semantic model.
 from rdflib import Graph
 from rdfine import GraphReader
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 from ..utils import attach_file, read_literal
 
 _COMPONENT_IRI = "sw:mu-dispatcher"

@@ -3,7 +3,7 @@ from textwrap import dedent
 from rdfine import GraphReader, receive_first
 from rdflib import Graph
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 from ..utils import attach_file, extract_config
 
 

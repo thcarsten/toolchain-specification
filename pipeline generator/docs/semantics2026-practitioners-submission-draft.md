@@ -244,7 +244,7 @@ file, e.g. `https://www.w3.org/1999/02/22-rdf-syntax-ns` with an
 | Time | On screen | Voice-over (optional) |
 | --- | --- | --- |
 | 0:00–0:10 | `pipeline_definition_demo.ttl` open in the editor — highlight the three steps and the FOAF URL config. | "A pipeline in three RDF triples." |
-| 0:10–0:20 | Jupyter cell: `gen = PipelineGenerator(":DemoPipeline", catalog); build = gen.compile(); ProjectBuilder(build).write("./out/demo")`. Show the resulting file tree in the file browser. | "The generator resolves components, assigns them to microservices, and produces a Compose stack." |
+| 0:10–0:20 | Jupyter cell: `gen = PipelineGenerator(":DemoPipeline", catalog); build = gen.compile(); FileMaterializer(build).write("./out/demo")`. Show the resulting file tree in the file browser. | "The generator resolves components, assigns them to microservices, and produces a Compose stack." |
 | 0:20–0:30 | Open `out/demo/docker-compose.yml` — reveal the two services. Open `out/demo/rdfc/pipeline.ttl` — reveal the auto-inserted `rdfc:HttpServer` step. Open `out/demo/validation/validation-report.ttl` — cursor on `sh:conforms true`, hold ~2 s. | "The HTTP bridge between LDIO and RDFC was not written by hand — the generator inferred it, and SHACL confirms the composition is valid." |
 | 0:30–0:60 | Terminal: `cd out/demo && docker compose up -d && docker compose logs -f rdfc`. RDF pulses appear every 5 s. | "And there it is — data flowing across two frameworks, wired up automatically from one RDF description." |
 

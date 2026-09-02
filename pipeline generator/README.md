@@ -11,7 +11,7 @@
 ## 1. Introduction
 In this repo you find the codebase for the tool "pipeline generator". As the name suggests, the pipeline generator automatically generates pipelines based on a semantic description of a pipeline. The pipeline generator accepts pipeline definitions which are written in RDF and follow the [semantic model](https://github.com/thcarsten/toolchain-specification/tree/main/semantic%20model) of the toolchain specification. Based on the pipeline definition, it looks up components and their dependencies in a component catalog, and generates a Docker Compose file wiring together the containers that resolve these dependencies. It also generates the framework-specific configuration files necessary to run the pipelines. The [data folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/data) is split into `catalog/` (framework catalogs + SHACL shapes + the committed `rdfc_harvest/` snapshot), `pipelines/` (the pipeline definitions used by the demos), and `inference_rules/` (RDFS/channel entailment rules loaded before compilation). Currently four frameworks are supported: RDF-Connect, LDIO, Apache NiFi and semantic.works.
 
-The codebase is found in the [src-folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/src). It consists of three packages: `rdfine` provides ergonomic graph IO and transformation primitives (see its own [README](src/rdfine/README.md)); `compilers` is the pipeline generator itself, built around a small `Compiler` ABC and a self-registering dispatch system orchestrated by `PipelineGenerator`; `rdfc_catalog_harvest` is a pre-compile step that generates the RDF-Connect section of the component catalog from the packages' own published definitions (see [§3.1](#31-generating-the-rdf-connect-catalog)). Section 4 describes the architecture in detail.
+The codebase is found in the [src-folder](https://github.com/thcarsten/toolchain-specification/tree/main/pipeline%20generator/src). It consists of three packages: `rdfine` provides ergonomic graph IO and transformation primitives (see its own [README](src/rdfine/README.md)); `compilers` is the pipeline generator itself, built around a small `Compiler` ABC and a self-registering dispatch system orchestrated by `PipelineGenerator`; `rdfc_catalog_harvest` is a pre-compile step that generates the RDF-Connect section of the component catalog from the packages' own published definitions (see [§4.10](#410-generating-the-rdf-connect-catalog)). Section 4 describes the architecture in detail.
 
 ## 2. Installation
 
@@ -58,77 +58,63 @@ pip install "./src/rdfine[dev]"
 PYTHONPATH=src pytest tests/ -q
 ```
 
-The tests cover the catalog generator (see [§3.1](#31-generating-the-rdf-connect-catalog)) and an end-to-end check that the merged catalog validates and the demonstrator pipeline still compiles. They need no network — catalog generation runs off the committed snapshot in `data/catalog/rdfc_harvest/`.
+The tests cover the catalog generator (see [§4.10](#410-generating-the-rdf-connect-catalog)) and an end-to-end check that the merged catalog validates and the demonstrator pipeline still compiles. They need no network — catalog generation runs off the committed snapshot in `data/catalog/rdfc_harvest/`.
 
 ## 3. Workflow
-The `CompilationRunner` class wraps the full compilation flow. It runs against a `CompilationConfig` that declares which graph files to parse, which inference rules to apply on top, and which compilers participate — both in the fixpoint loop and as explicit finalize calls after it settles. Two named factories over the runner ship with the package, each populating a different preset config:
+The `CompilationRunner` class wraps the full compilation flow. It runs against a `CompilationConfig` that declares which graph files to parse, which inference rules to apply on top, and which compilers participate — a single flat list, evaluated by each compiler's `applies_to` trigger in a two-phase fixpoint. The pipeline id being compiled is not part of the config; it is passed to `CompilationRunner` directly, so one config can compile many pipelines. Two named constants + factories ship with the package:
 
-- `PipelineGenerator(pipeline_id, catalog_graph)` — compiles into a runnable project.
-- `PipelineValidator(pipeline_id, catalog_graph)` — pre-generation SHACL/throughput validation only.
+- `PipelineGeneratorConfig` / `PipelineGenerator(pipeline_id)` — compiles into a runnable project.
+- `PipelineValidatorConfig` / `PipelineValidator(pipeline_id)` — pre-generation SHACL/throughput validation only.
 
-Both accept a pre-loaded catalog graph. Callers who prefer to declare the catalog as file paths can build a `CompilationConfig` directly via `default_generation_config` / `default_validation_config` in `compilers.presets`.
+Both configs bake in absolute paths to the catalog, the shipped pipeline definitions, and the inference-rule files under `data/`, so the factories only need a pipeline id. Callers with their own file set (a different catalog, a synthetic test fixture) construct a `CompilationConfig` directly and hand it to `CompilationRunner(pipeline_id, config)`.
 
 ```python
-from compilers import PipelineGenerator, PipelineValidator, ProjectBuilder, ValidationReportCompiler
+from compilers import PipelineGenerator, PipelineValidator, FileMaterializer, ValidationReportCompiler
 
 # Pre-generation validation
-val = PipelineValidator(":DemonstratorPipeline", catalog_graph)
+val = PipelineValidator(":DemonstratorPipeline")
 val.compile()
 assert val.compilers[ValidationReportCompiler].conforms is True
 
 # Generation
-gen = PipelineGenerator(":DemonstratorPipeline", catalog_graph)
+gen = PipelineGenerator(":DemonstratorPipeline")
 build_graph = gen.compile()
-ProjectBuilder(build_graph).write("./out/dishacled-full")
+FileMaterializer(build_graph).write("./out/dishacled-full")
 ```
 
-The returned `build_graph` contains both the semantic description of the pipeline build and the compiled files as `spdx:File` nodes attached to the `tcs:PipelineBuild` via `tcs:compiledFile` (with `tcs:filename`, `tcs:filepath`, and `tcs:literal` carrying the file body). The build graph is therefore self-describing. `ProjectBuilder` iterates its `spdx:File` nodes and writes them to disk.
+The returned `build_graph` contains both the semantic description of the pipeline build and the compiled files as `spdx:File` nodes attached to the `tcs:PipelineBuild` via `tcs:compiledFile` (with `tcs:filename`, `tcs:filepath`, and `tcs:literal` carrying the file body). The build graph is therefore self-describing. `FileMaterializer` iterates its `spdx:File` nodes and writes them to disk.
 
-Internally, `CompilationRunner` runs one bootstrap step, then a fixpoint loop over its config's `loop_compilers`, then explicit finalize calls listed in its config's `finalize_compilers`:
+Internally, `CompilationRunner` runs a two-phase fixpoint over its config's flat `compilers` list, with a small handshake in between:
 
-1. **Bootstrap** — the config's `bootstrap_compiler` (currently `PipelineSeeder`) is instantiated with `(pipeline_id, catalog_graph)` — the only compiler whose constructor needs the pipeline id. It seeds the `tcs:PipelineBuild` node (linked to the definition via `prov:hadPlan`) and renames any blank-node subjects to stable IRIs so later compilers have named targets to attach to.
-2. **Fixpoint loop** — every iteration, `CompilationRunner` asks every not-yet-run compiler in `config.loop_compilers` whether its `applies_to` trigger is satisfied by the current build graph, and runs those that are. The loop terminates when a full scan finds nothing eligible.
-3. **Explicit finalize calls** — every compiler in `config.finalize_compilers` is invoked directly, in list order, unconditionally. Their `applies_to` is not consulted — being listed is itself the trigger. The generation preset ends with `DockerComposeCompiler`; the validation preset ends with `ValidationReportCompiler`.
+1. **Compilation request posted.** The runner attaches a fresh `tcs:CompilationRequest` node to the graph carrying `tcs:targetPipeline <pipeline_id>`. This is how run-scoped parameters reach the compilers — via the graph rather than a special constructor slot, so every compiler shares the same one-arg `__init__(graph)` signature. `PipelineSeeder`'s `applies_to` gates on the request's presence, so it is the first compiler to become eligible; when it runs, it reads the target pipeline id off the request, seeds the `tcs:PipelineBuild` node (linked to the definition via `prov:hadPlan`), and renames blank-node subjects to stable IRIs so later compilers have named targets to attach to.
+2. **Fixpoint loop.** Every iteration, `CompilationRunner` asks every not-yet-run compiler in `config.compilers` whether its `applies_to` trigger is satisfied by the current build graph, and runs those that are. The loop terminates when a full scan finds nothing eligible.
+3. **Finalize phase.** The runner attaches `<request> tcs:runPhase tcs:FinalizePhase` to the graph and re-runs the same fixpoint over the same `compilers` list, sharing the "already ran" bookkeeping so no compiler fires twice. Finalize-only compilers (currently `ValidationReportCompiler` and `DockerComposeCompiler`) gate their `applies_to` on that phase triple, so they only become eligible in this pass. Both are listed in the generation preset; the validation preset lists only `ValidationReportCompiler`.
+4. **Request detached.** The runner strips every triple whose subject is the request node, so the build graph the user gets back carries no runner-internal state.
 
 The execution order therefore emerges from the trigger conditions inside the loop rather than from any class-level rank. After compilation, `runner.compilers` maps each compiler class to the instance that ran, in insertion order — so it doubles as a record of the compile order. Every executed compiler is also attached to the build via `dct:creator`, giving the same information in the graph itself.
 
 
 ## 4. Architecture
 
-This section is a closer look at the `compilers` package. (`rdfine` has its own [README](src/rdfine/README.md); `rdfc_catalog_harvest` is described in [§3.1](#31-generating-the-rdf-connect-catalog).)
-
-The `rdfc_catalog_harvest` package is deliberately **not** part of the `Compiler` hierarchy. Compilers are graph-to-graph transformations inside a single pipeline build; catalog generation runs before any build exists and crosses the boundary into the outside world, which puts it in the same category as `ProjectBuilder`. Its modules:
-
-| Module | Purpose |
-| --- | --- |
-| [rdfc_catalog_harvest/requests.py](src/rdfc_catalog_harvest/requests.py) | Parse `tcs:CatalogRequest` blocks — the whole hand-written input. |
-| [rdfc_catalog_harvest/semver.py](src/rdfc_catalog_harvest/semver.py) | Resolve a version range to a concrete version (npm caret/tilde/prerelease rules). |
-| [rdfc_catalog_harvest/registries.py](src/rdfc_catalog_harvest/registries.py) | Fetch from npm / PyPI / a local checkout. The only module that touches the network. |
-| [rdfc_catalog_harvest/harvester.py](src/rdfc_catalog_harvest/harvester.py) | Pick the Turtle file that declares the requested component, freeze it into the snapshot. |
-| [rdfc_catalog_harvest/snapshot.py](src/rdfc_catalog_harvest/snapshot.py) | Read/write the committed `data/catalog/rdfc_harvest/` records. |
-| [rdfc_catalog_harvest/shapes.py](src/rdfc_catalog_harvest/shapes.py) | Translate an upstream SHACL shape into a toolchain config shape (the four rewrites). |
-| [rdfc_catalog_harvest/emitter.py](src/rdfc_catalog_harvest/emitter.py) | Render the catalog file. Pure function of requests + snapshot. |
-| [rdfc_catalog_harvest/turtle.py](src/rdfc_catalog_harvest/turtle.py) | Deterministic Turtle text emission, for stable diffs. |
-| [rdfc_catalog_harvest/cli.py](src/rdfc_catalog_harvest/cli.py) | `python -m rdfc_catalog_harvest {harvest,generate}`. |
+This section is a closer look at the `compilers` package. (`rdfine` has its own [README](src/rdfine/README.md); `rdfc_catalog_harvest` is described in [§4.10](#410-generating-the-rdf-connect-catalog).)
 
 ### 4.1. Module overview
 
 | Module | Exported symbols | Purpose |
 | --- | --- | --- |
-| [base.py](src/compilers/base.py) | `Compiler` | Abstract base class, `applies_to` contract (default `False`), and the `compile` contract. |
-| [config.py](src/compilers/config.py) | `CompilationConfig` | Frozen dataclass declaring the graph/inference files, the pipeline id, and the three compiler lists (`bootstrap_compiler`, `loop_compilers`, `finalize_compilers`) a single run considers. |
-| [runner.py](src/compilers/runner.py) | `CompilationRunner` | End-to-end driver over a `CompilationConfig`: loads the catalog, bootstraps, runs the fixpoint loop, invokes finalize compilers. Writes `dct:creator` provenance triples after each compiler runs. |
-| [presets.py](src/compilers/presets.py) | `default_generation_config`, `default_validation_config`, `DEFAULT_CATALOG_FILES`, `DEFAULT_INFERENCE_FILES` | The two shipped presets over `CompilationConfig`. Both share the same catalog/inference file lists; they differ only in `loop_compilers` (validation drops file-emitting compilers) and `finalize_compilers` (generation ends with `DockerComposeCompiler`, validation with `ValidationReportCompiler`). |
-| [pipeline_generator.py](src/compilers/pipeline_generator.py) | `PipelineGenerator`, `PipelineValidator` | Thin factories over the two presets, each returning a `CompilationRunner` with the corresponding config. |
-| [project_builder.py](src/compilers/project_builder.py) | `ProjectBuilder` | Write the `spdx:File` nodes of a compiled build graph to disk. Not a `Compiler` subclass — this is the filesystem boundary. |
+| [compiler_abc.py](src/compilers/compiler_abc.py) | `Compiler` | Abstract base class, `applies_to` contract (default `False`), and the `compile` contract. |
+| [compilation_runner.py](src/compilers/compilation_runner.py) | `CompilationConfig`, `CompilationRunner` | `CompilationConfig` is a frozen dataclass declaring the graph/inference files and the flat `compilers` list a run considers. `CompilationRunner` is the driver: takes a pipeline id + config, loads the graph, posts a `tcs:CompilationRequest` node, runs the fixpoint, attaches `tcs:runPhase tcs:FinalizePhase` and re-runs the fixpoint, then detaches the request. Writes `dct:creator` provenance triples after each compiler runs. |
+| [pipeline_generator.py](src/compilers/pipeline_generator.py) | `PipelineGenerator`, `PipelineGeneratorConfig`, `DEFAULT_CATALOG_FILES`, `DEFAULT_PIPELINE_FILES`, `DEFAULT_INFERENCE_FILES` | `PipelineGeneratorConfig` is the shipped generation-mode `CompilationConfig` — shaping + per-boundary + file-emitting compilers, plus `ValidationReportCompiler` and `DockerComposeCompiler` gated on the finalize phase; its `graph_files` bakes in absolute paths to the catalog and every pipeline definition under `data/pipelines/`. `PipelineGenerator(pipeline_id)` is a one-line factory: `CompilationRunner(pipeline_id, PipelineGeneratorConfig)`. |
+| [pipeline_validator.py](src/compilers/pipeline_validator.py) | `PipelineValidator`, `PipelineValidatorConfig`, `DEFAULT_CATALOG_FILES`, `DEFAULT_PIPELINE_FILES`, `DEFAULT_INFERENCE_FILES` | `PipelineValidatorConfig` is the shipped validation-mode `CompilationConfig` — shared shaping + per-boundary compilers, plus `ValidationReportCompiler` gated on the finalize phase. No file-emitting compilers, no `docker-compose.yml`. `PipelineValidator(pipeline_id)` wraps it the same way. |
+| [file_materializer.py](src/compilers/file_materializer.py) | `FileMaterializer` | Write the `spdx:File` nodes of a compiled build graph to disk. Not a `Compiler` subclass — this is the filesystem boundary. |
 | [utils.py](src/compilers/utils.py) | (internal) `attach_file`, `extract_config`, `read_literal`, `parse_docker_compose_config`, `lookup_container_service_name` | Compiler-side helpers that encode knowledge of the semantic model — including the `spdx:File` attachment helper called by file-producing compilers. |
-| [core/pipeline_seeder.py](src/compilers/core/pipeline_seeder.py) | `PipelineSeeder` | Bootstrap: seed the `tcs:PipelineBuild` skeleton (`prov:hadPlan`-linked to the definition) and rename blank-node subjects to stable IRIs. |
+| [core/pipeline_seeder.py](src/compilers/core/pipeline_seeder.py) | `PipelineSeeder` | Reads the target pipeline id off the `tcs:CompilationRequest` posted by the runner, seeds the `tcs:PipelineBuild` skeleton (`prov:hadPlan`-linked to the definition), and renames blank-node subjects to stable IRIs. |
 | [core/pipeline_assembler.py](src/compilers/core/pipeline_assembler.py) | `PipelineAssembler` | Materialize the `tcs:DockerContainer` / step / config skeleton onto the seeded `tcs:PipelineBuild`. |
 | [core/segment_tagger.py](src/compilers/core/segment_tagger.py) | `SegmentTagger` | Tag every `tcs:InstancePipelineComponent` with the `tcs:segment` it belongs to (a maximal chain within one container). Used by segment-scoped SHACL shapes and per-segment framework compilers. |
 | [core/graph_reducer.py](src/compilers/core/graph_reducer.py) | `GraphReducer` | Narrow the build graph down to just the triples reachable from the seeded `tcs:PipelineBuild`, after `BridgeTransportCompiler` has finished touching the catalog. |
 | [core/bridge_transport_compiler.py](src/compilers/core/bridge_transport_compiler.py) | `BridgeTransportCompiler` | Auto-insert Entry/Exit boundary steps for any cross-container `tcs:Channel` whose author didn't hand-declare a bridge. See [§4.8](#48-boundary-components-and-cross-container-bridges). |
-| [core/validation_report_compiler.py](src/compilers/core/validation_report_compiler.py) | `ValidationReportCompiler` | **Finalize call.** Run SHACL over the fully-shaped build + shapes graph and attach the report at `validation/validation-report.ttl`. |
-| [core/docker_compose_compiler.py](src/compilers/core/docker_compose_compiler.py) | `DockerComposeCompiler` | **Finalize call.** Aggregate every `tcs:DockerComposeConfig` on the build into the top-level `docker-compose.yml`. |
+| [core/validation_report_compiler.py](src/compilers/core/validation_report_compiler.py) | `ValidationReportCompiler` | **Finalize-phase compiler.** Runs SHACL over the fully-shaped build + shapes graph and attaches the report at `validation/validation-report.ttl`. Listed in both `PipelineGeneratorConfig` and `PipelineValidatorConfig`. |
+| [core/docker_compose_compiler.py](src/compilers/core/docker_compose_compiler.py) | `DockerComposeCompiler` | **Finalize-phase compiler.** Aggregates every `tcs:DockerComposeConfig` on the build into the top-level `docker-compose.yml`. Listed in the generation preset only. |
 | [ldio/config_compiler.py](src/compilers/ldio/config_compiler.py) | `LdioConfigCompiler` | Emit one LDIO pipeline YAML per `tcs:segment` under `ldio/pipelines/<segment>.yml`, plus a companion `ldio/application.yml` pointing the orchestrator at that directory (Pattern A2 directory-scan). |
 | [ldio/http_in_config_compiler.py](src/compilers/ldio/http_in_config_compiler.py) | `LdioHttpInConfigCompiler` | Per-boundary config compiler: writes `tcs:endpoint` onto the channel a `ldio:HttpIn` step reads from. |
 | [ldio/http_out_config_compiler.py](src/compilers/ldio/http_out_config_compiler.py) | `LdioHttpOutConfigCompiler` | Per-boundary config compiler: reads `tcs:endpoint` off the channel a `ldio:HttpOut` step writes to and folds it into the step's config. |
@@ -153,7 +139,9 @@ All public symbols are re-exported from the package root:
 
 ```python
 from compilers import (
-    Compiler, PipelineGenerator, ProjectBuilder,
+    Compiler, CompilationConfig, CompilationRunner,
+    PipelineGenerator, PipelineValidator, FileMaterializer,
+    PipelineGeneratorConfig, PipelineValidatorConfig,
     PipelineSeeder, PipelineAssembler, PipelineEnricher,
     BridgeTransportCompiler, SegmentTagger, GraphReducer,
     ValidationReportCompiler, DockerComposeCompiler,
@@ -173,9 +161,9 @@ from compilers import (
 
 Every concrete compiler inherits from `Compiler` and must satisfy a small contract:
 
-- `__init__(graph: Graph)` — takes the build graph it operates on. The base implementation wraps it in a `GraphReader` stored on `self.graph_reader`. Subclasses that need extra arguments (currently only `PipelineSeeder`, which takes a `pipeline_id`) extend the signature and call `super().__init__(graph)`.
+- `__init__(graph: Graph)` — takes the build graph it operates on. The base implementation wraps it in a `GraphReader` stored on `self.graph_reader`. Every concrete compiler shares this one-arg signature — run-scoped parameters (currently only the target pipeline id `PipelineSeeder` reads) travel through the graph via the `tcs:CompilationRequest` node the runner posts (see §4.4), not through the constructor.
 - `compile(self) -> Graph` — the compiler's transformation. Runs the graph-shaping work and returns the enriched build graph. Heavy lifting belongs here, not in `__init__` — this way the work happens predictably at one moment in time and stays composable in the fixpoint loop.
-- `applies_to(cls, graph_reader: GraphReader) -> bool` (classmethod) — declares the graph-state condition under which the compiler should run. **The default returns `False`**, so every concrete compiler listed in a `CompilationConfig`'s `loop_compilers` must override it. Typical shapes:
+- `applies_to(cls, graph_reader: GraphReader) -> bool` (classmethod) — declares the graph-state condition under which the compiler should run. **The default returns `False`**, so every concrete compiler listed in a `CompilationConfig`'s `compilers` list must override it. Typical shapes:
   ```python
   @classmethod
   def applies_to(cls, graph_reader: GraphReader) -> bool:
@@ -184,7 +172,7 @@ Every concrete compiler inherits from `Compiler` and must satisfy a small contra
           obj="ldio:LinkedDataInteractionsOrchestrator",
       ).df.empty
   ```
-  A compiler that needs to see which other compilers already ran can inspect the `dct:creator` triples on the build (see §4.6). Compilers listed in a config's `finalize_compilers` are invoked unconditionally after the loop settles — their `applies_to` is not consulted.
+  A compiler that needs to see which other compilers already ran can inspect the `dct:creator` triples on the build (see §4.6). Finalize-only compilers (`ValidationReportCompiler`, `DockerComposeCompiler`) gate their `applies_to` on the presence of `<?> tcs:runPhase tcs:FinalizePhase` — the marker the runner attaches between the two fixpoint passes — so they only become eligible after every shaping compiler has settled.
 - `compiler_iri(cls) -> str` (classmethod) — the IRI used when `CompilationRunner` records this compiler as `dct:creator`. Defaults to `tcs:<ClassName>`; override if a catalog-backed IRI is preferred.
 
 Intermediate state that the compile process produces (e.g. partial DataFrames, accumulated readers) is declared as instance attributes in `__init__` and populated by `compile()`. This makes the inspection surface explicit and lets the user poke at `compiler.df_steps`, `compiler.output_reader`, etc. after `compile()` returns — useful for debugging.
@@ -215,49 +203,42 @@ There is no global registry. Which compilers a run considers is declared on the 
 ```python
 @dataclass(frozen=True)
 class CompilationConfig:
-    pipeline_id: str
-    bootstrap_compiler: type[Compiler]
-    loop_compilers: list[type[Compiler]]
-    finalize_compilers: list[type[Compiler]]
-    graph_files: list[Path]
-    inference_files: list[Path]
-    graph: Graph | None = None                 # bypass file loading
+    compilers: list[type[Compiler]]
+    graph_files: list[Path] = field(default_factory=list)
+    inference_files: list[Path] = field(default_factory=list)
     public_id: str = "file:///workspace/pipeline/"
 ```
 
-Two presets in [`compilers/presets.py`](src/compilers/presets.py) populate one config each — `default_generation_config` (fixpoint loop covers every framework's shaping and file-emitting compilers, finalize is `[DockerComposeCompiler]`) and `default_validation_config` (fixpoint loop covers just the framework-agnostic shaping + per-boundary config compilers, finalize is `[ValidationReportCompiler]`). The two `loop_compilers` lists side by side are the documentation of "what validation needs" vs "what generation adds on top".
+The pipeline id being compiled is not part of the config — it is a per-run argument to `CompilationRunner`, so one config is reusable across every pipeline that lives in its `graph_files`.
 
-Advanced callers bypass the presets and construct a `CompilationConfig` directly — drop a compiler, add an experimental one, swap `bootstrap_compiler`, etc.
+One flat `compilers` list — no bootstrap / loop / finalize categories in the config itself. Ordering is entirely encoded in each compiler's `applies_to` trigger, evaluated by the runner's two-phase fixpoint (see §4.4).
 
-Adding a new compiler is a matter of dropping a new file in the appropriate `compilers/<framework>/` subfolder (or `compilers/core/` for framework-agnostic ones), importing it from `compilers/__init__.py`, and adding it to the preset config(s) that should run it. The runner itself never needs editing.
+Two module-level constants ship with the package — `PipelineGeneratorConfig` (in [`compilers/pipeline_generator.py`](src/compilers/pipeline_generator.py)) covers every framework's shaping and file-emitting compilers plus `ValidationReportCompiler` and `DockerComposeCompiler`; `PipelineValidatorConfig` (in [`compilers/pipeline_validator.py`](src/compilers/pipeline_validator.py)) covers just the framework-agnostic shaping + per-boundary config compilers plus `ValidationReportCompiler`. Both are re-exported from `compilers`. The two `compilers` lists side by side are the documentation of "what validation needs" vs "what generation adds on top".
 
-### 4.4. CompilationRunner: the fixpoint loop
+Callers with a different file set (a different catalog, a synthetic test fixture) construct their own `CompilationConfig` and hand it to `CompilationRunner(pipeline_id, config)` directly.
 
-`CompilationRunner` is the entry point that turns a `CompilationConfig` into a fully compiled build graph. Its `compile()` method has four phases: catalog loading, bootstrap, fixpoint loop, and explicit finalize calls.
+Adding a new compiler is a matter of dropping a new file in the appropriate `compilers/<framework>/` subfolder (or `compilers/core/` for framework-agnostic ones), importing it from `compilers/__init__.py`, and adding it to the config(s) that should run it. The runner itself never needs editing.
 
-**Catalog loading.** If the config supplies a pre-loaded `graph`, it is used directly. Otherwise, `graph_files` are parsed into an rdflib graph and `inference_files` are applied on top via `GraphReader.infer()`. The result is the input to the bootstrap compiler.
+### 4.4. CompilationRunner: the two-phase fixpoint
 
-**Bootstrap.** The config's `bootstrap_compiler` is instantiated with `(pipeline_id, catalog_graph)` — the only compiler whose constructor needs the pipeline id:
+`CompilationRunner` is the entry point that turns a pipeline id + `CompilationConfig` into a fully compiled build graph. Its `compile()` method has four phases: catalog loading, first-pass fixpoint, finalize-phase fixpoint, and request detachment.
 
-```python
-seeder = self.config.bootstrap_compiler(self.config.pipeline_id, self.catalog_graph)
-self.build = seeder.compile()
-```
+**Catalog loading.** `graph_files` are parsed into an rdflib graph and `inference_files` are applied on top via `GraphReader.infer()`. The result is the graph the fixpoint operates over.
 
-`PipelineSeeder` (the shipped bootstrap compiler) seeds the `tcs:PipelineBuild` node itself:
+**Compilation-request handshake.** Before the first fixpoint pass, the runner attaches a fresh `tcs:CompilationRequest` node carrying the target pipeline id:
 
 ```turtle
-<pipeline>_build a tcs:PipelineBuild ;
-                 prov:hadPlan <pipeline> .
+:compilation_request a tcs:CompilationRequest ;
+                    tcs:targetPipeline <pipeline> .
 ```
 
-and renames any blank-node subjects (typed by RDFS entailment as pipeline components, configs, channels, and shapes) to stable IRIs so downstream compilers always have named targets to attach triples to. Unlike a later `GraphReducer` pass, the seeder does *not* narrow the catalog down — the full catalog stays visible until after `BridgeTransportCompiler` runs, so that compiler can freely draw on components no step has specialized yet (see §4.8).
+This is the runner-to-compiler channel for run-scoped parameters — anything a compiler needs to know about the current run travels through the graph, so every compiler shares the same one-arg `__init__(graph)` signature. `PipelineSeeder`'s `applies_to` gates on the request's presence, which is what makes it the first compiler to become eligible.
 
-**Fixpoint loop.** Every iteration, `CompilationRunner` scans `config.loop_compilers`, filters out compilers that have already run, and evaluates the remaining ones' `applies_to` against the current build graph:
+**First fixpoint pass.** Every iteration, `CompilationRunner` scans `config.compilers`, filters out compilers that have already run, and evaluates the remaining ones' `applies_to` against the current build graph:
 
 ```python
 while True:
-    eligible = [cls for cls in self.config.loop_compilers
+    eligible = [cls for cls in self.config.compilers
                 if cls not in ran and cls.applies_to(GraphReader(self.build))]
     if not eligible:
         break
@@ -268,21 +249,32 @@ while True:
         ran.add(cls)
 ```
 
-Because triggers are evaluated against the growing graph, execution order emerges naturally: a compiler runs as soon as its trigger becomes true. Compilers eligible in the same iteration are treated as commutative and run in list order within that pass; before the next iteration the loop re-scans, so any new eligibility introduced by their combined effect is picked up on the next round.
+Because triggers are evaluated against the growing graph, execution order emerges naturally. `PipelineSeeder` fires first because the `tcs:CompilationRequest` node is exactly what its trigger looks for; when it runs, it seeds the `tcs:PipelineBuild`:
 
-**Explicit finalize calls.** Every compiler in `config.finalize_compilers` is invoked directly, in list order, unconditionally after the fixpoint loop terminates:
-
-```python
-for cls in self.config.finalize_compilers:
-    instance = cls(self.build)
-    self.build = instance.compile()
-    self._record_creator(cls)
+```turtle
+<pipeline>_build a tcs:PipelineBuild ;
+                 prov:hadPlan <pipeline> .
 ```
 
-- The **generation** preset ends with `DockerComposeCompiler` — every `tcs:DockerComposeConfig` on the build has been finalized by earlier compilers, so it just aggregates them into a single `docker-compose.yml`.
-- The **validation** preset ends with `ValidationReportCompiler` — merges the fully shaped build with the untouched shapes graph, runs SHACL, and attaches the report at `validation/validation-report.ttl`.
+and renames any blank-node subjects (typed by RDFS entailment as pipeline components, configs, channels, and shapes) to stable IRIs so downstream compilers always have named targets to attach triples to. Unlike a later `GraphReducer` pass, the seeder does *not* narrow the catalog down — the full catalog stays visible until after `BridgeTransportCompiler` runs, so that compiler can freely draw on components no step has specialized yet (see §4.8). The rest of the shaping compilers then fall into place as each one adds the triples the next one's `applies_to` looks for.
 
-Adding a new finalize compiler is a matter of appending it to the appropriate preset's `finalize_compilers` list. No runner edit needed.
+Compilers eligible in the same iteration are treated as commutative and run in list order within that pass; before the next iteration the loop re-scans, so any new eligibility introduced by their combined effect is picked up on the next round.
+
+**Finalize-phase fixpoint.** Once the first pass settles, the runner attaches the finalize marker to the request node and re-enters the same loop:
+
+```python
+self.set_phase("tcs:FinalizePhase")      # <request> tcs:runPhase tcs:FinalizePhase
+self.run_fixpoint()                      # same `ran` set as pass 1
+```
+
+The `ran` bookkeeping is shared across both passes, so no compiler fires twice. Compilers whose `applies_to` gates on `<?> tcs:runPhase tcs:FinalizePhase` become eligible now:
+
+- `PipelineGeneratorConfig`'s finalize-phase eligible set is `[ValidationReportCompiler, DockerComposeCompiler]` — the report is attached first, then every `tcs:DockerComposeConfig` on the build (all finalized by earlier compilers) is aggregated into a single `docker-compose.yml`.
+- `PipelineValidatorConfig`'s finalize-phase eligible set is `[ValidationReportCompiler]` — merges the fully shaped build with the untouched shapes graph, runs SHACL, and attaches the report at `validation/validation-report.ttl`.
+
+Adding a new finalize compiler is a matter of appending it to the appropriate config's `compilers` list and gating its `applies_to` on `<?> tcs:runPhase tcs:FinalizePhase`. No runner edit needed.
+
+**Request detachment.** Before returning, the runner strips every triple whose subject is the compilation-request node — the type triple, the `tcs:targetPipeline`, and the `tcs:runPhase` marker — so the build graph the user gets back carries no runner-internal state.
 
 **Inspection after the run.** The instances that ran are kept on `runner.compilers`, keyed by class, in insertion order. So `list(runner.compilers)` doubles as the compile order. The same information is also in the build graph as `dct:creator` triples on the `tcs:PipelineBuild`.
 
@@ -303,18 +295,18 @@ The slug is derived from `filepath_filename` via `re.sub(r"[^a-zA-Z0-9]+", "_", 
 
 The body of the file is stored verbatim as an rdflib `Literal` — no prefix expansion is applied to it. This is what makes it safe to put arbitrary text bodies (YAML, Turtle, JSON) into `tcs:literal` even when they contain colons or other CURIE-like substrings.
 
-After `CompilationRunner.compile()` returns, the build graph is fully self-describing: `ProjectBuilder` iterates over the `spdx:File` nodes and writes each to disk at `tcs:filepath / tcs:filename` with body `tcs:literal`. It collects the file records into a `pandas.DataFrame` on `builder.files` first, so the planned writes can be inspected before touching the filesystem. A path-traversal guard rejects any `tcs:filepath` that would escape the target directory.
+After `CompilationRunner.compile()` returns, the build graph is fully self-describing: `FileMaterializer` iterates over the `spdx:File` nodes and writes each to disk at `tcs:filepath / tcs:filename` with body `tcs:literal`. It collects the file records into a `pandas.DataFrame` on `builder.files` first, so the planned writes can be inspected before touching the filesystem. A path-traversal guard rejects any `tcs:filepath` that would escape the target directory.
 
 ### 4.6. Provenance: dct:creator attachment
 
-Every compiler that runs is recorded on the build graph as a `dct:creator`. `PipelineGenerator` writes the triples itself, immediately after each compiler's `compile()` returns:
+Every compiler that runs is recorded on the build graph as a `dct:creator`. `CompilationRunner` writes the triples itself, immediately after each compiler's `compile()` returns:
 
 ```turtle
 :build dct:creator tcs:<ClassName> .
 tcs:<ClassName> a tcs:Compiler .
 ```
 
-Because the seeder creates the `tcs:PipelineBuild` node at the very start, the build always exists by the time provenance is written — no buffering or two-step attachment is needed. The compiler IRI defaults to `tcs:<ClassName>` and can be overridden per compiler via the `compiler_iri()` classmethod (e.g. to point at a catalog-backed entry).
+Because `PipelineSeeder` fires on the very first iteration of the fixpoint (triggered by the `tcs:CompilationRequest` node the runner posts up front) and creates the `tcs:PipelineBuild` node before returning, the build always exists by the time the runner records its provenance — no buffering or two-step attachment is needed. The compiler IRI defaults to `tcs:<ClassName>` and can be overridden per compiler via the `compiler_iri()` classmethod (e.g. to point at a catalog-backed entry).
 
 A useful side effect: because provenance is attached *while the loop is running*, every subsequent `applies_to` invocation can inspect `dct:creator` on the build to check which compilers have already run — no extra bookkeeping needed.
 
@@ -322,7 +314,7 @@ A useful side effect: because provenance is attached *while the loop is running*
 
 | Compiler | Trigger (`applies_to`) | Reads from the build | Writes to the build |
 | --- | --- | --- | --- |
-| `PipelineSeeder` | *(bootstrap — explicit call, always runs first)* | the catalog | `<pipeline>_build a tcs:PipelineBuild ; prov:hadPlan <pipeline>`; blank-node subjects renamed to stable IRIs |
+| `PipelineSeeder` | a `tcs:CompilationRequest` node is present in the graph (the runner posts one up front) | the catalog + the request's `tcs:targetPipeline` | `<pipeline>_build a tcs:PipelineBuild ; prov:hadPlan <pipeline>`; blank-node subjects renamed to stable IRIs |
 | `PipelineAssembler` | exactly one `tcs:PipelineDefinition` in the graph and it has at least one step (`p-plan:isStepOfPlan`) | the seeded pipeline + catalog | `tcs:DockerContainer`, `dct:hasPart`, `tcs:instantiates`, `tcs:runs` |
 | `PipelineEnricher` | `<build> dct:creator tcs:PipelineAssembler` present | steps and channels | synthesized `tcs:Channel`s from `p-plan:isPrecededBy`, and a `tcs:PipelineConfig` slot on every step that lacks one |
 | `BridgeTransportCompiler` | `<build> dct:creator tcs:PipelineEnricher` present, and some `tcs:Channel` crosses container boundaries | cross-container channels + the catalog of boundary components | inserted Entry/Exit boundary steps (where neither side is already a boundary). See [§4.8](#48-boundary-components-and-cross-container-bridges). |
@@ -347,8 +339,8 @@ A useful side effect: because provenance is attached *while the loop is running*
 | `NifiConfigCompiler` | a container instantiates `nifi:Orchestrator`, `<build> dct:creator tcs:BridgeTransportCompiler` (so any Bridge-inserted boundary steps are visible), and every NiFi step whose specialized component is typed `tcs:EntryBoundaryComponent`/`tcs:ExitBoundaryComponent` already has a `p-plan:hasInputVar` (so the paired per-boundary config compilers have finished) | NiFi steps, component metadata, configs and channels | persisted `spdx:File` named `nifi/flow.json`; for local builds, secret references also produce a one-shot `nifi-configure` service and `nifi/configure_local.py` |
 | `NifiDockerfileCompiler` | local NiFi deployment and a NiFi `tcs:DockerImageConfig` is present | the NiFi Dockerfile literal | `spdx:File` named `nifi/Dockerfile` |
 | `NifiRemoteCompiler` | `nifi:deploymentMode "remote"` and `nifi/flow.json` is present | the persisted flow, deployment config, secret references and NiFi compose config | upload-format `nifi/flow_definition.json`, stdlib-only `nifi/deploy_flow.py`, and a one-shot deployer using native Compose secret mounts |
-| `ValidationReportCompiler` | *(finalize — explicit call in the validation preset's `finalize_compilers`)* | the fully shaped build + shapes graph | `spdx:File` named `validation/validation-report.ttl` |
-| `DockerComposeCompiler` | *(finalize — explicit call in the generation preset's `finalize_compilers`)* | every `tcs:DockerComposeConfig` reachable from the build | `spdx:File` named `./docker-compose.yml` |
+| `ValidationReportCompiler` | *(finalize phase)* `<?> tcs:runPhase tcs:FinalizePhase` present. Listed in both the generation and the validation preset. | the fully shaped build + shapes graph | `spdx:File` named `validation/validation-report.ttl` |
+| `DockerComposeCompiler` | *(finalize phase)* `<?> tcs:runPhase tcs:FinalizePhase` present, and any `tcs:DockerComposeConfig` reachable from the build. Listed in the generation preset only. | every `tcs:DockerComposeConfig` reachable from the build | `spdx:File` named `./docker-compose.yml` |
 
 ### 4.8. Boundary components and cross-container bridges
 
@@ -403,6 +395,20 @@ Populate every referenced variable from the current shell, `.env`, or a CI secre
 
 ### 4.10. Generating the RDF-Connect catalog
 
+The `rdfc_catalog_harvest` package is deliberately **not** part of the `Compiler` hierarchy. Compilers are graph-to-graph transformations inside a single pipeline build; catalog generation runs before any build exists and crosses the boundary into the outside world, which puts it in the same category as `FileMaterializer`. Its modules:
+
+| Module | Purpose |
+| --- | --- |
+| [rdfc_catalog_harvest/requests.py](src/rdfc_catalog_harvest/requests.py) | Parse `tcs:CatalogRequest` blocks — the whole hand-written input. |
+| [rdfc_catalog_harvest/semver.py](src/rdfc_catalog_harvest/semver.py) | Resolve a version range to a concrete version (npm caret/tilde/prerelease rules). |
+| [rdfc_catalog_harvest/registries.py](src/rdfc_catalog_harvest/registries.py) | Fetch from npm / PyPI / a local checkout. The only module that touches the network. |
+| [rdfc_catalog_harvest/harvester.py](src/rdfc_catalog_harvest/harvester.py) | Pick the Turtle file that declares the requested component, freeze it into the snapshot. |
+| [rdfc_catalog_harvest/snapshot.py](src/rdfc_catalog_harvest/snapshot.py) | Read/write the committed `data/catalog/rdfc_harvest/` records. |
+| [rdfc_catalog_harvest/shapes.py](src/rdfc_catalog_harvest/shapes.py) | Translate an upstream SHACL shape into a toolchain config shape (the four rewrites). |
+| [rdfc_catalog_harvest/emitter.py](src/rdfc_catalog_harvest/emitter.py) | Render the catalog file. Pure function of requests + snapshot. |
+| [rdfc_catalog_harvest/turtle.py](src/rdfc_catalog_harvest/turtle.py) | Deterministic Turtle text emission, for stable diffs. |
+| [rdfc_catalog_harvest/cli.py](src/rdfc_catalog_harvest/cli.py) | `python -m rdfc_catalog_harvest {harvest,generate}`. |
+
 `data/catalog/catalog-rdfc.ttl` is **generated, not hand-written**. An RDF-Connect processor already publishes a `processors.ttl` describing itself, so almost everything its catalog entry needs is a restatement of facts the package ships. Transcribing those by hand is what let the catalog drift out of sync with upstream.
 
 The hand-written input is one block per component in [`data/catalog/catalog-rdfc-requests.ttl`](data/catalog/catalog-rdfc-requests.ttl):
@@ -454,7 +460,7 @@ Rules 1 and 2 were reverse-engineered from `:SparqlIngestShape`, the one hand-wr
 
 Scope is RDF-Connect only. LDIO and semantic.works components have no machine-readable upstream definition to derive from, so `catalog-ldio.ttl` and `catalog-sw.ttl` remain hand-written.
 
-Adding a new compiler is a matter of dropping a new file in the appropriate `compilers/<framework>/` subfolder (or `compilers/core/` for framework-agnostic ones), importing it from `compilers/__init__.py`, and adding it to the preset config(s) in [`compilers/presets.py`](src/compilers/presets.py) that should run it. `CompilationRunner` picks it up automatically once it appears in the config's `loop_compilers` (or `finalize_compilers`); the runner never needs editing. The notebook `demo.ipynb` demonstrates the end-to-end workflow.
+Adding a new compiler is a matter of dropping a new file in the appropriate `compilers/<framework>/` subfolder (or `compilers/core/` for framework-agnostic ones), importing it from `compilers/__init__.py`, and adding it to the config(s) — `PipelineGeneratorConfig` in [`compilers/pipeline_generator.py`](src/compilers/pipeline_generator.py), `PipelineValidatorConfig` in [`compilers/pipeline_validator.py`](src/compilers/pipeline_validator.py) — that should run it. `CompilationRunner` picks it up automatically once it appears in the config's `compilers` list; the runner never needs editing. The notebook `demo.ipynb` demonstrates the end-to-end workflow.
 
 
 ## 5. Limitations
@@ -512,19 +518,15 @@ One sharp edge worth knowing: `tcs:upstreamClass` is overloaded. On a channel pr
 
 The LDIO workbench service is currently declared with an outdated image tag (`ldes/ldi-orchestrator:2.8.0-SNAPSHOT`) and no volume mounts. Any generated pipeline needs the operator to hand-patch the emitted compose file to use `2.13.0` + the two bind mounts the actual workbench expects — or to refactor to LDIO's Pattern A1 single-file startup model.
 
-### 5.5. Test-suite runner
+### 5.5. Dependencies with local sources
 
-Static SHACL validation of a pipeline definition against the tcs application profile can be run today via `GraphReader.validate()` on the merged catalog + pipeline graph — the demo notebook does exactly this, and `ValidationReportCompiler` runs the same check in-process as an explicit finalize step of every generator run, attaching the report to the build at `validation/validation-report.ttl`. What is not yet built is the pre-generator runner design captured in [`test suite/README.md`](../../test%20suite/README.md), which additionally invokes the native Python shape-matching library (in development by a colleague) for input/output shape validation.
+Catalog components are expected to declare their dependencies as `spdx:Package` nodes reachable from `dct:requires`, which `RdfcDockerFileCompiler` resolves into `pyproject.toml` / `package.json` entries. The assumption baked into this today is that every such dependency is resolvable from its `spdx:downloadLocation` **by the package manager** at build time — i.e. the URL points at a registry (npm, PyPI, ...) or a plain HTTP tarball, not at a source tree that ships alongside the pipeline. Concretely: a `file://` `spdx:downloadLocation` is not fully supported. `RdfcDockerFileCompiler` will still emit the package as a `"*"` (npm) / unpinned (pip) entry — which crashes `npm install` / `pip install` with a "not in registry" error — and `FileMaterializer` never copies the referenced source tree into the emitted project folder.
 
-### 5.6. Dependencies with local sources
+The demonstrator's `proc:JsonLdToNQuads` is the concrete case: source lives in `demonstrator/RDFC/processors/jsonld-to-nquads/`, and the emitted `rdfc/` output has to be hand-patched to make the pipeline actually build (drop the offending `package.json` entry, copy the folder in, add a bind mount to the compose file). Long-term fix needs three things: teach `RdfcDockerFileCompiler` to emit npm's `file:` / pip's local-path syntax when a `file://` download location is present, teach `FileMaterializer` (or a dedicated compiler) to copy the referenced tree into the output, and add a catalog convention for where the source is anchored relative to the catalog file.
 
-Catalog components are expected to declare their dependencies as `spdx:Package` nodes reachable from `dct:requires`, which `RdfcDockerFileCompiler` resolves into `pyproject.toml` / `package.json` entries. The assumption baked into this today is that every such dependency is resolvable from its `spdx:downloadLocation` **by the package manager** at build time — i.e. the URL points at a registry (npm, PyPI, ...) or a plain HTTP tarball, not at a source tree that ships alongside the pipeline. Concretely: a `file://` `spdx:downloadLocation` is not fully supported. `RdfcDockerFileCompiler` will still emit the package as a `"*"` (npm) / unpinned (pip) entry — which crashes `npm install` / `pip install` with a "not in registry" error — and `ProjectBuilder` never copies the referenced source tree into the emitted project folder.
+### 5.6. Catalog generation covers only RDF-Connect
 
-The demonstrator's `proc:JsonLdToNQuads` is the concrete case: source lives in `demonstrator/RDFC/processors/jsonld-to-nquads/`, and the emitted `rdfc/` output has to be hand-patched to make the pipeline actually build (drop the offending `package.json` entry, copy the folder in, add a bind mount to the compose file). Long-term fix needs three things: teach `RdfcDockerFileCompiler` to emit npm's `file:` / pip's local-path syntax when a `file://` download location is present, teach `ProjectBuilder` (or a dedicated compiler) to copy the referenced tree into the output, and add a catalog convention for where the source is anchored relative to the catalog file.
-
-### 5.7. Catalog generation covers only RDF-Connect
-
-[§3.1](#31-generating-the-rdf-connect-catalog) derives `catalog-rdfc.ttl` from upstream packages, but `catalog-ldio.ttl` (1136 lines) and `catalog-sw.ttl` (812 lines) are still transcribed by hand, because neither ecosystem publishes a machine-readable component definition. They therefore keep the drift characteristics the RDF-Connect catalog just lost.
+[§4.10](#410-generating-the-rdf-connect-catalog) derives `catalog-rdfc.ttl` from upstream packages, but `catalog-ldio.ttl` (1136 lines) and `catalog-sw.ttl` (812 lines) are still transcribed by hand, because neither ecosystem publishes a machine-readable component definition. They therefore keep the drift characteristics the RDF-Connect catalog just lost.
 
 Two smaller gaps inside the RDF-Connect path:
 
@@ -540,17 +542,17 @@ The pipeline generator is not fully implemented yet, it is a work in progress. W
 - [x] Add another framework, [semantic.works](https://semantic.works/).
 - [x] PipelineAssembler: Assigns segments of a Pipeline Definition to microservices. It does so by following dependency paths via dct:requires and assigning InstancePipelineComponents to the microservices that instantiate them.
 - [x] DockerComposeCompiler: Compiles a DockerCompose file based on the description of the different microservices.
-- [x] ProjectBuilder: Takes the semantic description of the PipelineBuild and writes the attached `spdx:File` nodes to a folder using their `tcs:filepath` / `tcs:filename`. Lives outside the `Compiler` hierarchy because it is the filesystem boundary, not a graph-to-graph transformation.
-- [x] CompilerAssigner: It may be necessary at some point to provide a lookup which compilers need to be called depending on information contained in the graph. So that compilers can be called dynamically based on need. Implemented as the per-run `CompilationConfig.loop_compilers` / `finalize_compilers` lists combined with a per-compiler `applies_to(graph_reader) -> bool` classmethod that declares the triggering pattern.
+- [x] FileMaterializer: Takes the semantic description of the PipelineBuild and writes the attached `spdx:File` nodes to a folder using their `tcs:filepath` / `tcs:filename`. Lives outside the `Compiler` hierarchy because it is the filesystem boundary, not a graph-to-graph transformation.
+- [x] CompilerAssigner: It may be necessary at some point to provide a lookup which compilers need to be called depending on information contained in the graph. So that compilers can be called dynamically based on need. Implemented as the flat `CompilationConfig.compilers` list combined with a per-compiler `applies_to(graph_reader) -> bool` classmethod that declares the triggering pattern, evaluated by `CompilationRunner` in a two-phase fixpoint (finalize compilers gate on `<?> tcs:runPhase tcs:FinalizePhase`).
 - [ ] SemanticModelVersionMapper: Can map from one version of the semantic model to the internal model that is used by the pipeline generator. Allows decoupling versioning of the official semantic model and the internal model used for implementation.
 - [ ] Pipeline-level config override mechanism: let a `tcs:PipelineDefinition` shadow a catalog-level `tcs:DefaultConfig` with a pipeline-specific body. Prerequisite for cleanly moving the demonstrator-specific bodies (see [§5.1](#51-no-override-mechanism-for-tcsdefaultconfig-bodies)) out of `catalog-sw.ttl` and into `pipeline_definition.ttl`.
 - [x] Cross-framework `tcs:Channel`: extend the channel model to describe transports that span framework boundaries. HTTP-transport bridges (LDIO ↔ RDFC) are now handled automatically by `BridgeTransportCompiler` + per-boundary config compilers — see [§4.8](#48-boundary-components-and-cross-container-bridges). SPARQL-Update bridges (RDFC → sw) are catalog-typed with `tcs:channelType tcs:SparqlUpdateChannel` but the MVP `BridgeTransportCompiler.default_channel_type` still fixes them to hand-authored. Semantic.works delta-notifier subscriptions (the `oslc:Error` rule in `delta/rules.js`) remain out of scope — they need a different channel model entirely.
 - [x] RdfcDockerFileCompiler: Creates an adhoc Dockerfile for RDF-Connect. This allows to include only those dependencies in a docker container which are actually used in the pipeline.
-- [x] Catalog generator for RDF-Connect: derive `catalog-rdfc.ttl` from each package's own published `processors.ttl` instead of transcribing it, so a component entry is a three-line request. Implemented as the `rdfc_catalog_harvest` package with a committed harvest snapshot; see [§3.1](#31-generating-the-rdf-connect-catalog).
+- [x] Catalog generator for RDF-Connect: derive `catalog-rdfc.ttl` from each package's own published `processors.ttl` instead of transcribing it, so a component entry is a three-line request. Implemented as the `rdfc_catalog_harvest` package with a committed harvest snapshot; see [§4.10](#410-generating-the-rdf-connect-catalog).
 - [ ] Extend catalog generation beyond RDF-Connect. LDIO and semantic.works publish no machine-readable component definitions, so there is nothing to derive from today. For LDIO the closest source is the generated documentation site; for semantic.works, the per-service READMEs. Both would need a scraper rather than a parser, which is why they are still hand-written.
 - [ ] Deterministic `docker-compose.yml` service order. `DockerComposeCompiler` merges compose fragments in graph-iteration order, so the emitted service order varies between runs on identical input (the service bodies are identical — only key order moves). Harmless to Docker, but it makes the committed `out/` diff noisy and blocks byte-comparison in tests.
 - [x] NifiCompiler: Compiler for [Nifi 2](https://nifi.apache.org/). Persisted-flow generation and local/remote deployment selection are implemented; live production verification remains.
-- [x] PipelineGenerator: Uses all previously described compilers to route the compilation flow for generating a pipeline project folder based on a Pipeline Definition. Routing is done via the registry + `applies_to` mechanism described above; producing the project folder on disk is handled by `ProjectBuilder`.
+- [x] PipelineGenerator: Uses all previously described compilers to route the compilation flow for generating a pipeline project folder based on a Pipeline Definition. Routing is done via the registry + `applies_to` mechanism described above; producing the project folder on disk is handled by `FileMaterializer`.
 
 
 ## 7. How To
@@ -561,7 +563,7 @@ You can find a couple of examples in the catalog.ttl file in the data folder. A 
 
 ### 6.2. How to onboard your own components to the catalog
 
-**For an RDF-Connect processor, add three lines and run two commands.** The catalog entry is generated from the package's own `processors.ttl` — see [§3.1](#31-generating-the-rdf-connect-catalog). Append to `data/catalog/catalog-rdfc-requests.ttl`:
+**For an RDF-Connect processor, add three lines and run two commands.** The catalog entry is generated from the package's own `processors.ttl` — see [§4.10](#410-generating-the-rdf-connect-catalog). Append to `data/catalog/catalog-rdfc-requests.ttl`:
 
 ```turtle
 rdfc:MyProcessor a tcs:CatalogRequest ;
@@ -576,9 +578,9 @@ then `python -m rdfc_catalog_harvest harvest && python -m rdfc_catalog_harvest g
 
 ### 7.3. How to onboard new frameworks
 - Describe pipeline components with the semantic model and add them to the catalog.
-- Write compilers for your new framework that can produce the expected output files. Each compiler must subclass `Compiler` (from `compilers.base`), implement `compile(self) -> Graph` returning the enriched build graph, and override `applies_to(cls, graph_reader) -> bool` to declare the graph-state conditions under which the compiler should run — typically the presence of a framework-specific node type or predicate in the build graph. The default `applies_to` returns `False`, so this override is required. If your compiler must run only after other shaping compilers have finished (for example because it consumes their output), the two-step convention is to gate its `applies_to` on a `<build> dct:creator tcs:<UpstreamCompiler>` triple (see §4.6). For a compiler that must run against the *fully* shaped build (e.g. it needs to see every generated file), add it to the appropriate preset's `finalize_compilers` list in [`compilers/presets.py`](src/compilers/presets.py) instead of `loop_compilers` — the same pattern `ValidationReportCompiler` and `DockerComposeCompiler` use (§4.4).
+- Write compilers for your new framework that can produce the expected output files. Each compiler must subclass `Compiler` (from `compilers.compiler_abc`), implement `compile(self) -> Graph` returning the enriched build graph, and override `applies_to(cls, graph_reader) -> bool` to declare the graph-state conditions under which the compiler should run — typically the presence of a framework-specific node type or predicate in the build graph. The default `applies_to` returns `False`, so this override is required. If your compiler must run only after other shaping compilers have finished (for example because it consumes their output), the two-step convention is to gate its `applies_to` on a `<build> dct:creator tcs:<UpstreamCompiler>` triple (see §4.6). For a compiler that must run against the *fully* shaped build (e.g. it needs to see every generated file), gate its `applies_to` on `<?> tcs:runPhase tcs:FinalizePhase` — the marker `CompilationRunner` attaches between its two fixpoint passes — so it only becomes eligible after every shaping compiler has settled. That is the same pattern `ValidationReportCompiler` and `DockerComposeCompiler` use (§4.4).
 - Compilers that produce a file should end their `compile()` method with a call to `attach_file(self.output_reader, filename=..., filepath=..., content=...)` (from `compilers.utils`), re-assigning `self.output_reader` with the returned reader. The helper adds an `spdx:File` node to the `tcs:PipelineBuild` carrying the produced file body as a literal.
-- Import the new compiler from `compilers/__init__.py` and add it to the appropriate preset config in [`compilers/presets.py`](src/compilers/presets.py) — typically both `default_generation_config` and `default_validation_config`'s `loop_compilers`, or just one of them if the compiler is emitter-only (generation) or validation-only. `CompilationRunner` then runs it automatically against any pipeline whose build graph matches its `applies_to` condition. New compilers usually belong in a per-framework subfolder (`compilers/<framework>/`); framework-agnostic ones go in `compilers/core/`. No edits to `CompilationRunner` are required.
+- Import the new compiler from `compilers/__init__.py` and add it to the appropriate config — `PipelineGeneratorConfig` in [`compilers/pipeline_generator.py`](src/compilers/pipeline_generator.py), `PipelineValidatorConfig` in [`compilers/pipeline_validator.py`](src/compilers/pipeline_validator.py) — typically both `compilers` lists, or just one of them if the compiler is emitter-only (generation) or validation-only. `CompilationRunner` then runs it automatically against any pipeline whose build graph matches its `applies_to` condition. New compilers usually belong in a per-framework subfolder (`compilers/<framework>/`); framework-agnostic ones go in `compilers/core/`. No edits to `CompilationRunner` are required.
 - Keep anything framework-specific visibly framework-specific, the way RDF-Connect does: inference rules in `data/<framework>_inference_rules.yaml` rather than in `inference_rules.yaml`, application-profile shapes under §2 of `catalog-application-profile-shapes.ttl` with a `tcs:<Framework>…Shape` name and a discriminator in their `sh:target`, and any harvesting code under `src/<framework>_catalog_harvest/`. A rule or shape that reads a framework's own config layout but targets `tcs:InstancePipelineComponent` will be inherited by the next framework by accident.
 - Test the new compilers based on a Pipeline Definition that includes components of the new framework.
 

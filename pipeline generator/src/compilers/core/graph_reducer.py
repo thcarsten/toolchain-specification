@@ -2,7 +2,7 @@ from rdflib import Graph
 
 from rdfine import GraphReader, receive_first
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 
 
 class GraphReducer(Compiler):

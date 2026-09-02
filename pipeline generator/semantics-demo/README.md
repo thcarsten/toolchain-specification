@@ -19,7 +19,7 @@ Contents:
 - `_build_demo_catalog.py` — one-shot script that rebuilds `catalog_demo.ttl`.
 - `demo.ipynb` — the compile notebook shown in the video: loads
   `catalog_demo.ttl`, calls `PipelineGenerator.compile()`, writes the
-  result to `./out/` with `ProjectBuilder`.
+  result to `./out/` with `FileMaterializer`.
 - `out/` — target directory for the generated project. Populated by running
   the notebook. After compile, `docker compose up -d && docker compose logs -f rdfc`
   inside `out/` should show data pulses every ~5 seconds.

@@ -18,7 +18,7 @@ The pipeline is two steps, split so the second one is reproducible:
 This is not a :class:`compilers.Compiler`. Those are graph-to-graph
 transformations inside a single pipeline build; this runs *before* the
 generator and crosses the boundary into the outside world, which puts it
-in the same category as :class:`compilers.ProjectBuilder`.
+in the same category as :class:`compilers.FileMaterializer`.
 
 Scope is RDF-Connect only. LDIO and semantic.works components have no
 machine-readable upstream definition to derive from, so their catalog

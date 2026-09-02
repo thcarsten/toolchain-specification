@@ -224,7 +224,7 @@ Debugging = look at the graph. Dry-runs = free.
 
 <!--
 SLIDE 5 - DECISION 1: EVERYTHING IS A GRAPH TRANSFORMATION
-- Every compiler takes an rdflib.Graph and returns an enriched rdflib.Graph. The only I/O happens in ProjectBuilder, which is not a Compiler subclass.
+- Every compiler takes an rdflib.Graph and returns an enriched rdflib.Graph. The only I/O happens in FileMaterializer, which is not a Compiler subclass.
 - The five-stop diagram sequences the graph's states: catalog -> seeded (extractor) -> built (assembler and shaping compilers such as SemanticWorksEnvVarCompiler, LdioConfigCompiler, RdfcConfigCompiler, plus per-service sw compilers) -> enriched with the docker-compose file node (DockerComposeCompiler, during the finishing pass) -> written to disk.
 - Because every intermediate is a graph, inspection at any stage is a matter of calling .compile() and looking at the result.
 -->
@@ -318,18 +318,18 @@ They're attached to the build graph as first-class RDF nodes.
   </div>
 </div>
 
-`ProjectBuilder` just walks these nodes and writes each one to disk.
+`FileMaterializer` just walks these nodes and writes each one to disk.
 Nothing else touches the filesystem.
 
 <!--
 SLIDE 7 - DECISION 3: THE BUILD GRAPH IS SELF-DESCRIBING
 - File-producing compilers do not return paths or strings. They call the free helper attach_file(self.output_reader, filename, filepath, content) from compilers.utils inside compile() and re-assign self.output_reader with its return value; this adds an spdx:File node to the build graph and links it to the tcs:PipelineBuild via tcs:compiledFile. The file body is stored on tcs:literal.
 - The file-node IRI is derived by slugifying filepath_filename, so the same (filepath, filename) pair yields a stable IRI across runs.
-- ProjectBuilder reads the spdx:File nodes off the compiled build graph and writes them to disk. Planned writes are collected into a pandas.DataFrame on builder.files first, so they can be inspected without touching the filesystem. A path-traversal guard rejects any tcs:filepath that would escape the target directory.
+- FileMaterializer reads the spdx:File nodes off the compiled build graph and writes them to disk. Planned writes are collected into a pandas.DataFrame on builder.files first, so they can be inspected without touching the filesystem. A path-traversal guard rejects any tcs:filepath that would escape the target directory.
 - Consequence: a compiled build is a single serializable RDF artifact. Provenance, caching, diffing, and replay reduce to graph operations.
 
 Q: Why bake file bodies into the graph as tcs:literal rather than side-tables?
-A: So the compiled build is a single serializable artifact. Provenance, caching, diffing, and replay become graph operations; ProjectBuilder stays trivial.
+A: So the compiled build is a single serializable artifact. Provenance, caching, diffing, and replay become graph operations; FileMaterializer stays trivial.
 -->
 
 ---
@@ -369,7 +369,7 @@ VOCABULARY (for reference)
 - applies_to: classmethod on every compiler. Decides whether the compiler should run against a given build graph. Default is False; every concrete compiler declares its own trigger. Execution order emerges from these triggers becoming true as the graph grows.
 - tcs:isFinishing: temporary triple on the build (`<build> tcs:isFinishing <bool>`) that PipelineGenerator toggles to true whenever a shaping pass finds nothing eligible. Compilers that need to run only after the graph has settled (DockerComposeCompiler) gate on this flag. Stripped from the graph before compile() returns.
 - rdfine / GraphReader: in-repo wrapper over rdflib used by every compiler.
-- ProjectBuilder: the filesystem boundary. Walks the spdx:File nodes and writes them out.
+- FileMaterializer: the filesystem boundary. Walks the spdx:File nodes and writes them out.
 
 Q: What happens when two frameworks share a container arrangement?
 A: Each framework compiler emits its own config file. They meet in docker-compose.yml, produced by a single framework-agnostic DockerComposeCompiler that reads every tcs:DockerComposeConfig node.

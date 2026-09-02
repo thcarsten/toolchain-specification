@@ -19,18 +19,11 @@ from testing_helpers import PIPELINE_ID, NOTEBOOK_FILES, load_reader
 import yaml
 
 
-def _compose(data_dir: Path) -> str:
-    from rdflib import Graph
+def _compose() -> str:
+    from compilers import PipelineGenerator, FileMaterializer
 
-    from compilers import PipelineGenerator, ProjectBuilder
-
-    graph = Graph()
-    for name in NOTEBOOK_FILES:
-        graph.parse(data_dir / name, publicID="file:///workspace/pipeline/")
-    reader = load_reader(graph)
-
-    build = PipelineGenerator(PIPELINE_ID, reader.graph).compile()
-    files = ProjectBuilder(build).files
+    build = PipelineGenerator(PIPELINE_ID).compile()
+    files = FileMaterializer(build).files
     return next(
         row["content"]
         for _, row in files.iterrows()
@@ -38,23 +31,23 @@ def _compose(data_dir: Path) -> str:
     )
 
 
-def test_repeated_compilation_is_byte_identical(data_dir: Path):
-    first = _compose(data_dir)
-    second = _compose(data_dir)
+def test_repeated_compilation_is_byte_identical():
+    first = _compose()
+    second = _compose()
     assert first == second
 
 
-def test_committed_output_matches_a_fresh_run(data_dir: Path, repo_root: Path):
+def test_committed_output_matches_a_fresh_run(repo_root: Path):
     """Guards the checked-in artifact against silent drift."""
     committed = (repo_root / "out/dishacled-full/docker-compose.yml").read_text(
         encoding="utf-8"
     )
-    assert committed == _compose(data_dir)
+    assert committed == _compose()
 
 
-def test_services_are_emitted_in_a_canonical_order(data_dir: Path):
+def test_services_are_emitted_in_a_canonical_order():
     """Sorted by name, so a renamed config cannot reshuffle the file."""
-    services = list(yaml.safe_load(_compose(data_dir))["services"])
+    services = list(yaml.safe_load(_compose())["services"])
     assert services == sorted(services)
     assert len(services) > 1, "fixture should aggregate several services"
 

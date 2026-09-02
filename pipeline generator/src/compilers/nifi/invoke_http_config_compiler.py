@@ -3,7 +3,7 @@ from rdflib import Graph
 import pandas as pd
 from rdfine import GraphReader
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 
 
 class NifiInvokeHttpConfigCompiler(Compiler):

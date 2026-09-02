@@ -27,7 +27,7 @@ from rdflib import Graph, Literal, URIRef
 from rdfine import GraphReader, receive_first
 import pandas as pd
 
-from ..base import Compiler
+from ..compiler_abc import Compiler
 from ..utils import attach_file, parse_docker_compose_config
 
 _PROCESSOR_X_SPACING = 650.0
