@@ -94,8 +94,13 @@ def load_reader(graph: Graph) -> GraphReader:
 
 def assert_shacl_violation(graph: Graph, *, message_contains: str) -> None:
     """Pillar 1a — assert some SHACL violation mentions `message_contains`
-    (case-insensitive substring match on `sh:resultMessage`)."""
-    report = load_reader(graph).validate(advanced=True, inference="rdfs")
+    (case-insensitive substring match on `sh:resultMessage`).
+
+    No ``inference=`` kwarg here: ``load_reader`` already ran the full
+    RDFS/channel inference above pySHACL's own reach; asking pySHACL to
+    also do ``inference="rdfs"`` would redo that RDFS closure a second
+    time for no benefit."""
+    report = load_reader(graph).validate(advanced=True)
     violations = report.select(
         "?focus ?message",
         "?r a sh:ValidationResult ; sh:focusNode ?focus ; sh:resultMessage ?message .",
