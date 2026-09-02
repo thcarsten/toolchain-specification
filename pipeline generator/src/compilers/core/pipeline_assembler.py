@@ -19,17 +19,21 @@ class PipelineAssembler(Compiler):
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Runs once there is exactly one ``tcs:PipelineDefinition`` with at
-        least one step (a ``p-plan:isStepOfPlan`` edge pointing at it).
-        Does not depend on the graph having been narrowed to just this
-        pipeline — component scoping is done internally via
-        :meth:`_lookup_relevant_components`.
+        """Runs once ``PipelineSeeder`` has seeded a ``tcs:PipelineBuild``
+        for a pipeline definition with at least one step (a
+        ``p-plan:isStepOfPlan`` edge pointing at it).
+
+        Keyed off the seeded build's ``prov:hadPlan`` (same pattern as
+        :class:`compilers.core.graph_reducer.GraphReducer`), not a
+        graph-wide scan for "the" ``tcs:PipelineDefinition`` — the
+        shared production catalog intentionally bundles more than one
+        pipeline definition so any one can be selected by id, so a
+        graph-wide uniqueness check is wrong here and would never fire.
         """
-        pipelines = (
-            graph_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition")
-            .df["sub"]
-            .unique()
-        )
+        pipelines = graph_reader.select(
+            "?pipeline",
+            "?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .",
+        )["pipeline"].unique()
         if len(pipelines) != 1:
             return False
         return not graph_reader.filter(
@@ -43,14 +47,17 @@ class PipelineAssembler(Compiler):
         return self.output_reader.graph
 
     def lookup_pipeline_id(self) -> None:
-        """Locate the single ``tcs:PipelineDefinition`` node in the build
-        graph (guaranteed to exist and be unique by :meth:`applies_to`)
-        and stash it on :attr:`pipeline_id` for the other steps to use.
+        """Read the target pipeline id off the seeded ``tcs:PipelineBuild``
+        node's ``prov:hadPlan`` — same pattern as :class:`GraphReducer`,
+        not a graph-wide scan for "the" ``tcs:PipelineDefinition``, which
+        breaks once the catalog bundles more than one (as the shared
+        production config intentionally does).
         """
         self.pipeline_id = receive_first(
-            self.output_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
-                "sub"
-            ],
+            self.output_reader.select(
+                "?pipeline",
+                "?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .",
+            )["pipeline"],
         )
 
     def describe_docker_container(self) -> None:

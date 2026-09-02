@@ -16,7 +16,6 @@ Two-pillar convention (see EDGE_CASES.md):
   PipelineBuild graph looks exactly as expected (`compile_pipeline`).
 """
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -113,15 +112,13 @@ def assert_shacl_violation(graph: Graph, *, message_contains: str) -> None:
 
 
 def _make_runner_for_graph(graph: Graph, pipeline_id: str):
-    """Serialize ``graph`` to a tempfile and build a ``CompilationRunner``
-    around a synthetic ``CompilationConfig`` whose only ``graph_files``
-    entry is that tempfile.
+    """Build a ``CompilationRunner`` around a synthetic ``CompilationConfig``
+    that uses ``graph`` in memory directly (via ``CompilationConfig.graph``),
+    with no serialize/reparse round-trip.
 
     Every test that mutates a base catalog in memory (via ``parse_extra``)
     goes through this so it can still hand the resulting graph to the
     runner without violating the runner's one-input-mode contract.
-    Returns the runner plus the ``TemporaryDirectory`` object the caller
-    must keep alive until compile finishes.
     """
     from compilers import (
         CompilationConfig,
@@ -129,15 +126,12 @@ def _make_runner_for_graph(graph: Graph, pipeline_id: str):
         PipelineGeneratorConfig,
     )
 
-    tmpdir = tempfile.TemporaryDirectory()
-    graph_path = Path(tmpdir.name) / "input.ttl"
-    graph.serialize(destination=str(graph_path), format="turtle")
     config = CompilationConfig(
         compilers=PipelineGeneratorConfig.compilers,
-        graph_files=[graph_path],
+        graph=graph,
         inference_files=[RULES_DIR / rules for rules in INFERENCE_RULES],
     )
-    return CompilationRunner(pipeline_id, config), tmpdir
+    return CompilationRunner(pipeline_id, config)
 
 
 def assert_compile_raises(
@@ -149,22 +143,16 @@ def assert_compile_raises(
 ) -> None:
     """Pillar 1b — some edge cases are caught by a compiler-level guard
     (a Python exception) instead of a SHACL shape; assert that."""
-    runner, tmpdir = _make_runner_for_graph(graph, pipeline_id)
-    try:
-        with pytest.raises(exc_type, match=match):
-            runner.compile()
-    finally:
-        tmpdir.cleanup()
+    runner = _make_runner_for_graph(graph, pipeline_id)
+    with pytest.raises(exc_type, match=match):
+        runner.compile()
 
 
 def compile_pipeline(graph: Graph, pipeline_id: str):
     """Pillar 2 — run the real generator end-to-end; returns
     (runner, GraphReader-over-build-graph) for the test to inspect."""
-    runner, tmpdir = _make_runner_for_graph(graph, pipeline_id)
-    try:
-        build_graph = runner.compile()
-    finally:
-        tmpdir.cleanup()
+    runner = _make_runner_for_graph(graph, pipeline_id)
+    build_graph = runner.compile()
     return runner, GraphReader(build_graph)
 
 

@@ -75,6 +75,29 @@ class CompilationConfig:
     are ordinary members of that list. :attr:`inference_files` are
     applied on top via ``GraphReader.infer()``.
 
+    :attr:`graph`, if set, is used verbatim instead of parsing
+    ``graph_files`` — for callers that already hold an in-memory graph
+    (e.g. a test that mutated a catalog fixture via ``parse_extra``)
+    and would otherwise have to serialize it to a tempfile just so
+    ``get_graph`` could reparse it. ``inference_files`` still apply on
+    top either way. Mutually exclusive with ``graph_files`` by
+    convention — set exactly one.
+
+    :meth:`get_graph` builds the parsed-and-inferred graph once and
+    caches it on the config instance, so every :class:`CompilationRunner`
+    sharing this config (e.g. the module-level ``PipelineGeneratorConfig``,
+    reused by every :func:`PipelineGenerator` call in a process) skips
+    the repeat parse + inference pass. Safe to share by reference: every
+    :class:`Compiler` transformation returns a new graph rather than
+    mutating in place, so the cached graph itself is never touched by
+    a compile run. Call :meth:`rebuild_graph` to force a fresh pass —
+    needed if ``graph_files``/``inference_files`` change on disk mid
+    process (e.g. editing the catalog in a long-running notebook
+    kernel without restarting it), since the cache otherwise never
+    notices. Not safe to share across concurrent/parallel compiles
+    (threads, pytest-xdist workers, ...); fine for the sequential use
+    this codebase makes of it.
+
     :attr:`compilers` is scanned by the runner in a fixpoint loop.
     Each compiler fires as soon as its :meth:`Compiler.applies_to`
     trigger becomes true against the growing graph, and does not run
@@ -86,8 +109,43 @@ class CompilationConfig:
 
     compilers: list[type[Compiler]]
     graph_files: list[Path] = field(default_factory=list)
+    graph: Graph | None = None
     inference_files: list[Path] = field(default_factory=list)
     public_id: str = "file:///workspace/pipeline/"
+    #: One-element cache cell for ``get_graph``. A list (not a plain
+    #: ``Graph | None`` field) so it stays mutable on an otherwise
+    #: frozen dataclass, and excluded from ``repr``/``__eq__`` since
+    #: it's derived state, not config identity.
+    _cached_graph: list[Graph] = field(default_factory=list, repr=False, compare=False)
+
+    def get_graph(self) -> Graph:
+        """The parsed + inference-applied graph, built once and cached
+        on this instance for every subsequent call."""
+        if not self._cached_graph:
+            self._cached_graph.append(self._build_graph())
+        return self._cached_graph[0]
+
+    def rebuild_graph(self) -> Graph:
+        """Discard the cached graph and build it again from scratch.
+
+        Use after ``graph_files``/``inference_files`` change on disk
+        mid-process — ``get_graph`` otherwise keeps returning the
+        stale cached graph forever.
+        """
+        self._cached_graph.clear()
+        return self.get_graph()
+
+    def _build_graph(self) -> Graph:
+        if self.graph is not None:
+            catalog_graph = self.graph
+        else:
+            catalog_graph = Graph()
+            for path in self.graph_files:
+                catalog_graph.parse(str(path), publicID=self.public_id)
+        reader = GraphReader(catalog_graph)
+        for path in self.inference_files:
+            reader = reader.infer(str(path))
+        return reader.graph
 
 
 class CompilationRunner:
@@ -114,15 +172,10 @@ class CompilationRunner:
     # ------------------------------------------------------------------
 
     def load_graph(self) -> None:
-        """Parse ``graph_files`` into one graph, apply ``inference_files``
-        on top, and seed :attr:`build` with the result."""
-        catalog_graph = Graph()
-        for path in self.config.graph_files:
-            catalog_graph.parse(str(path), publicID=self.config.public_id)
-        reader = GraphReader(catalog_graph)
-        for path in self.config.inference_files:
-            reader = reader.infer(str(path))
-        self.catalog_graph = reader.graph
+        """Get ``config``'s built graph (cached across runs that share
+        the same config, see :meth:`CompilationConfig.get_graph`) and
+        seed :attr:`build` with it."""
+        self.catalog_graph = self.config.get_graph()
         self.build = self.catalog_graph
 
     def run_fixpoint(self) -> None:
