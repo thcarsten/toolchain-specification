@@ -31,3 +31,4 @@ venv/
 .coverage
 htmlcov/
 _pytest_fixes.log
+test_output.txt
