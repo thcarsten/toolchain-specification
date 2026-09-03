@@ -5,7 +5,7 @@ import re
 import yaml
 
 from ..base import Compiler
-from ..utils import attach_file, extract_config
+from ..utils import attach_file, extract_config, prepare_ldio_config, lookup_seeded_pipeline_id
 
 
 class LdioConfigCompiler(Compiler):
@@ -35,6 +35,8 @@ class LdioConfigCompiler(Compiler):
         self.dict_configs: dict = {}
         self.segment_outputs: dict[str, dict] = {}
         self.segment_yamls: dict[str, str] = {}
+        self.pipeline_name: str | None = None
+        self.pipeline_description: str | None = None
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
@@ -75,6 +77,7 @@ class LdioConfigCompiler(Compiler):
     def compile(self) -> Graph:
         self.fetch_steps()
         self.fetch_configs()
+        self.lookup_pipeline_metadata()
         self.fill_in_segments()
         self.serialize_segment_yamls()
         self.attach_segment_files()
@@ -191,9 +194,30 @@ class LdioConfigCompiler(Compiler):
         output_dict = {}
         for config_id in config_list:
             config_dict = extract_config(self.output_reader, config_id)
-            config_dict = self.output_reader.prefix_store.drop(config_dict)
+            if isinstance(config_dict, dict):
+                config_dict = prepare_ldio_config(
+                    self.output_reader.prefix_store, config_dict
+                )
             output_dict[config_id] = config_dict
         self.dict_configs = output_dict
+
+    def lookup_pipeline_metadata(self) -> None:
+        """Copy ``dct:identifier`` / ``rdfs:comment`` off the seeded plan.
+
+        YAML ``name:`` is the HttpIn URL path; it must be the machine
+        slug, not ``rdfs:label`` (spaces). Missing identifier falls
+        back to the segment id in :meth:`fill_in_segments`.
+        """
+        plan = lookup_seeded_pipeline_id(self.output_reader)
+        ident_rows = self.output_reader.filter(sub=plan, pred="dct:identifier").df
+        self.pipeline_name = (
+            str(ident_rows["obj"].iloc[0]) if not ident_rows.empty else None
+        )
+        comment_rows = self.output_reader.filter(sub=plan, pred="rdfs:comment").df
+        if comment_rows.empty:
+            self.pipeline_description = None
+        else:
+            self.pipeline_description = str(comment_rows["obj"].iloc[0]).strip()
 
     def fill_in_segments(self) -> None:
         """Group steps by ``tcs:segment`` and lay each segment's steps
@@ -203,12 +227,18 @@ class LdioConfigCompiler(Compiler):
         if self.df_steps.empty:
             self.segment_outputs = outputs
             return
+        segment_ids = list(dict.fromkeys(self.df_steps["segment"].to_list()))
         for _, row in self.df_steps.iterrows():
             segment_id = row["segment"]
             segment = outputs.setdefault(
                 segment_id,
                 {
-                    "name": self._derive_pipeline_name(segment_id),
+                    "name": self._segment_pipeline_name(segment_id, len(segment_ids)),
+                    **(
+                        {"description": self.pipeline_description}
+                        if self.pipeline_description
+                        else {}
+                    ),
                     "input": {"adapter": {}},
                     "transformers": [],
                     "outputs": [],
@@ -243,7 +273,7 @@ class LdioConfigCompiler(Compiler):
         for segment_id, config_yaml in self.segment_yamls.items():
             self.output_reader = attach_file(
                 self.output_reader,
-                filename=f"{self._derive_pipeline_name(segment_id)}.yml",
+                filename=f"{self.segment_outputs[segment_id]['name']}.yml",
                 filepath="ldio/pipelines",
                 content=config_yaml,
             )
@@ -257,6 +287,14 @@ class LdioConfigCompiler(Compiler):
             filepath="ldio",
             content=self._APPLICATION_YAML,
         )
+
+    def _segment_pipeline_name(self, segment_id: str, segment_count: int) -> str:
+        if self.pipeline_name and segment_count == 1:
+            return self.pipeline_name
+        slug = self._derive_pipeline_name(segment_id)
+        if self.pipeline_name:
+            return f"{self.pipeline_name}-{slug}"
+        return slug
 
     @staticmethod
     def _derive_pipeline_name(segment_id: str) -> str:

@@ -194,6 +194,50 @@ def extract_config(reader: GraphReader, config_id: str) -> Union[dict, str]:
     return parse_config(config_gd.dict)[":config"]
 
 
+_JSONLD_KEYS = frozenset({"@id", "@type"})
+
+
+def prepare_ldio_config(prefix_store, config_dict: dict) -> dict:
+    """Shape an extracted LDIO ``tcs:embedded`` dict for YAML emit.
+
+    Compact **keys** to LDIO local names (``ldio:urls`` → ``urls``) but
+    **expand** string values so framed JSON-LD compact IRIs such as
+    ``dct:modified`` become ``http://purl.org/dc/terms/modified`` again.
+    Collapse JSON-LD ``{@value: ...}`` objects to native Python values.
+    A scalar ``urls`` becomes a one-element list.
+    """
+    collapsed = GraphDict.collapse_values(config_dict)
+    return _ldio_drop_keys(prefix_store, collapsed)
+
+
+def _ldio_drop_keys(prefix_store, obj):
+    if isinstance(obj, dict):
+        out = {}
+        for key, value in obj.items():
+            if key in _JSONLD_KEYS:
+                continue
+            new_key = prefix_store.drop_string(key) if isinstance(key, str) else key
+            out[new_key] = _ldio_drop_keys(prefix_store, value)
+        urls = out.get("urls")
+        if isinstance(urls, str):
+            out["urls"] = [urls]
+        return out
+    if isinstance(obj, list):
+        return [_ldio_drop_keys(prefix_store, item) for item in obj]
+    if isinstance(obj, str):
+        return prefix_store.expand_string(obj)
+    return obj
+
+
+def lookup_seeded_pipeline_identifier(reader: GraphReader) -> str | None:
+    """``dct:identifier`` on the seeded plan, or ``None`` if unset."""
+    plan = lookup_seeded_pipeline_id(reader)
+    rows = reader.filter(sub=plan, pred="dct:identifier").df
+    if rows.empty:
+        return None
+    return str(rows["obj"].iloc[0])
+
+
 def parse_docker_compose_config(
     reader: GraphReader,
     config_id: str,
@@ -333,9 +377,9 @@ def prefer_non_default_compose_configs(
 def lookup_seeded_pipeline_id(reader: GraphReader) -> str:
     """Return the ``tcs:PipelineDefinition`` ``PipelineSeeder`` bound to this build.
 
-    The catalog graph may still contain other plans (the fietsstallingen
-    file has two). Compilers must key off ``prov:hadPlan``, not "the
-    only ``tcs:PipelineDefinition`` in the graph".
+    The catalog graph may still contain other ``tcs:PipelineDefinition``
+    nodes. Compilers must key off ``prov:hadPlan``, not "the only
+    definition in the graph".
     """
     return receive_first(
         reader.select(
