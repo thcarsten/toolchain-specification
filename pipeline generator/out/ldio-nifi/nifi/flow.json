@@ -1,0 +1,133 @@
+{
+    "maxTimerDrivenThreadCount": 10,
+    "rootGroup": {
+        "identifier": "10691684-2d40-501c-8edc-6d232c8b8e62",
+        "instanceIdentifier": "0dc22c53-de8b-50c8-86b0-8a05f7d711ab",
+        "name": "LDIO \u2192 NiFi automatic HTTP bridge",
+        "comments": "Minimal cross-framework pipeline: an LDIO segment polls a\r\n        public JSON endpoint and turns it into JSON-LD; a NiFi Funnel accumulates\r\n        the resulting FlowFiles. Neither side declares a boundary component \u2014\r\n        BridgeTransportCompiler auto-inserts ldio:HttpOut on the LDIO side and\r\n        nifi:ListenHTTP on the NiFi side, and the paired per-boundary config\r\n        compilers agree the transport metadata through the shared channel.",
+        "position": {
+            "x": 0.0,
+            "y": 0.0
+        },
+        "processGroups": [],
+        "remoteProcessGroups": [],
+        "processors": [
+            {
+                "identifier": "859fe852-03e4-56d6-b32a-97ea625a3eaa",
+                "instanceIdentifier": "a3a083cb-d7d5-5bbb-a521-c615bc9caa05",
+                "name": "bridgestep_1",
+                "comments": "",
+                "position": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "type": "org.apache.nifi.processors.standard.ListenHTTP",
+                "bundle": {
+                    "group": "org.apache.nifi",
+                    "artifact": "nifi-standard-nar",
+                    "version": "2.10.0"
+                },
+                "properties": {
+                    "Base Path": "bridgestep_1",
+                    "Listening Port": "9000"
+                },
+                "propertyDescriptors": {
+                    "Base Path": {
+                        "name": "Base Path",
+                        "displayName": "Base Path",
+                        "identifiesControllerService": false,
+                        "sensitive": false,
+                        "dynamic": false
+                    },
+                    "Listening Port": {
+                        "name": "Listening Port",
+                        "displayName": "Listening Port",
+                        "identifiesControllerService": false,
+                        "sensitive": false,
+                        "dynamic": false
+                    }
+                },
+                "style": {},
+                "schedulingPeriod": "60 sec",
+                "schedulingStrategy": "TIMER_DRIVEN",
+                "executionNode": "ALL",
+                "penaltyDuration": "30 sec",
+                "yieldDuration": "1 sec",
+                "bulletinLevel": "WARN",
+                "runDurationMillis": 0,
+                "concurrentlySchedulableTaskCount": 1,
+                "autoTerminatedRelationships": [],
+                "scheduledState": "RUNNING",
+                "retryCount": 10,
+                "retriedRelationships": [],
+                "backoffMechanism": "PENALIZE_FLOWFILE",
+                "maxBackoffPeriod": "10 mins",
+                "componentType": "PROCESSOR",
+                "groupIdentifier": "10691684-2d40-501c-8edc-6d232c8b8e62"
+            }
+        ],
+        "inputPorts": [],
+        "outputPorts": [],
+        "connections": [
+            {
+                "identifier": "dce8cc9b-ef48-571d-b68f-8898a3e592ae",
+                "instanceIdentifier": "1e2d45b2-b25d-552f-958c-98da2c42cf26",
+                "name": "channel_bridge_1",
+                "source": {
+                    "id": "859fe852-03e4-56d6-b32a-97ea625a3eaa",
+                    "type": "PROCESSOR",
+                    "groupId": "10691684-2d40-501c-8edc-6d232c8b8e62"
+                },
+                "destination": {
+                    "id": "5d937e1c-94ba-5fc4-98f0-d954d019c609",
+                    "type": "FUNNEL",
+                    "groupId": "10691684-2d40-501c-8edc-6d232c8b8e62"
+                },
+                "labelIndex": 1,
+                "zIndex": 0,
+                "selectedRelationships": [
+                    "success"
+                ],
+                "backPressureObjectThreshold": 10000,
+                "backPressureDataSizeThreshold": "1 GB",
+                "flowFileExpiration": "0 sec",
+                "prioritizers": [],
+                "bends": [],
+                "loadBalanceStrategy": "DO_NOT_LOAD_BALANCE",
+                "partitioningAttribute": "",
+                "loadBalanceCompression": "DO_NOT_COMPRESS",
+                "componentType": "CONNECTION",
+                "groupIdentifier": "10691684-2d40-501c-8edc-6d232c8b8e62"
+            }
+        ],
+        "labels": [],
+        "funnels": [
+            {
+                "identifier": "5d937e1c-94ba-5fc4-98f0-d954d019c609",
+                "instanceIdentifier": "e605ba53-d0ff-51f3-a2c2-ad5371b7fd71",
+                "position": {
+                    "x": 650.0,
+                    "y": 0.0
+                },
+                "componentType": "FUNNEL",
+                "groupIdentifier": "10691684-2d40-501c-8edc-6d232c8b8e62"
+            }
+        ],
+        "controllerServices": [],
+        "defaultFlowFileExpiration": "0 sec",
+        "defaultBackPressureObjectThreshold": 10000,
+        "defaultBackPressureDataSizeThreshold": "1 GB",
+        "scheduledState": "ENABLED",
+        "executionEngine": "INHERITED",
+        "maxConcurrentTasks": 1,
+        "statelessFlowTimeout": "1 min",
+        "flowFileConcurrency": "UNBOUNDED",
+        "flowFileOutboundPolicy": "STREAM_WHEN_AVAILABLE",
+        "componentType": "PROCESS_GROUP"
+    },
+    "externalControllerServices": {},
+    "parameterContexts": [],
+    "flowEncodingVersion": "1.0",
+    "parameterProviders": [],
+    "latest": false
+}

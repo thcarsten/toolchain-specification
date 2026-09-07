@@ -23,6 +23,9 @@ from rdflib import Graph
 from rdfine import GraphReader
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+CATALOG_DIR = DATA_DIR / "catalog"
+PIPELINES_DIR = DATA_DIR / "pipelines"
+RULES_DIR = DATA_DIR / "inference_rules"
 
 # The component catalog. catalog-rdfc.ttl is generated from the packages'
 # own definitions; catalog-rdfc-manual.ttl holds the RDF-Connect parts
@@ -43,11 +46,19 @@ PIPELINE_FILE = "pipeline_definition.ttl"
 # The demonstrator pipeline every non-synthetic test compiles.
 PIPELINE_ID = "demo:DishacledPipeline"
 
-# The whole graph, in the order demo.ipynb loads it. Edge-case tests want
-# CATALOG_FILES and bring their own synthetic pipeline; tests that
-# exercise the real demonstrator want this.
+# The whole graph, in the order demo.ipynb loads it, as paths relative to
+# DATA_DIR (with subfolder prefixes). Edge-case tests want CATALOG_FILES
+# and bring their own synthetic pipeline; tests that exercise the real
+# demonstrator want this.
 # ``test_notebook_file_list_matches_this_test`` keeps it in sync.
-NOTEBOOK_FILES = [*CATALOG_FILES, PIPELINE_FILE, SHAPES_FILE]
+NOTEBOOK_FILES = [
+    *(f"catalog/{name}" for name in CATALOG_FILES),
+    f"pipelines/{PIPELINE_FILE}",
+    f"catalog/{SHAPES_FILE}",
+]
+
+# The demonstrator pipeline every non-synthetic test compiles.
+PIPELINE_ID = "demo:DishacledPipeline"
 
 # Both rule files, in the order the notebook applies them. The
 # RDF-Connect rules were split out of the neutral set so their scope is
@@ -77,14 +88,19 @@ def load_reader(graph: Graph) -> GraphReader:
     type) don't have to duplicate it."""
     reader = GraphReader(graph)
     for rules in INFERENCE_RULES:
-        reader = reader.infer(str(DATA_DIR / rules))
+        reader = reader.infer(str(RULES_DIR / rules))
     return reader
 
 
 def assert_shacl_violation(graph: Graph, *, message_contains: str) -> None:
     """Pillar 1a — assert some SHACL violation mentions `message_contains`
-    (case-insensitive substring match on `sh:resultMessage`)."""
-    report = load_reader(graph).validate(advanced=True, inference="rdfs")
+    (case-insensitive substring match on `sh:resultMessage`).
+
+    No ``inference=`` kwarg here: ``load_reader`` already ran the full
+    RDFS/channel inference above pySHACL's own reach; asking pySHACL to
+    also do ``inference="rdfs"`` would redo that RDFS closure a second
+    time for no benefit."""
+    report = load_reader(graph).validate(advanced=True)
     violations = report.select(
         "?focus ?message",
         "?r a sh:ValidationResult ; sh:focusNode ?focus ; sh:resultMessage ?message .",

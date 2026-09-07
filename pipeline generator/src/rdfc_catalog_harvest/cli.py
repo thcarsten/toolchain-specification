@@ -21,9 +21,9 @@ from pathlib import Path
 from . import emitter, harvester
 from .requests import load_requests
 
-DEFAULT_REQUESTS = "data/catalog-rdfc-requests.ttl"
-DEFAULT_SNAPSHOT = "data/rdfc_harvest"
-DEFAULT_OUTPUT = "data/catalog-rdfc.ttl"
+DEFAULT_REQUESTS = "data/catalog/catalog-rdfc-requests.ttl"
+DEFAULT_SNAPSHOT = "data/catalog/rdfc_harvest"
+DEFAULT_OUTPUT = "data/catalog/catalog-rdfc.ttl"
 
 
 def _repo_root(explicit: str | None) -> Path:
@@ -88,7 +88,9 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         return 0
 
     output.write_text(text, encoding="utf-8")
-    print(f"wrote {args.output} ({len(text.splitlines())} lines, {len(requests)} components)")
+    print(
+        f"wrote {args.output} ({len(text.splitlines())} lines, {len(requests)} components)"
+    )
     return 0
 
 

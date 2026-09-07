@@ -1,0 +1,91 @@
+@prefix : <http://example.org/example/> .
+@prefix demo_ln: <http://example.org/example/ldio-nifi/> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix nifi: <http://example.org/example/nifi/> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+
+
+###############################################################################
+# LDIO → NiFi automatic HTTP bridge — smoke pipeline
+#
+# Two containers, two frameworks, one cross-container channel that NEITHER
+# side names as a boundary. Compile-time behaviour under test:
+#
+#   1. ``BridgeTransportCompiler`` sees the LDIO→NiFi channel crossing
+#      containers with no boundary on either side, and picks the single
+#      HTTP-typed pair whose ``dct:requires`` chain reaches each side's
+#      orchestrator: ``ldio:HttpOut`` on the LDIO side and
+#      ``nifi:ListenHTTP`` on the NiFi side.
+#   2. ``NifiListenHttpConfigCompiler`` allocates port 9000 for the
+#      auto-inserted ListenHTTP, derives its base path from the step's
+#      local name, and annotates the shared channel with
+#      ``tcs:endpoint "http://nifip:9000/<basepath>"``.
+#   3. ``LdioHttpOutConfigCompiler`` reads that endpoint back off the
+#      channel and fills in the paired ``ldio:HttpOut``'s config.
+#
+# Runtime observability (after ``docker compose up``):
+#
+#   * LDIO polls the JSON endpoint every 10 s and forwards enriched
+#     JSON-LD to ``http://nifip:9000/bridgestep_1``.
+#   * NiFi's UI at ``https://localhost:8443/nifi`` (login
+#     ``root`` / ``rootrootrootroot``) shows FlowFiles arriving on the
+#     auto-inserted ``ListenHTTP`` and piling up in the terminal
+#     ``Funnel`` — the visible signal that the bridge is working.
+###############################################################################
+
+
+demo_ln:LdioNifiBridgePipeline a tcs:PipelineDefinition ;
+    rdfs:label "LDIO → NiFi automatic HTTP bridge" ;
+    rdfs:comment """Minimal cross-framework pipeline: an LDIO segment polls a
+        public JSON endpoint and turns it into JSON-LD; a NiFi Funnel accumulates
+        the resulting FlowFiles. Neither side declares a boundary component —
+        BridgeTransportCompiler auto-inserts ldio:HttpOut on the LDIO side and
+        nifi:ListenHTTP on the NiFi side, and the paired per-boundary config
+        compilers agree the transport metadata through the shared channel.""" .
+
+
+#################################################################
+# LDIO segment — poll a public JSON endpoint, parse to JSON-LD
+#################################################################
+
+
+demo_ln:Poll a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:HttpInPoller ;
+    p-plan:isStepOfPlan demo_ln:LdioNifiBridgePipeline ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:url "https://jsonplaceholder.typicode.com/posts/1" ;
+            ldio:cron "*/10 * * * * *"
+        ]
+    ] .
+
+
+# jsonplaceholder returns application/json; force-content-type lets
+# JsonToLdAdapter still accept and JSON-LD-ify the body.
+demo_ln:Parse a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:JsonToLdAdapter ;
+    p-plan:isStepOfPlan demo_ln:LdioNifiBridgePipeline ;
+    p-plan:isPrecededBy demo_ln:Poll ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:force-content-type true ;
+            ldio:context """{ \"@context\": { \"@vocab\": \"https://schema.org/\" } }"""
+        ]
+    ] .
+
+
+#################################################################
+# NiFi segment — accumulate FlowFiles in a terminal Funnel
+#################################################################
+
+
+demo_ln:Sink a tcs:InstancePipelineComponent ;
+    prov:specializationOf nifi:Funnel ;
+    p-plan:isStepOfPlan demo_ln:LdioNifiBridgePipeline ;
+    p-plan:isPrecededBy demo_ln:Parse .

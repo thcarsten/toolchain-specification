@@ -1,0 +1,7 @@
+name: segment_0
+input:
+  adapter:
+    name: Ldio:RdfAdapter
+  name: Ldio:HttpIn
+outputs:
+- name: Ldio:ConsoleOut

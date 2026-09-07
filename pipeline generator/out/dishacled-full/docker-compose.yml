@@ -44,8 +44,7 @@ services:
     depends_on:
     - dispatcher
   ldio-workbench:
-    container_name: ldio-workbench
-    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
+    image: ldes/ldi-orchestrator:2.14.0
     ports:
     - 8080:8080
     volumes:
@@ -54,7 +53,6 @@ services:
     depends_on:
     - rdfc
   rdfc:
-    container_name: rdfc
     image: rdf-connect:latest
     build: ./rdfc
     volumes:

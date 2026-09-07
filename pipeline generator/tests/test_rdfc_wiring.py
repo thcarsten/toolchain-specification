@@ -92,12 +92,12 @@ def test_already_explicit_key_is_never_overwritten(catalog_graph):
     assert "ch1" not in content
 
 
-def test_pipeline_ttl_excludes_validation_report_bookkeeping(demonstrator_graph):
+def test_pipeline_ttl_excludes_validation_report_bookkeeping(compiled_demonstrator):
     # ValidationReportCompiler runs before RdfcConfigCompiler and attaches
     # dcat:qualifiedRelation (inputshaperel/outputshaperel, emptyshape)
     # onto channels; extract_config's traversal must not leak that
     # validation bookkeeping into the emitted pipeline.ttl.
-    _, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+    _, build = compiled_demonstrator
     content = pipeline_ttl_content(build)
     assert "qualifiedRelation" not in content
     assert "inputshaperel" not in content

@@ -410,8 +410,55 @@ nifi:Funnel
     nifi:componentType "FUNNEL" ;
     dct:requires nifi:Orchestrator .
 
+nifi:ListenHTTP
+    a tcs:PipelineComponent, dcat:Resource, tcs:EntryBoundaryComponent ;
+    tcs:channelType tcs:HttpChannel ;
+    rdfs:label "Apache NiFi ListenHTTP" ;
+    rdfs:description "Starts an HTTP server that listens for FlowFiles on a given port and base path." ;
+    dcat:landingPage "https://nifi.apache.org/docs/nifi-docs/components/org.apache.nifi/nifi-standard-nar/1.28.0/org.apache.nifi.processors.standard.ListenHTTP/index.html" ;
+    nifi:processorType "org.apache.nifi.processors.standard.ListenHTTP" ;
+    nifi:bundleGroup "org.apache.nifi" ;
+    nifi:bundleArtifact "nifi-standard-nar" ;
+    nifi:bundleVersion "2.10.0" ;
+    nifi:outgoingRelationship "success" ;
+    dct:requires nifi:Orchestrator ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole "configShape" ;
+        dct:relation :NifiListenHTTPConfigShape
+    ] .
+
+:NifiListenHTTPConfigShape
+    a sh:NodeShape ;
+    sh:target [
+        a sh:SPARQLTarget ;
+        sh:prefixes tcs:prefixes ;
+        sh:select """
+            SELECT ?this WHERE {
+                ?step prov:specializationOf nifi:ListenHTTP ;
+                    p-plan:hasInputVar/tcs:embedded ?this .
+            }
+        """
+    ] ;
+    sh:property [
+        sh:path nifi:listeningPort ;
+        sh:name "Listening Port" ;
+        nifi:propertyName "Listening Port" ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+    sh:property [
+        sh:path nifi:basePath ;
+        sh:name "Base Path" ;
+        nifi:propertyName "Base Path" ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1
+    ] .
+
 nifi:InvokeHTTP
-    a tcs:PipelineComponent, dcat:Resource ;
+    a tcs:PipelineComponent, dcat:Resource, tcs:ExitBoundaryComponent ;
+    tcs:channelType tcs:HttpChannel ;
     rdfs:label "Apache NiFi InvokeHTTP" ;
     nifi:processorType "org.apache.nifi.processors.standard.InvokeHTTP" ;
     nifi:bundleGroup "org.apache.nifi" ;
@@ -461,6 +508,14 @@ nifi:InvokeHTTP
         nifi:propertyName "HTTP URL" ;
         sh:datatype xsd:string ;
         sh:minCount 1 ;
+        sh:maxCount 1
+    ] ;
+
+    sh:property [
+        sh:path nifi:contentType ;
+        sh:name "Content Type" ;
+        nifi:propertyName "Request Content-Type" ;
+        sh:datatype xsd:string ;
         sh:maxCount 1
     ] .
 

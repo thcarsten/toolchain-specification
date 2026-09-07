@@ -33,13 +33,13 @@ PUBLIC_ID = "file:///workspace/pipeline/"
 def main() -> None:
     g = Graph()
     for name in CATALOG_FILES:
-        g.parse(DATA / name, publicID=PUBLIC_ID)
+        g.parse(DATA / "catalog" / name, publicID=PUBLIC_ID)
     g.parse(HERE / "pipeline_definition_demo.ttl", publicID=PUBLIC_ID)
 
     enriched = (
         GraphReader(g)
-        .infer(str(DATA / "inference_rules.yaml"))
-        .infer(str(DATA / "rdfc_inference_rules.yaml"))
+        .infer(str(DATA / "inference_rules" / "inference_rules.yaml"))
+        .infer(str(DATA / "inference_rules" / "rdfc_inference_rules.yaml"))
     )
 
     out = HERE / "catalog_demo.ttl"

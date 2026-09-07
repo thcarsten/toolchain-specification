@@ -1,4 +1,10 @@
 name: segment_1
+description: "Full three-framework pipeline mirroring the hand-built\r\n        configuration\
+  \ in `demonstrator/`. Polls source-a for water-level\r\n        measurements, enriches\
+  \ them into SSN/SOSA + QUDT observations,\r\n        streams them through an SDS\
+  \ + threshold-monitor pipeline that\r\n        emits oslc:Error alerts on out-of-range\
+  \ readings, ingests those\r\n        alerts into the mu-semtech triple store, and\
+  \ lets the mu delta\r\n        notifier trigger email composition + delivery."
 input:
   adapter:
     name: Ldio:JsonToLdAdapter
@@ -9,9 +15,7 @@ input:
         : \"sosa:resultTime\",\n                \"conformsTo\": \"dcterms:conformsTo\"\
         ,\n                \"source\": \"https://schema.org/source\"\n           \
         \   }\n            }"
-      force-content-type:
-        '@type': boolean
-        '@value': true
+      force-content-type: true
   name: Ldio:HttpInPoller
   config:
     cron: '*/10 * * * * *'

@@ -400,23 +400,29 @@ class GraphReader:
 
     def rename(self, old: str, new: str) -> Self:
         """
-        Replaces a node with a name.
-        - "old_name", "new_name"
+        Return a new ``GraphReader`` in which every occurrence of ``old``
+        (as subject or object) has been replaced by ``new``. ``new`` is
+        treated as a URI IRI; ``old`` may be a blank-node label
+        (``_:xxx``) or a compact URI.
         """
+        old_node = (
+            BNode(old[2:])
+            if isinstance(old, str) and old.startswith("_:")
+            else URIRef(self.prefix_store.expand_string(str(old)))
+        )
+        new_node = URIRef(self.prefix_store.expand_string(str(new)))
 
-        # I do this in the dataframe space because it is easier and avoids some issues
-        df_graph = self.df
-
-        # Renaming in sub and obj
-        df_graph.loc[df_graph["sub"] == old, "sub"] = new
-        df_graph.loc[df_graph["obj"] == old, "obj"] = new
-
-        # Updating types (assuming that renaming a term makes it a URI)
-        df_graph.loc[df_graph["sub"] == new, "sub_type"] = URIRef
-        df_graph.loc[df_graph["obj"] == new, "obj_type"] = URIRef
-
-        # Returning the updated graph
-        return type(self)(self._df_to_graph(df_graph, self.prefix_store))
+        new_graph = Graph()
+        for s, p, o in self.graph:
+            new_graph.add(
+                (
+                    new_node if s == old_node else s,
+                    p,
+                    new_node if o == old_node else o,
+                )
+            )
+        self.prefix_store.bind_to_namespace(new_graph)
+        return type(self)(new_graph, prefix_store=self.prefix_store)
 
     def serialize(self, output_format: str) -> str:
         """

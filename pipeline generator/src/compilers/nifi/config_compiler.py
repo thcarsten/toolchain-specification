@@ -58,11 +58,38 @@ class NifiConfigCompiler(Compiler):
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """True when a container instantiates ``nifi:Orchestrator``."""
-        return not graph_reader.filter(
+        """True when a container instantiates ``nifi:Orchestrator``,
+        :class:`BridgeTransportCompiler` has finished (so any Bridge-inserted
+        boundary steps are visible), and every NiFi step specializing a
+        boundary component has already been configured. Deferring on both
+        signals avoids emitting a ``flow.json`` with an empty ``properties``
+        block on a Bridge-inserted ``nifi:ListenHTTP`` or ``nifi:InvokeHTTP``.
+        """
+        if graph_reader.filter(
             pred="tcs:instantiates",
             obj="nifi:Orchestrator",
+        ).df.empty:
+            return False
+        bridge_ran = not graph_reader.filter(
+            pred="dct:creator", obj="tcs:BridgeTransportCompiler"
         ).df.empty
+        if not bridge_ran:
+            return False
+        unconfigured_boundary = graph_reader.select(
+            "?step",
+            """
+            ?container a tcs:DockerContainer ;
+                       tcs:instantiates nifi:Orchestrator ;
+                       tcs:runs ?step .
+            ?step a tcs:InstancePipelineComponent ;
+                  prov:specializationOf ?comp .
+            { ?comp a tcs:EntryBoundaryComponent }
+            UNION
+            { ?comp a tcs:ExitBoundaryComponent }
+            FILTER NOT EXISTS { ?step p-plan:hasInputVar ?c }
+            """,
+        )
+        return unconfigured_boundary.empty
 
     def compile(self) -> Graph:
         """Fetch > plan edges > layout > emit JSON > attach ``flow.json``."""
@@ -89,8 +116,7 @@ class NifiConfigCompiler(Compiler):
         if not missing_steps.empty:
             components = ", ".join(missing_steps["component"].astype(str))
             raise ValueError(
-                "NiFi steps have incomplete NiFi catalog metadata: "
-                f"{components}"
+                "NiFi steps have incomplete NiFi catalog metadata: " f"{components}"
             )
 
         duplicate_steps = self.df_steps.loc[
@@ -104,9 +130,7 @@ class NifiConfigCompiler(Compiler):
             controller_services["step"].duplicated(keep=False)
         ]
         if not duplicate_services.empty:
-            services = ", ".join(
-                sorted(set(duplicate_services["step"].astype(str)))
-            )
+            services = ", ".join(sorted(set(duplicate_services["step"].astype(str))))
             raise ValueError(
                 f"NiFi controller services must have at most one configuration: {services}"
             )
@@ -114,9 +138,9 @@ class NifiConfigCompiler(Compiler):
         self.df_steps = self.df_steps.sort_values("step").reset_index(drop=True)
         funnels = funnels.sort_values("step").reset_index(drop=True)
         pipeline_id = receive_first(
-            self.output_reader.filter(
-                pred="rdf:type", obj="tcs:PipelineDefinition"
-            ).df["sub"]
+            self.output_reader.filter(pred="rdf:type", obj="tcs:PipelineDefinition").df[
+                "sub"
+            ]
         )
         group_id = nifi_id(f"{pipeline_id}:group")
 
@@ -131,9 +155,7 @@ class NifiConfigCompiler(Compiler):
             [(plan["source"], plan["destination"]) for plan in connection_plans],
         )
         # Relationships already wired as connections must not stay auto-terminated.
-        connected_by_source = {
-            plan["source"]: set() for plan in connection_plans
-        }
+        connected_by_source = {plan["source"]: set() for plan in connection_plans}
         for plan in connection_plans:
             connected_by_source[plan["source"]].update(plan["selectedRelationships"])
 
@@ -267,20 +289,14 @@ class NifiConfigCompiler(Compiler):
             "volumes": ["./nifi/configure_local.py:/deployment/configure_local.py:ro"],
             "environment": {
                 "NIFI_BASE_URL": "https://nifip:8443",
-                "NIFI_USERNAME": nifi_environment[
-                    "SINGLE_USER_CREDENTIALS_USERNAME"
-                ],
-                "NIFI_PASSWORD": nifi_environment[
-                    "SINGLE_USER_CREDENTIALS_PASSWORD"
-                ],
+                "NIFI_USERNAME": nifi_environment["SINGLE_USER_CREDENTIALS_USERNAME"],
+                "NIFI_PASSWORD": nifi_environment["SINGLE_USER_CREDENTIALS_PASSWORD"],
             },
             "secrets": secret_names,
             "command": ["python", "/deployment/configure_local.py"],
             "restart": "on-failure",
         }
-        compose["secrets"] = {
-            name: {"environment": name} for name in secret_names
-        }
+        compose["secrets"] = {name: {"environment": name} for name in secret_names}
 
         old_body = self.output_reader.filter(
             sub=config_id, pred=["tcs:literal", "tcs:embedded"]
@@ -545,9 +561,7 @@ class NifiConfigCompiler(Compiler):
             source = ready.pop(0)
             processed.add(source)
             for destination in sorted(successors[source]):
-                depths[destination] = max(
-                    depths[destination], depths[source] + 1
-                )
+                depths[destination] = max(depths[destination], depths[source] + 1)
                 indegree[destination] -= 1
                 if indegree[destination] == 0:
                     ready.append(destination)
@@ -798,11 +812,11 @@ class NifiConfigCompiler(Compiler):
             str(row.property_name): {
                 "name": str(row.property_name),
                 "displayName": str(row.property_name),
-                "identifiesControllerService": not pd.isna(
-                    row.controller_service_type
-                ),
+                "identifiesControllerService": not pd.isna(row.controller_service_type),
                 "sensitive": (
-                    False if pd.isna(row.sensitive) else str(row.sensitive).lower() == "true"
+                    False
+                    if pd.isna(row.sensitive)
+                    else str(row.sensitive).lower() == "true"
                 ),
                 "dynamic": False,
             }

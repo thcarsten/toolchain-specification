@@ -28,6 +28,24 @@
 
 :MetadataConfigShape tcs:passed true .
 
+:NifiAzureStorageCredentialsConfigShape tcs:passed true .
+
+:NifiCreateVersionObjectConfigShape tcs:passed true .
+
+:NifiExecuteGroovyScriptConfigShape tcs:passed true .
+
+:NifiFetchAzureBlobStorageConfigShape tcs:passed true .
+
+:NifiGenerateFlowFileConfigShape tcs:passed true .
+
+:NifiInvokeHTTPConfigShape tcs:passed true .
+
+:NifiListenHTTPConfigShape tcs:passed true .
+
+:NifiRemoteDeploymentConfigShape tcs:passed true .
+
+:NifiSplitTextConfigShape tcs:passed true .
+
 :PerformanceConfigShape tcs:passed true .
 
 :SPARQLIngestShape tcs:passed true .
@@ -47,13 +65,13 @@
     tcs:outputShape [ ] .
 
 :throughputresult_1 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_11 ;
+    tcs:forChannel :channel_75 ;
     tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
 :throughputresult_2 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_47 ;
+    tcs:forChannel :channel_62 ;
     tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
@@ -155,12 +173,8 @@ tcs:UnsupportedChannelTopologyShape sh:message "Checks that cross-container chan
 
 [] tcs:passed true .
 
-[] sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed." ;
-    tcs:passed true .
+[] tcs:passed true .
 
 [] a sh:ValidationReport ;
     sh:conforms true .
-
-[] sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed." ;
-    tcs:passed true .
 

@@ -12,6 +12,8 @@ from .ldio.http_out_config_compiler import LdioHttpOutConfigCompiler
 from .ldio.config_compiler import LdioConfigCompiler
 from .nifi.config_compiler import NifiConfigCompiler
 from .nifi.dockerfile_compiler import NifiDockerfileCompiler
+from .nifi.invoke_http_config_compiler import NifiInvokeHttpConfigCompiler
+from .nifi.listen_http_config_compiler import NifiListenHttpConfigCompiler
 from .nifi.remote_compiler import NifiRemoteCompiler
 from .rdfc.http_server_config_compiler import RdfcHttpServerConfigCompiler
 from .rdfc.http_out_config_compiler import RdfcHttpOutConfigCompiler
@@ -26,6 +28,7 @@ from .sw.mu_authorization_compiler import MuAuthorizationCompiler
 from .sw.error_alert_compiler import ErrorAlertCompiler
 from .pipeline_generator import PipelineGenerator
 from .project_builder import ProjectBuilder
+
 __all__ = [
     "Compiler",
     "PipelineSeeder",
@@ -54,5 +57,7 @@ __all__ = [
     "ProjectBuilder",
     "NifiConfigCompiler",
     "NifiDockerfileCompiler",
+    "NifiInvokeHttpConfigCompiler",
+    "NifiListenHttpConfigCompiler",
     "NifiRemoteCompiler",
 ]

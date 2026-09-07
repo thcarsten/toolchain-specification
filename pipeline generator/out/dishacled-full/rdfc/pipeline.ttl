@@ -1,4 +1,4 @@
-@base <file:///workspace/pipeline/> .
+@base <file:///workspace/pipeline/pipeline.ttl> .
 @prefix : <http://example.org/example/> .
 @prefix demo: <http://example.org/example/demonstrator/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -10,6 +10,7 @@
 
 <> a rdfc:Pipeline ;
     owl:imports <file:///workspace/pipeline/node_modules/@rdfc/http-utils-processor-ts/server.ttl>,
+        <file:///workspace/pipeline/node_modules/@rdfc/js-runner/index.ttl>,
         <file:///workspace/pipeline/node_modules/@rdfc/log-processor-ts/processor.ttl>,
         <file:///workspace/pipeline/node_modules/@rdfc/sds-processors-ts/configs/sdsify.ttl>,
         <file:///workspace/pipeline/node_modules/@rdfc/skolemization-processor-ts/processor.ttl>,
@@ -23,11 +24,11 @@ demo:HttpIngest a rdfc:HttpServer ;
             rdfc:path "/source-a" ;
             rdfc:successStatusCode 202 ] ;
     rdfc:port 9000 ;
-    rdfc:writer :channel_28 .
+    rdfc:writer :channel_95 .
 
 demo:JsonLdToRdf a proc:JsonLdToNQuads ;
-    rdfc:reader :channel_28 ;
-    rdfc:writer :channel_70 .
+    rdfc:reader :channel_95 ;
+    rdfc:writer :channel_97 .
 
 demo:LogMeasurementsMeta a rdfc:LogProcessorJs ;
     rdfc:label "sds-measurements-metadata" ;
@@ -40,7 +41,7 @@ demo:LogViolationsMeta a rdfc:LogProcessorJs ;
     rdfc:reader demo:sdsViolationsMeta .
 
 demo:SdsifyMeasurements a rdfc:Sdsify ;
-    rdfc:input :channel_70 ;
+    rdfc:input :channel_97 ;
     rdfc:metadataConfig [ rdfc:description "SDS stream of sosa:Observation water level measurements from source-a" ;
             rdfc:streamId demo:measurementsStream ] ;
     rdfc:metadataOutput demo:sdsMeasurementsMeta ;
@@ -48,7 +49,7 @@ demo:SdsifyMeasurements a rdfc:Sdsify ;
     rdfc:typeFilter sosa:Observation .
 
 demo:SdsifyViolations a rdfc:Sdsify ;
-    rdfc:input :channel_95 ;
+    rdfc:input :channel_22 ;
     rdfc:metadataConfig [ rdfc:description "SDS stream of threshold-violation alerts for source-a" ;
             rdfc:streamId demo:violationsStream ] ;
     rdfc:metadataOutput demo:sdsViolationsMeta ;
@@ -56,9 +57,9 @@ demo:SdsifyViolations a rdfc:Sdsify ;
     rdfc:typeFilter <http://open-services.net/ns/core#Error> .
 
 demo:SkolemizeViolations a rdfc:SkolemizationProcessor ;
-    rdfc:incoming :channel_17 ;
+    rdfc:incoming :channel_94 ;
     rdfc:mime "text/turtle" ;
-    rdfc:outgoing :channel_95 .
+    rdfc:outgoing :channel_22 .
 
 demo:SparqlIngest a rdfc:SPARQLIngest ;
     rdfc:ingestConfig [ rdfc:forVirtuoso true ;
@@ -70,7 +71,7 @@ demo:SparqlIngest a rdfc:SPARQLIngest ;
 
 demo:ThresholdMonitor a tm:ThresholdMonitorJs ;
     rdfc:reader demo:sdsMeasurements ;
-    rdfc:writer :channel_17 ;
+    rdfc:writer :channel_94 ;
     tm:creator demo:thresholdMonitorAgent ;
     tm:max 3e+02 ;
     tm:min 0e+00 ;
@@ -88,16 +89,16 @@ demo:ThresholdMonitor a tm:ThresholdMonitorJs ;
         demo:SparqlIngest,
         demo:ThresholdMonitor .
 
-:channel_17 a rdfc:Reader,
+:channel_22 a rdfc:Reader,
         rdfc:Writer .
 
-:channel_28 a rdfc:Reader,
-        rdfc:Writer .
-
-:channel_70 a rdfc:Reader,
+:channel_94 a rdfc:Reader,
         rdfc:Writer .
 
 :channel_95 a rdfc:Reader,
+        rdfc:Writer .
+
+:channel_97 a rdfc:Reader,
         rdfc:Writer .
 
 demo:sdsMeasurements a rdfc:Reader,

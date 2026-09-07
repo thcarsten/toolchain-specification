@@ -28,6 +28,24 @@
 
 :MetadataConfigShape tcs:passed true .
 
+:NifiAzureStorageCredentialsConfigShape tcs:passed true .
+
+:NifiCreateVersionObjectConfigShape tcs:passed true .
+
+:NifiExecuteGroovyScriptConfigShape tcs:passed true .
+
+:NifiFetchAzureBlobStorageConfigShape tcs:passed true .
+
+:NifiGenerateFlowFileConfigShape tcs:passed true .
+
+:NifiInvokeHTTPConfigShape tcs:passed true .
+
+:NifiListenHTTPConfigShape tcs:passed true .
+
+:NifiRemoteDeploymentConfigShape tcs:passed true .
+
+:NifiSplitTextConfigShape tcs:passed true .
+
 :PerformanceConfigShape tcs:passed true .
 
 :SPARQLIngestShape tcs:passed true .
@@ -41,26 +59,26 @@
 :TransactionConfigShape tcs:passed true .
 
 :throughputresult_0 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_bridge_0 ;
-    tcs:inputShape [ ] ;
+    tcs:forChannel :channel_8 ;
+    tcs:inputShape _:N3cc6feaf3bfb459ca258d91963bea07e ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
 :throughputresult_1 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_11 ;
+    tcs:forChannel :channel_7 ;
     tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
 :throughputresult_2 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_47 ;
+    tcs:forChannel :channel_bridge_1 ;
     tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
 :throughputresult_3 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_bridge_1 ;
-    tcs:inputShape [ ] ;
+    tcs:forChannel :channel_bridge_0 ;
+    tcs:inputShape _:N3cc6feaf3bfb459ca258d91963bea07e ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
@@ -153,14 +171,15 @@ tcs:SwStepEnvValueShape sh:message "Checks that semantic.works step config value
 tcs:UnsupportedChannelTopologyShape sh:message "Checks that cross-container channel topology is a MVP-supported (1-writer, 1-or-2-container) shape." ;
     tcs:passed true .
 
-[] tcs:passed true .
-
-[] sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed." ;
-    tcs:passed true .
-
 [] a sh:ValidationReport ;
     sh:conforms true .
 
 [] sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that ldio:JsonToLdAdapter's wiring (context/force-content-type/max-jsonld-cache-capacity) is well-typed." ;
+    tcs:passed true .
+
+[] sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed." ;
     tcs:passed true .
 

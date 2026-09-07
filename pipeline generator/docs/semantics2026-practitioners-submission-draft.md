@@ -25,16 +25,16 @@ Presenting author (on-site in Ghent): Thomas Carsten.
 
 ## 3. Abstract
 
-Constructing Linked Data processing pipelines in practice remains a largely
+Constructing pipelines in practice remains a largely
 manual engineering task. Developers must discover suitable components across
 multiple repositories, understand their documentation, resolve installation
-and framework-specific configuration, and integrate components originating
+and framework-specific configuration, and integrate components
 from different ecosystems. While individual pipeline frameworks — LDIO,
 RDF-Connect, NiFi, semantic.works — provide a smooth experience within their
-own boundaries, interoperability across frameworks is generally not
+own boundaries, interoperability is generally not
 provided: combining heterogeneous components requires substantial manual
-effort in configuration translation, dependency management, and the
-resolution of implicit assumptions that are often poorly documented.
+effort in configuration, dependency management, and
+resolution of often implicit assumptions.
 
 We present a **pipeline generator** that acts as a translation layer between
 framework-independent semantic pipeline descriptions and framework-specific

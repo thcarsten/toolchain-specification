@@ -56,10 +56,10 @@ REJECTED = {
 
 
 @pytest.fixture(scope="module")
-def shapes(data_dir: Path) -> Graph:
+def shapes(catalog_data_dir: Path) -> Graph:
     """`:ShaclPathShape` as actually declared in the catalog."""
     graph = Graph()
-    graph.parse(data_dir / "catalog-rdfc-manual.ttl")
+    graph.parse(catalog_data_dir / "catalog-rdfc-manual.ttl")
     graph.parse(data=PREFIXES + PROBE, format="turtle")
     return graph
 

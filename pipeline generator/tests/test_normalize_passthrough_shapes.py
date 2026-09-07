@@ -7,8 +7,6 @@ dataflow-order dependency directly: demo:HttpIngest's regularized
 outputShape can only be resolved once demo:LdioForward's own
 regularization has already propagated onto their shared channel."""
 
-from testing_helpers import compile_pipeline
-
 
 def _shapes_for(build, node_id: str, role: str) -> list[str]:
     df = build.select(
@@ -29,16 +27,16 @@ def _is_empty_shape_placeholder(shapes: list[str]) -> bool:
 
 
 def test_passthrough_instance_gets_inputshape_copy_of_its_own_passthroughshape(
-    demonstrator_graph,
+    compiled_demonstrator,
 ):
-    _, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+    _, build = compiled_demonstrator
     assert _shapes_for(build, "demo:LdioForward", "tcs:inputShape") == [
         "demo:SosaWaterLevelObservationShape"
     ]
 
 
 def test_channel_resolves_on_both_sides_via_passthrough_regularization(
-    demonstrator_graph,
+    compiled_demonstrator,
 ):
     # demo:LdioForward -> demo:HttpIngest is the cross-framework HTTP
     # hop; both ends only carry a passthroughShape. LdioForward's
@@ -48,7 +46,7 @@ def test_channel_resolves_on_both_sides_via_passthrough_regularization(
     # its inputShape; HttpIngest's own regularized inputShape (a copy
     # of its passthroughShape) propagates back onto this same channel
     # as its outputShape — resolving both sides.
-    _, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+    _, build = compiled_demonstrator
     channel = (
         build.filter(sub="demo:HttpIngest", pred="tcs:readsFrom").df["obj"].iloc[0]
     )
@@ -60,12 +58,12 @@ def test_channel_resolves_on_both_sides_via_passthrough_regularization(
     ]
 
 
-def test_passthrough_chain_propagates_through_a_second_hop(demonstrator_graph):
+def test_passthrough_chain_propagates_through_a_second_hop(compiled_demonstrator):
     # demo:HttpIngest -> demo:JsonLdToRdf: JsonLdToRdf's regularized
     # outputShape depends on demo:HttpIngest having already regularized
     # in this same pass — only correct if the two are processed in
     # dataflow order, not an arbitrary one.
-    _, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+    _, build = compiled_demonstrator
     channel = (
         build.filter(sub="demo:JsonLdToRdf", pred="tcs:readsFrom").df["obj"].iloc[0]
     )
@@ -78,7 +76,7 @@ def test_passthrough_chain_propagates_through_a_second_hop(demonstrator_graph):
 
 
 def test_passthrough_outputshape_falls_back_to_empty_shape_downstream_of_a_shapeless_producer(
-    demonstrator_graph,
+    compiled_demonstrator,
 ):
     # demo:ThresholdMonitor -> demo:SkolemizeViolations: ThresholdMonitor
     # has no outputShape at any tier (tm:ThresholdMonitorJs declares
@@ -90,7 +88,7 @@ def test_passthrough_outputshape_falls_back_to_empty_shape_downstream_of_a_shape
     # instances, so this stays empty even at the end of the full
     # pipeline. The channel it reads from does get the placeholder
     # for its inputShape (the side ThresholdMonitor never supplied).
-    _, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+    _, build = compiled_demonstrator
     assert _shapes_for(build, "demo:SkolemizeViolations", "tcs:inputShape") != []
     assert _shapes_for(build, "demo:SkolemizeViolations", "tcs:outputShape") == []
 

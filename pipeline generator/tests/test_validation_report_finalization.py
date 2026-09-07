@@ -28,8 +28,8 @@ def _report_content(build) -> str:
     return str(build.filter(sub=file_node, pred="tcs:literal").df["obj"].iloc[0])
 
 
-def test_fill_missing_shapes_gives_every_channel_both_roles(demonstrator_graph):
-    _, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+def test_fill_missing_shapes_gives_every_channel_both_roles(compiled_demonstrator):
+    _, build = compiled_demonstrator
     channels = _channels(build)
     assert channels, "sanity check: the real pipeline has channels"
 
@@ -47,19 +47,19 @@ def test_fill_missing_shapes_gives_every_channel_both_roles(demonstrator_graph):
         assert not missing, f"channels missing {role}: {missing}"
 
 
-def test_list_shapes_to_match_covers_every_channel_exactly_once(demonstrator_graph):
-    gen, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+def test_list_shapes_to_match_covers_every_channel_exactly_once(compiled_demonstrator):
+    gen, build = compiled_demonstrator
     channels = _channels(build)
     shapes_to_match = gen.compilers[ValidationReportCompiler].shapes_to_match
     assert set(shapes_to_match["channel"]) == channels
     assert len(shapes_to_match) == len(channels)
 
 
-def test_validate_throughput_shapes_defaults_to_unverified(demonstrator_graph):
+def test_validate_throughput_shapes_defaults_to_unverified(compiled_demonstrator):
     # No shape-matching library is available yet, so match_shapes()'s
     # default stub must leave every pair unverified rather than
     # guessing a result.
-    gen, _ = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+    gen, _ = compiled_demonstrator
     matches = gen.compilers[ValidationReportCompiler].throughput_matches["matches"]
     assert matches.isna().all() or (matches == None).all()  # noqa: E711
 
@@ -82,8 +82,8 @@ def test_match_shapes_override_flows_into_the_report(demonstrator_graph, monkeyp
     assert '"unknown"' not in content
 
 
-def test_generate_validation_report_attaches_exactly_one_file(demonstrator_graph):
-    gen, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+def test_generate_validation_report_attaches_exactly_one_file(compiled_demonstrator):
+    gen, build = compiled_demonstrator
 
     files = build.filter(pred="tcs:filename", obj="validation-report.ttl").df
     assert len(files) == 1
@@ -97,13 +97,15 @@ def test_generate_validation_report_attaches_exactly_one_file(demonstrator_graph
     assert len(compiler.throughput_matches) == len(_channels(build))
 
 
-def test_validated_shapes_is_python_only_not_asserted_into_report(demonstrator_graph):
+def test_validated_shapes_is_python_only_not_asserted_into_report(
+    compiled_demonstrator,
+):
     # validated_shapes tracks shape coverage for programmatic inspection
     # only (SpecializedComponentIsCatalogedShape carries a sh:target via
     # sh:sparql, so it must show up here) — it must never be asserted as
     # RDF into the attached report, since that would mean inventing new
     # tcs: vocabulary without sign-off.
-    gen, build = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+    gen, build = compiled_demonstrator
     compiler = gen.compilers[ValidationReportCompiler]
 
     assert "tcs:SpecializedComponentIsCatalogedShape" in compiler.validated_shapes
@@ -114,13 +116,13 @@ def test_validated_shapes_is_python_only_not_asserted_into_report(demonstrator_g
     assert "UntargetedShape" not in content
 
 
-def test_real_pipeline_components_are_not_flagged_as_dangling(demonstrator_graph):
+def test_real_pipeline_components_are_not_flagged_as_dangling(compiled_demonstrator):
     # GraphReducer's narrowing must preserve the catalog's own
     # dcat:resource membership assertion for every component this
     # pipeline's steps actually specialize — otherwise every real, valid
     # step looks identical to a genuinely dangling/mistyped
     # prov:specializationOf target to SpecializedComponentIsCatalogedShape.
-    gen, _ = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
+    gen, _ = compiled_demonstrator
     report = gen.compilers[ValidationReportCompiler]._shacl_report
     violations = report.select(
         "?focus ?message",

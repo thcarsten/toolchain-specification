@@ -32,5 +32,6 @@ venv/
 htmlcov/
 _pytest_fixes.log
 
-# output folders
-out/
+# Generated output: only the dishacled-full reference build is tracked.
+**/out/*
+!**/out/dishacled-full/
