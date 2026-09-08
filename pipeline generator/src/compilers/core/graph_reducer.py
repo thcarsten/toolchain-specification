@@ -55,6 +55,22 @@ class GraphReducer(Compiler):
         return self.output_reader.graph
 
     def reduce_to_pipeline(self) -> None:
+        # tcs:CompilationRequest floats independently of the pipeline the
+        # same way shapes do — it points *at* the pipeline
+        # (tcs:targetPipeline), not the other way around, so the forward
+        # traversal below would otherwise drop it. Compilers running after
+        # this one (e.g. LdioConfigCompiler, RdfcConfigCompiler,
+        # DockerComposeCompiler) still cross-check it via
+        # lookup_seeded_pipeline_id, so it must survive narrowing.
+        request_ids = (
+            self.output_reader.filter(pred="rdf:type", obj="tcs:CompilationRequest")
+            .df["sub"]
+            .to_list()
+        )
+        request_graph = Graph(bind_namespaces="none")
+        for request_id in request_ids:
+            request_graph += self.output_reader.traverse(request_id).graph
+
         # SHACL shapes float independently of the pipeline (reached by no
         # graph edge from it), so the traversal below would otherwise drop
         # them; collect each shape's own subgraph up front and re-add it
@@ -112,3 +128,4 @@ class GraphReducer(Compiler):
         )
         self.output_reader = self.output_reader.add(shape_graph)
         self.output_reader = self.output_reader.add(catalog_graph)
+        self.output_reader = self.output_reader.add(request_graph)

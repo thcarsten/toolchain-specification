@@ -3,7 +3,12 @@ from rdfine import GraphReader, GraphDict, receive_first
 import re
 
 from ..compiler_abc import Compiler
-from ..utils import attach_file, extract_config, rewrite_compose_volume_host_path, lookup_seeded_pipeline_id
+from ..utils import (
+    attach_file,
+    extract_config,
+    rewrite_compose_volume_host_path,
+    lookup_seeded_pipeline_id,
+)
 
 # The RDF-Connect Python / Node runners mount their pipeline
 # definition at this fixed container path. Kept next to the

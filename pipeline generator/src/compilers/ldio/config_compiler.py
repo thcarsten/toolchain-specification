@@ -5,7 +5,12 @@ import re
 import yaml
 
 from ..compiler_abc import Compiler
-from ..utils import attach_file, extract_config, prepare_ldio_config, lookup_seeded_pipeline_id
+from ..utils import (
+    attach_file,
+    extract_config,
+    prepare_ldio_config,
+    lookup_seeded_pipeline_id,
+)
 
 
 class LdioConfigCompiler(Compiler):
