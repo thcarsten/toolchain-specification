@@ -51,6 +51,8 @@ pip install ./src/rdfine
 jupyter notebook src/demo.ipynb
 ```
 
+`src/demo_fietsstallingen.ipynb` compiles the two-plan Brugge fietsstallingen definition (`data/pipelines/pipeline_definition_fietsstallingen.revised.ttl`) into `out/fietsstallingen/publisher` and `out/fietsstallingen/consumer`; each plan is a separate `PipelineGenerator` run on the same graph.
+
 To run the test suite (`pytest` comes from `rdfine`'s `dev` extra):
 
 ```
@@ -315,7 +317,7 @@ A useful side effect: because provenance is attached *while the loop is running*
 | Compiler | Trigger (`applies_to`) | Reads from the build | Writes to the build |
 | --- | --- | --- | --- |
 | `PipelineSeeder` | a `tcs:CompilationRequest` node is present in the graph (the runner posts one up front) | the catalog + the request's `tcs:targetPipeline` | `<pipeline>_build a tcs:PipelineBuild ; prov:hadPlan <pipeline>`; blank-node subjects renamed to stable IRIs |
-| `PipelineAssembler` | exactly one `tcs:PipelineDefinition` in the graph and it has at least one step (`p-plan:isStepOfPlan`) | the seeded pipeline + catalog | `tcs:DockerContainer`, `dct:hasPart`, `tcs:instantiates`, `tcs:runs` |
+| `PipelineAssembler` | the seeded plan (`<build> prov:hadPlan ?pipeline`), cross-checked against the original request's `tcs:targetPipeline`, has at least one step (`p-plan:isStepOfPlan`) | the seeded pipeline + catalog | `tcs:DockerContainer`, `dct:hasPart`, `tcs:instantiates`, `tcs:runs` |
 | `PipelineEnricher` | `<build> dct:creator tcs:PipelineAssembler` present | steps and channels | synthesized `tcs:Channel`s from `p-plan:isPrecededBy`, and a `tcs:PipelineConfig` slot on every step that lacks one |
 | `BridgeTransportCompiler` | `<build> dct:creator tcs:PipelineEnricher` present, and some `tcs:Channel` crosses container boundaries | cross-container channels + the catalog of boundary components | inserted Entry/Exit boundary steps (where neither side is already a boundary). See [§4.8](#48-boundary-components-and-cross-container-bridges). |
 | `SegmentTagger` | `<build> dct:creator tcs:BridgeTransportCompiler` present | the final step → channel graph | `tcs:segment` on every `tcs:InstancePipelineComponent` |

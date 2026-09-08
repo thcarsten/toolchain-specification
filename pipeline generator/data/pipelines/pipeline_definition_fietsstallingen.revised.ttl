@@ -1,0 +1,572 @@
+@prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix fs: <http://example.org/example/fietsstallingen/> .
+@prefix geojson: <https://purl.org/geojson/vocab#> .
+@prefix infrastructuur: <https://data.vlaanderen.be/ns/openbaardomein/infrastructuur#> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix locn: <http://www.w3.org/ns/locn#> .
+@prefix openbaardomein: <https://data.vlaanderen.be/ns/openbaardomein#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix sw: <https://semantic.works/services/> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+
+###############################################################################
+# Brugge fietsstallingen — reviewed DiSHACLed definition
+#
+# Alternative to pipeline_definition_fietsstallingen.ttl (same IRIs — do
+# not load both). Aligns comments with ARCHITECTURE.md: LDES/Trifid/nginx
+# are infra; Virtuoso is generated via sw:triple-store.
+#
+# Load with catalog-core + catalog-ldio + catalog-rdfc + catalog-sw +
+# application-profile shapes.
+#
+#   GeoJSON POST ─► [LDIO publisher workbench] ─► HttpOut
+#                                                    │  n-triples
+#                                                    ▼
+#                                             LDES server (infra compose)
+#                                                    │  /by-page
+#                                                    ▼
+#   [LDIO] LdesClient ─► HttpOut ─► [RDFC] HttpServer ─► Skolemize ─► SPARQLIngest
+#                                                                      │
+#                                                                      ▼
+#                                                               sw:triple-store
+#                                                               (generated Virtuoso)
+#
+# Trifid / nginx are not steps here. They read SPARQL on request.
+#
+# Publisher is 1:1 with fietsstallingen-pipeline.yml.
+# Consumer is the catalog stand-in for pipeline.template.yml (RDFC instead
+# of Ldio:SkolemisationTransformer + Ldio:HttpSparqlOut).
+#
+# Catalog LDIO compose is Pattern A2 (application.yml + pipelines/).
+# Two tcs:PipelineDefinition values are required by SHACL (one Input each).
+# fs:LdioDockerCompose shadows :LdioDefaultDockerComposeConfig so this
+# generate joins infra's fietsstallingen-net (not a catalog default).
+###############################################################################
+
+
+fs:PublisherPipeline a tcs:PipelineDefinition ;
+    dct:identifier "fietsstallingen-pipeline" ;
+    rdfs:label "Brugge fietsstallingen publisher" ;
+    rdfs:comment """POST GeoJSON fietsstallingen into LDIO, map to OSLO
+        infrastructuur:Fietsstalling, mint version objects, POST n-triples
+        at the LDES collection ingest URL.""" .
+
+
+# Not tcs:DefaultConfig — DockerComposeCompiler skips the catalog default
+# when this is present. Image/volumes match :LdioDefaultDockerComposeConfig;
+# networks.default attaches every service in the merged file to the infra net.
+ldio:LinkedDataInteractionsOrchestrator tcs:config fs:LdioDockerCompose .
+
+fs:LdioDockerCompose
+    a tcs:Config, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+ldio-workbench:
+    image: ldes/ldi-orchestrator:2.14.0
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./ldio/application.yml:/ldio/application.yml:ro
+      - ./ldio/pipelines/:/ldio/pipelines/:ro
+networks:
+  default:
+    name: fietsstallingen-net
+    external: true
+""" .
+
+
+#################################################################
+# LDIO segment — listen, lift to RDF, map, version, forward to LDES
+#################################################################
+
+
+fs:HttpIn a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:HttpIn ;
+    p-plan:isStepOfPlan fs:PublisherPipeline .
+    # Ldio:HttpIn has no config in catalog-ldio.ttl. The HTTP path is
+    # ``dct:identifier`` on the plan (`fietsstallingen-pipeline`).
+
+
+# GeoJSON bytes → RDF via GeoJSON-LD context + Brugge @vocab.
+# Same adapter role as demo:JsonLdParse; context is dataset-specific.
+fs:JsonToLd a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:JsonToLdAdapter ;
+    p-plan:isStepOfPlan fs:PublisherPipeline ;
+    p-plan:isPrecededBy fs:HttpIn ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation fs:GeoJsonFeatureShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:context '''{
+              "@context": [
+                "https://geojson.org/geojson-ld/geojson-context.jsonld",
+                {
+                  "@vocab": "https://data.brugge.be/ns/fietsstallingen/",
+                  "type": "@type"
+                }
+              ]
+            }'''
+        ]
+    ] .
+
+
+# Present in the YAML with the flag off — geometry stays GeoJSON RDF.
+# README wanted WKT; leaving the step in keeps the generated YAML aligned.
+fs:GeoJsonToWkt a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:GeoJsonToWktTransformer ;
+    p-plan:isStepOfPlan fs:PublisherPipeline ;
+    p-plan:isPrecededBy fs:JsonToLd ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation fs:GeoJsonFeatureShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            <http://example.org/example/ldio/transform-to-rdf+wkt-enabled> false
+        ]
+    ] .
+
+
+# Named graph per fietsstalling so VersionObjectCreator can split members.
+fs:OsloMap a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:SparqlConstructTransformer ;
+    p-plan:isStepOfPlan fs:PublisherPipeline ;
+    p-plan:isPrecededBy fs:GeoJsonToWkt ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:inputShape ;
+        dct:relation fs:GeoJsonFeatureShape
+    ] , [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation fs:OsloFietsstallingShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:query '''
+        PREFIX brugge:          <https://data.brugge.be/ns/fietsstallingen/>
+        PREFIX geojson:         <https://purl.org/geojson/vocab#>
+        PREFIX xsd:             <http://www.w3.org/2001/XMLSchema#>
+        PREFIX locn:            <http://www.w3.org/ns/locn#>
+        PREFIX prov:            <http://www.w3.org/ns/prov#>
+        PREFIX rdfs:            <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX org:             <http://www.w3.org/ns/org#>
+        PREFIX skos:            <http://www.w3.org/2004/02/skos/core#>
+        PREFIX schema:          <http://schema.org/>
+        PREFIX dct:             <http://purl.org/dc/terms/>
+        PREFIX nauwkeurigheid:  <https://data.vlaanderen.be/id/concept/Nauwkeurigsheidsklassen/>
+        PREFIX materialen:      <https://id.erfgoed.net/thesauri/materialen/>
+        PREFIX KlAIMToestand:   <https://wegenenverkeer.data.vlaanderen.be/id/concept/KlAIMToestand/>
+        PREFIX openbaardomein:  <https://data.vlaanderen.be/ns/openbaardomein#>
+        PREFIX infrastructuur:  <https://data.vlaanderen.be/ns/openbaardomein/infrastructuur#>
+
+        CONSTRUCT {
+          GRAPH ?fs {
+            ?fs
+              a infrastructuur:Fietsstalling ;
+              infrastructuur:afsluitbaar ?afsluitbaar ;
+              openbaardomein:begindatum ?begindatum ;
+              infrastructuur:capaciteit ?aantalFietsen ;
+              openbaardomein:einddatum ?einddatum ;
+              infrastructuur:fietsdelen ?fietsdelen ;
+              locn:geometry ?g ;
+              infrastructuur:materiaal ?materiaal ;
+              openbaardomein:nauwkeurigheid ?nauwkeurigheid ;
+              openbaardomein:niveau ?niveau ;
+              infrastructuur:overdekt ?overdekt ;
+              infrastructuur:verplaatsbaar ?verplaatsbaar ;
+
+              openbaardomein:beheerder [ a org:Organization ; skos:prefLabel ?beheerder ] ;
+              openbaardomein:eigenaar [ a org:Organization ; skos:prefLabel ?eigenaar ] ;
+
+              dct:created ?created ;
+              dct:creator ?uc ;
+              dct:modified ?modified ;
+              dct:contributor ?uu ;
+
+              prov:atLocation [ a schema:AdministrativeArea ; schema:address ?straatnaam ; rdfs:label ?deelgemeente ] ;
+              schema:status ?status  .
+          }
+        }
+        WHERE {
+          ?f a geojson:Feature ;
+            geojson:properties ?p ;
+            locn:geometry ?g .
+
+          ?p brugge:ID ?id .
+          BIND( IRI(CONCAT("https://data.brugge.be/id/fietsstallingen/", STR(?id))) AS ?fs )
+
+          ?p brugge:AFSLUITBAAR ?afsluitbaar .
+          ?p brugge:AANTAL_FIETSEN ?aantalFietsen .
+          ?p brugge:FIETSDELEN ?fietsdelen .
+          ?p brugge:OVERDEKT ?overdekt .
+
+          OPTIONAL { ?p brugge:NIVEAU ?niveau }
+          OPTIONAL { ?p brugge:VERPLAATSBAAR ?verplaatsbaar }
+          OPTIONAL { ?p brugge:USERID_CREATED ?uc }
+          OPTIONAL { ?p brugge:USERID_UPDATED ?uu }
+
+          OPTIONAL { ?p brugge:BEHEERDER ?BEHEERDER .
+                    BIND(STRLANG(?BEHEERDER, "nl") AS ?beheerder) }
+          OPTIONAL { ?p brugge:EIGENAAR ?EIGENAAR .
+                    BIND(STRLANG(?EIGENAAR, "nl") AS ?eigenaar) }
+          OPTIONAL { ?p brugge:DEELGEMEENTE ?DEELGEMEENTE .
+                    BIND(STRLANG(?DEELGEMEENTE, "nl") AS ?deelgemeente) }
+          OPTIONAL { ?p brugge:STRAATNAAM ?STRAATNAAM .
+                    BIND(STRLANG(?STRAATNAAM, "nl") AS ?straatnaam) }
+
+          OPTIONAL {
+            ?p brugge:BEGINDATUM ?bd .
+            BIND( xsd:dateTime(CONCAT(SUBSTR(?bd,1,4),"-",SUBSTR(?bd,5,2),"-",SUBSTR(?bd,7,2),
+                                          "T",SUBSTR(?bd,9,2),":",SUBSTR(?bd,11,2),":",SUBSTR(?bd,13,2)))
+                  AS ?begindatum )
+          }
+          OPTIONAL {
+            ?p brugge:EINDDATUM ?ed .
+            BIND( xsd:dateTime(CONCAT(SUBSTR(?ed,1,4),"-",SUBSTR(?ed,5,2),"-",SUBSTR(?ed,7,2),
+                                          "T",SUBSTR(?ed,9,2),":",SUBSTR(?ed,11,2),":",SUBSTR(?ed,13,2)))
+                  AS ?einddatum )
+          }
+          OPTIONAL {
+            ?p brugge:DATE_CREATED ?dc .
+            BIND( xsd:dateTime(CONCAT(SUBSTR(?dc,1,4),"-",SUBSTR(?dc,5,2),"-",SUBSTR(?dc,7,2),
+                                          "T",SUBSTR(?dc,9,2),":",SUBSTR(?dc,11,2),":",SUBSTR(?dc,13,2)))
+                  AS ?created )
+          }
+          OPTIONAL {
+            ?p brugge:DATE_UPDATED ?du .
+            BIND( xsd:dateTime(CONCAT(SUBSTR(?du,1,4),"-",SUBSTR(?du,5,2),"-",SUBSTR(?du,7,2),
+                                          "T",SUBSTR(?du,9,2),":",SUBSTR(?du,11,2),":",SUBSTR(?du,13,2)))
+                  AS ?modified )
+          }
+
+          OPTIONAL {
+            ?p brugge:MATERIAAL_FIETSVOORZIENING ?rawMat .
+            VALUES (?rawMatKey ?rawMatValue) {
+              ("staal" materialen:17)
+            }
+            FILTER(LCASE(STR(?rawMat)) = ?rawMatKey)
+            BIND(?rawMatValue AS ?materiaal)
+          }
+
+          OPTIONAL {
+            ?p brugge:STATUS ?rawStatus .
+            VALUES (?rawStatusKey ?rawStatusValue) {
+              ("in opbouw" KlAIMToestand:in-opbouw)
+              ("in gebruik" KlAIMToestand:in-gebruik)
+              ("overgedragen" KlAIMToestand:overgedragen)
+              ("verwijderd" KlAIMToestand:verwijderd)
+              ("geannuleerd" KlAIMToestand:geannuleerd)
+              ("in ontwerp" KlAIMToestand:in-ontwerp)
+              ("gepland" KlAIMToestand:gepland)
+              ("uit gebruik" KlAIMToestand:uit-gebruik)
+            }
+            FILTER(LCASE(STR(?rawStatus)) = ?rawStatusKey)
+            BIND(?rawStatusValue AS ?status)
+          }
+
+          OPTIONAL { ?p brugge:NAUWKEURIGHEID ?NAUWKEURIGHEID }
+          BIND( IRI(CONCAT(str(nauwkeurigheid:), COALESCE(?NAUWKEURIGHEID, "F")))
+                AS ?nauwkeurigheid )
+        }
+            '''
+        ]
+    ] .
+
+
+fs:VersionObject a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:VersionObjectCreator ;
+    p-plan:isStepOfPlan fs:PublisherPipeline ;
+    p-plan:isPrecededBy fs:OsloMap ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation fs:OsloFietsstallingShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:date-observed-property "http://purl.org/dc/terms/modified" ;
+            ldio:member-type "https://data.vlaanderen.be/ns/openbaardomein/infrastructuur#Fietsstalling"
+        ]
+    ] .
+
+
+# Terminal LDIO step. Endpoint is the LDES collection ingest URL — not
+# https://data.brugge.be/fietsstallingen (that IRI is the Virtuoso graph).
+fs:HttpOut a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:HttpOut ;
+    p-plan:isStepOfPlan fs:PublisherPipeline ;
+    p-plan:isPrecededBy fs:VersionObject ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation fs:OsloFietsstallingShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:endpoint "http://ldes-server:8080/fietsstallingen" ;
+            ldio:rdf-writer [ ldio:content-type "application/n-triples" ]
+        ]
+    ] .
+
+
+#################################################################
+# Plan 2 — consumer: follow the LDES view, skolemize, SPARQL into Virtuoso
+#
+# Separate PipelineDefinition: LDIO `input:` is singular, so LdesClient
+# cannot live on fs:PublisherPipeline.
+#
+# Cross-framework hop (LDIO HttpOut → RDFC HttpServer) is the same pattern
+# as demo:LdioForward → demo:HttpIngest. rdfc:SkolemizationProcessor has
+# no skolemDomain config (this repo used https://data.brugge.be/fietsstallingen).
+#################################################################
+
+
+fs:ConsumerPipeline a tcs:PipelineDefinition ;
+    dct:identifier "ldes-fietsstallingen-to-virtuoso-pipeline" ;
+    tcs:config fs:ConsumerLdioPorts, fs:ConsumerVirtuosoPorts ;
+    rdfs:label "Brugge fietsstallingen consumer" ;
+    rdfs:comment """Follow the fietsstallingen LDES view, skolemize blank
+        nodes, SPARQL-update into the Virtuoso named graph
+        https://data.brugge.be/fietsstallingen.""" .
+
+
+# Plan overlay: host port 8084 so publisher (8080) and consumer can bind
+# together. DockerComposeCompiler deep-merges this onto ldio-workbench
+# then renames that service to dct:identifier.
+fs:ConsumerLdioPorts
+    a tcs:Config, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+ldio-workbench:
+  image: ldes/ldi-orchestrator:2.14.0
+  ports:
+    - "8084:8080"
+""" .
+
+# Plan overlay: publish Virtuoso SPARQL on the host (catalog default is
+# in-network only). Image is required so parse_docker_compose_config can
+# find the service body.
+fs:ConsumerVirtuosoPorts
+    a tcs:Config, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+triplestore:
+  image: redpencil/virtuoso:1.4.0
+  ports:
+    - "8890:8890"
+""" .
+
+
+fs:LdesClient a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:LdesClient ;
+    p-plan:isStepOfPlan fs:ConsumerPipeline ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation fs:OsloFietsstallingShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:urls "http://ldes-server:8080/fietsstallingen/by-page" ;
+            ldio:source-format "application/rdf+protobuf" ;
+            ldio:enable-exactly-once true ;
+            ldio:keep-state true ;
+            # Hostname `postgres` is not catalogued — provide it on the
+            # infra compose (LDES-client cursor DB). Password is the same
+            # local placeholder as consumer/.env; rotate if this file ships.
+            ldio:state "postgres" ;
+            ldio:postgres [
+                ldio:url "jdbc:postgresql://postgres:5432/ldio-state" ;
+                ldio:username "administrator" ;
+                ldio:password "changeme"
+            ] ;
+            ldio:materialisation [
+                ldio:enabled false ;
+                ldio:enable-latest-state false
+            ]
+        ]
+    ] .
+
+
+fs:ClientForward a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:HttpOut ;
+    p-plan:isStepOfPlan fs:ConsumerPipeline ;
+    p-plan:isPrecededBy fs:LdesClient ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation fs:OsloFietsstallingShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:endpoint "http://rdfc:9000/ldes-members" ;
+            ldio:rdf-writer [ ldio:content-type "application/n-triples" ]
+        ]
+    ] .
+
+
+fs:MemberIngest a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:HttpServer ;
+    p-plan:isStepOfPlan fs:ConsumerPipeline ;
+    p-plan:isPrecededBy fs:ClientForward ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation fs:OsloFietsstallingShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            rdfc:port 9000 ;
+            rdfc:options [
+                rdfc:method "POST" ;
+                rdfc:path "/ldes-members" ;
+                rdfc:successStatusCode 202
+            ]
+        ]
+    ] .
+
+
+fs:Skolemize a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:SkolemizationProcessor ;
+    p-plan:isStepOfPlan fs:ConsumerPipeline ;
+    p-plan:isPrecededBy fs:MemberIngest ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation fs:OsloFietsstallingShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            rdfc:mime "application/n-triples"
+        ]
+    ] .
+
+
+fs:SparqlIngest a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:SPARQLIngest ;
+    p-plan:isStepOfPlan fs:ConsumerPipeline ;
+    p-plan:isPrecededBy fs:Skolemize ;
+    p-plan:hasInputVar [
+        a tcs:Config ;
+        tcs:embedded [
+            rdfc:ingestConfig [
+                rdfc:operationMode "Sync" ;
+                rdfc:memberBatchSize 1 ;
+                rdfc:targetNamedGraph "https://data.brugge.be/fietsstallingen" ;
+                rdfc:graphStoreUrl "http://triplestore:8890/sparql" ;
+                rdfc:forVirtuoso true
+            ]
+        ]
+    ] .
+
+
+# Intentionally a step so compose includes Virtuoso (`triplestore`).
+# SPARQLIngest uses graphStoreUrl, not a channel. Trifid (infra) queries
+# http://triplestore:8890/sparql.
+fs:TripleStore a tcs:InstancePipelineComponent ;
+    prov:specializationOf sw:triple-store ;
+    p-plan:isStepOfPlan fs:ConsumerPipeline .
+
+
+###############################################################################
+# Shapes — first RDF constraint after JsonToLd, then OSLO after OsloMap
+###############################################################################
+
+
+fs:GeoJsonFeatureShape a sh:NodeShape ;
+    rdfs:label "Brugge fietsstalling GeoJSON Feature" ;
+    sh:closed false ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue geojson:Feature ;
+        sh:minCount 1 ;
+    ] , [
+        sh:path locn:geometry ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path geojson:properties ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:node fs:BruggePropertiesShape ;
+    ] .
+
+
+fs:BruggePropertiesShape a sh:NodeShape ;
+    sh:closed false ;
+    sh:property [
+        sh:path <https://data.brugge.be/ns/fietsstallingen/ID> ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path <https://data.brugge.be/ns/fietsstallingen/AFSLUITBAAR> ;
+        sh:datatype xsd:boolean ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path <https://data.brugge.be/ns/fietsstallingen/AANTAL_FIETSEN> ;
+        sh:datatype xsd:integer ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path <https://data.brugge.be/ns/fietsstallingen/FIETSDELEN> ;
+        sh:datatype xsd:boolean ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path <https://data.brugge.be/ns/fietsstallingen/OVERDEKT> ;
+        sh:datatype xsd:boolean ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] .
+
+
+fs:OsloFietsstallingShape a sh:NodeShape ;
+    rdfs:label "OSLO infrastructuur:Fietsstalling" ;
+    rdfs:comment "Required OSLO fietsstalling properties produced by fs:OsloMap." ;
+    sh:closed false ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue infrastructuur:Fietsstalling ;
+        sh:minCount 1 ;
+    ] , [
+        sh:path infrastructuur:afsluitbaar ;
+        sh:datatype xsd:boolean ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path infrastructuur:capaciteit ;
+        sh:datatype xsd:integer ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path infrastructuur:fietsdelen ;
+        sh:datatype xsd:boolean ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path infrastructuur:overdekt ;
+        sh:datatype xsd:boolean ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path locn:geometry ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] , [
+        sh:path openbaardomein:nauwkeurigheid ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+    ] .

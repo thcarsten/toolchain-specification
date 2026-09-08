@@ -131,3 +131,163 @@ def test_real_demonstrator_ldio_workbench_depends_on_rdfc(demonstrator_graph):
     gen, _ = compile_pipeline(demonstrator_graph, "demo:DishacledPipeline")
     compose_file = gen.compilers[DockerComposeCompiler].compose_file
     assert "rdfc" in compose_file["services"]["ldio-workbench"]["depends_on"]
+
+
+def test_non_default_compose_replaces_default_and_keeps_networks(catalog_graph):
+    """A pipeline-assigned DockerComposeConfig shadows the catalog
+    DefaultConfig on the same component (tcs:DefaultConfig semantics).
+    """
+    parse_extra(
+        catalog_graph,
+        PREFIXES
+        + """
+        demo:Test a tcs:PipelineDefinition .
+
+        demo:CompA a tcs:PipelineComponent ;
+            tcs:config demo:DefaultA, demo:OverrideA .
+        demo:DefaultA a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+            tcs:literal "svca:\\n  image: from-default" ; dct:format "text/yaml" .
+        demo:OverrideA a tcs:Config, tcs:DockerComposeConfig ;
+            dct:format "text/yaml" ;
+            tcs:literal \"\"\"svca:
+  image: from-override
+networks:
+  default:
+    name: extra-net
+    external: true
+\"\"\" .
+
+        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf demo:CompA ;
+            p-plan:isStepOfPlan demo:Test .
+        """,
+    )
+    compose_file = _compose_file(catalog_graph)
+    assert compose_file["services"]["svca"]["image"] == "from-override"
+    assert compose_file["networks"]["default"]["name"] == "extra-net"
+    assert compose_file["networks"]["default"]["external"] is True
+
+
+def test_two_plans_compile_only_seeded_pipeline_services(catalog_graph):
+    """Two ``tcs:PipelineDefinition`` nodes in one graph must not skip
+    ``PipelineAssembler``. Compile keys off ``prov:hadPlan``, so PlanA
+    gets ``svca`` and not PlanB's ``svcb``.
+    """
+    parse_extra(
+        catalog_graph,
+        PREFIXES
+        + """
+        demo:PlanA a tcs:PipelineDefinition .
+        demo:PlanB a tcs:PipelineDefinition .
+
+        demo:CompA a tcs:PipelineComponent ; tcs:config demo:ConfigA .
+        demo:ConfigA a tcs:Config, tcs:DockerComposeConfig ;
+            tcs:literal "svca:\\n  image: a" ; dct:format "text/yaml" .
+        demo:CompB a tcs:PipelineComponent ; tcs:config demo:ConfigB .
+        demo:ConfigB a tcs:Config, tcs:DockerComposeConfig ;
+            tcs:literal "svcb:\\n  image: b" ; dct:format "text/yaml" .
+
+        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf demo:CompA ;
+            p-plan:isStepOfPlan demo:PlanA .
+        demo:B a tcs:InstancePipelineComponent ; prov:specializationOf demo:CompB ;
+            p-plan:isStepOfPlan demo:PlanB .
+        """,
+    )
+    compose_a = _compose_file(catalog_graph, "demo:PlanA")
+    assert set(compose_a["services"]) == {"svca"}
+    compose_b = _compose_file(catalog_graph, "demo:PlanB")
+    assert set(compose_b["services"]) == {"svcb"}
+
+
+def test_plan_compose_overlay_and_identifier_isolates_ldio(catalog_graph):
+    """Plan compose overlays ports; dct:identifier becomes the LDIO service name."""
+    parse_extra(
+        catalog_graph,
+        PREFIXES
+        + """
+        demo:Test a tcs:PipelineDefinition ;
+            dct:identifier "plan-a" ;
+            tcs:config demo:Ports .
+
+        demo:CompA a tcs:PipelineComponent ; tcs:config demo:ConfigA .
+        demo:ConfigA a tcs:Config, tcs:DockerComposeConfig ;
+            dct:format "text/yaml" ;
+            tcs:literal \"\"\"ldio-workbench:
+  container_name: ldio-workbench
+  image: a
+  ports:
+    - "8080:8080"
+\"\"\" .
+        demo:Ports a tcs:Config, tcs:DockerComposeConfig ;
+            dct:format "text/yaml" ;
+            tcs:literal \"\"\"ldio-workbench:
+  image: a
+  ports:
+    - "8084:8080"
+\"\"\" .
+
+        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf demo:CompA ;
+            p-plan:isStepOfPlan demo:Test .
+        """,
+    )
+    compose_file = _compose_file(catalog_graph)
+    assert "ldio-workbench" not in compose_file["services"]
+    service = compose_file["services"]["plan-a"]
+    assert service["image"] == "a"
+    assert service["ports"] == ["8084:8080"]
+    assert "container_name" not in service
+
+
+def test_plan_compose_overlay_publishes_triplestore_ports(catalog_graph):
+    parse_extra(
+        catalog_graph,
+        PREFIXES
+        + """
+        demo:Test a tcs:PipelineDefinition ;
+            tcs:config demo:VirtuosoPorts .
+
+        demo:CompA a tcs:PipelineComponent ; tcs:config demo:ConfigA .
+        demo:ConfigA a tcs:Config, tcs:DockerComposeConfig ;
+            dct:format "text/yaml" ;
+            tcs:literal \"\"\"triplestore:
+  image: redpencil/virtuoso:1.4.0
+  environment:
+    SPARQL_UPDATE: 'true'
+\"\"\" .
+        demo:VirtuosoPorts a tcs:Config, tcs:DockerComposeConfig ;
+            dct:format "text/yaml" ;
+            tcs:literal \"\"\"triplestore:
+  image: redpencil/virtuoso:1.4.0
+  ports:
+    - "8890:8890"
+\"\"\" .
+
+        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf demo:CompA ;
+            p-plan:isStepOfPlan demo:Test .
+        """,
+    )
+    service = _compose_file(catalog_graph)["services"]["triplestore"]
+    assert service["image"] == "redpencil/virtuoso:1.4.0"
+    assert service["environment"]["SPARQL_UPDATE"] == "true"
+    assert service["ports"] == ["8890:8890"]
+
+
+def test_identifier_retags_rdf_connect_image(catalog_graph):
+    parse_extra(
+        catalog_graph,
+        PREFIXES
+        + """
+        demo:Test a tcs:PipelineDefinition ; dct:identifier "consumer-pipe" .
+
+        demo:CompA a tcs:PipelineComponent ; tcs:config demo:ConfigA .
+        demo:ConfigA a tcs:Config, tcs:DockerComposeConfig ;
+            dct:format "text/yaml" ;
+            tcs:literal "rdfc:\\n  container_name: rdfc\\n  image: rdf-connect:latest" .
+
+        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf demo:CompA ;
+            p-plan:isStepOfPlan demo:Test .
+        """,
+    )
+    compose_file = _compose_file(catalog_graph)
+    assert compose_file["services"]["rdfc"]["image"] == "rdf-connect:consumer-pipe"
+    assert "container_name" not in compose_file["services"]["rdfc"]
+

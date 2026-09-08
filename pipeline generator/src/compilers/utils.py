@@ -194,6 +194,50 @@ def extract_config(reader: GraphReader, config_id: str) -> Union[dict, str]:
     return parse_config(config_gd.dict)[":config"]
 
 
+_JSONLD_KEYS = frozenset({"@id", "@type"})
+
+
+def prepare_ldio_config(prefix_store, config_dict: dict) -> dict:
+    """Shape an extracted LDIO ``tcs:embedded`` dict for YAML emit.
+
+    Compact **keys** to LDIO local names (``ldio:urls`` → ``urls``) but
+    **expand** string values so framed JSON-LD compact IRIs such as
+    ``dct:modified`` become ``http://purl.org/dc/terms/modified`` again.
+    Collapse JSON-LD ``{@value: ...}`` objects to native Python values.
+    A scalar ``urls`` becomes a one-element list.
+    """
+    collapsed = GraphDict.collapse_values(config_dict)
+    return _ldio_drop_keys(prefix_store, collapsed)
+
+
+def _ldio_drop_keys(prefix_store, obj):
+    if isinstance(obj, dict):
+        out = {}
+        for key, value in obj.items():
+            if key in _JSONLD_KEYS:
+                continue
+            new_key = prefix_store.drop_string(key) if isinstance(key, str) else key
+            out[new_key] = _ldio_drop_keys(prefix_store, value)
+        urls = out.get("urls")
+        if isinstance(urls, str):
+            out["urls"] = [urls]
+        return out
+    if isinstance(obj, list):
+        return [_ldio_drop_keys(prefix_store, item) for item in obj]
+    if isinstance(obj, str):
+        return prefix_store.expand_string(obj)
+    return obj
+
+
+def lookup_seeded_pipeline_identifier(reader: GraphReader) -> str | None:
+    """``dct:identifier`` on the seeded plan, or ``None`` if unset."""
+    plan = lookup_seeded_pipeline_id(reader)
+    rows = reader.filter(sub=plan, pred="dct:identifier").df
+    if rows.empty:
+        return None
+    return str(rows["obj"].iloc[0])
+
+
 def parse_docker_compose_config(
     reader: GraphReader,
     config_id: str,
@@ -312,6 +356,52 @@ def parse_docker_compose_config(
     return normalized
 
 
+def prefer_non_default_compose_configs(
+    reader: GraphReader, config_ids: list[str]
+) -> list[str]:
+    """Drop ``tcs:DefaultConfig`` compose bodies when a non-default exists.
+
+    Grouping by component is the caller's job. A pipeline definition can
+    attach a second ``tcs:DockerComposeConfig`` on a catalog component
+    that already has a default; this keeps the default as fallback and
+    uses the override when both are present (``tcs:DefaultConfig``
+    semantics). One id, or only defaults, is returned unchanged.
+    """
+    unique = list(dict.fromkeys(config_ids))
+    if len(unique) <= 1:
+        return unique
+    overrides = [c for c in unique if not reader.ask(f"{c} a tcs:DefaultConfig .")]
+    return overrides if overrides else unique
+
+
+def lookup_seeded_pipeline_id(reader: GraphReader) -> str:
+    """Return the pipeline the current compilation is scoped to.
+
+    Cross-checks the seeded build's ``prov:hadPlan`` against the
+    original ``tcs:CompilationRequest``'s ``tcs:targetPipeline`` — same
+    pattern as :class:`compilers.core.graph_reducer.GraphReducer` and
+    :class:`compilers.core.pipeline_assembler.PipelineAssembler` — so a
+    build seeded against the wrong plan (a ``PipelineSeeder`` bug) fails
+    closed here instead of silently compiling the wrong pipeline. Only
+    valid while called during a live ``CompilationRunner.compile()``
+    run: the ``tcs:CompilationRequest`` node is attached and detached
+    around each run, so this returns nothing outside of one.
+
+    The catalog graph may still contain other ``tcs:PipelineDefinition``
+    nodes. Compilers must key off this, not "the only definition in
+    the graph".
+    """
+    return receive_first(
+        reader.select(
+            "?pipeline",
+            """
+            ?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .
+            ?request a tcs:CompilationRequest ; tcs:targetPipeline ?pipeline .
+            """,
+        )["pipeline"]
+    )
+
+
 def lookup_container_service_name(reader: GraphReader, container_id: str) -> str | None:
     """Return the compose service name for ``container_id``, or ``None``.
 
@@ -332,7 +422,9 @@ def lookup_container_service_name(reader: GraphReader, container_id: str) -> str
         ?config a tcs:DockerComposeConfig .
         """,
     )
-    configs = rows["config"].drop_duplicates().to_list()
+    configs = prefer_non_default_compose_configs(
+        reader, rows["config"].drop_duplicates().to_list()
+    )
     if not configs:
         return None
     normalized = parse_docker_compose_config(reader, configs[0])
@@ -483,13 +575,16 @@ def rewrite_compose_volume_host_path(
         host_path: The host-side path to rewrite matching volumes
             to (e.g. ``\"./rdfc/pipeline.ttl\"``).
     """
-    compose_ids = reader.select(
-        "?compose_config",
-        f"""
+    compose_ids = prefer_non_default_compose_configs(
+        reader,
+        reader.select(
+            "?compose_config",
+            f"""
             {component_iri} tcs:config ?compose_config .
             ?compose_config a tcs:DockerComposeConfig .
         """,
-    )["compose_config"].to_list()
+        )["compose_config"].to_list(),
+    )
     if not compose_ids:
         return reader
     compose_config_id = compose_ids[0]

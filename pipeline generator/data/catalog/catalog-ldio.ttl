@@ -1125,7 +1125,7 @@ ldio:LinkedDataInteractionsOrchestrator
     a tcs:PipelineComponent, dcat:Resource ;
     rdfs:label "Linked Data Interactions Orchestrator" ;
     dcat:landingPage "https://informatievlaanderen.github.io/VSDS-Linked-Data-Interactions/2.8.0-SNAPSHOT/" ;
-    spdx:versionInfo "2.8.0-SNAPSHOT";
+    spdx:versionInfo "2.14.0";
     tcs:config :LdioDefaultDockerComposeConfig .
 
 
@@ -1138,8 +1138,7 @@ ldio:LinkedDataInteractionsOrchestrator
     dct:format "text/yaml" ;
     tcs:literal """
 ldio-workbench:
-    container_name: ldio-workbench
-    image: ldes/ldi-orchestrator:2.8.0-SNAPSHOT
+    image: ldes/ldi-orchestrator:2.14.0
     ports:
       - "8080:8080"
     volumes:

@@ -74,7 +74,6 @@ rdfc:Orchestrator a tcs:PipelineComponent, dcat:Resource ;
     dct:format "text/yaml" ;
     tcs:literal """
   rdfc:
-    container_name: rdfc
     image: rdf-connect:latest
     build: ../../resources/rdfc-docker
     volumes:

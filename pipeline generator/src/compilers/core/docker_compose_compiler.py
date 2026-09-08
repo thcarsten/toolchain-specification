@@ -1,8 +1,16 @@
+from collections import defaultdict
+
 from rdflib import Graph
 from rdfine import GraphReader, GraphDict
 
 from ..compiler_abc import Compiler
-from ..utils import attach_file, parse_docker_compose_config
+from ..utils import (
+    attach_file,
+    parse_docker_compose_config,
+    prefer_non_default_compose_configs,
+    lookup_seeded_pipeline_id,
+    lookup_seeded_pipeline_identifier,
+)
 
 # Top-level compose keys whose values are name-to-body mappings. Their
 # member order is meaningless to Docker, so they are sorted by name to
@@ -66,7 +74,9 @@ class DockerComposeCompiler(Compiler):
 
     def compile(self) -> Graph:
         self.merge_docker_compose_configs()
+        self.overlay_plan_compose()
         self.fold_in_depends_on()
+        self.isolate_seeded_plan_runtime()
         self.attach_docker_compose_file()
         return self.output_reader.graph
 
@@ -93,17 +103,25 @@ class DockerComposeCompiler(Compiler):
         # the order services appear in the emitted file. Without the
         # sort the same build graph produces a different (if equivalent)
         # docker-compose.yml on each run.
-        config_list = sorted(
-            set(
-                self.output_reader.select(
-                    "?config",
-                    """
+        by_component: dict[str, list[str]] = defaultdict(list)
+        rows = self.output_reader.select(
+            "?component ?config",
+            """
             ?container a tcs:DockerContainer ; tcs:instantiates ?component .
             ?component tcs:config ?config .
             ?config a tcs:DockerComposeConfig .
             """,
-                )["config"]
-            )
+        )
+        for component, config in zip(rows["component"], rows["config"]):
+            by_component[component].append(config)
+        config_list = sorted(
+            {
+                config
+                for configs in by_component.values()
+                for config in prefer_non_default_compose_configs(
+                    self.output_reader, configs
+                )
+            }
         )
 
         # Every ``tcs:DockerComposeConfig`` is normalized to the same
@@ -139,6 +157,67 @@ class DockerComposeCompiler(Compiler):
 
         self.compose_file = compose_file
         self.config_service_name = config_service_name
+
+    def overlay_plan_compose(self) -> None:
+        """Deep-merge ``tcs:DockerComposeConfig`` attached to the seeded plan.
+
+        Plan keys win on a per-service / per-network entry (ports,
+        container_name, ...). Two *catalog* configs that name the same
+        service still raise in :meth:`merge_docker_compose_configs`.
+        """
+        plan = lookup_seeded_pipeline_id(self.output_reader)
+        rows = self.output_reader.select(
+            "?config",
+            f"""
+            {plan} tcs:config ?config .
+            ?config a tcs:DockerComposeConfig .
+            """,
+        )
+        for config_id in sorted(set(rows["config"].to_list())):
+            overlay = parse_docker_compose_config(self.output_reader, config_id)
+            if overlay.get("services"):
+                self.config_service_name[config_id] = next(iter(overlay["services"]))
+            for key, val in overlay.items():
+                if isinstance(self.compose_file.get(key), dict) and isinstance(
+                    val, dict
+                ):
+                    for name, body in val.items():
+                        existing = self.compose_file[key].get(name)
+                        if isinstance(existing, dict) and isinstance(body, dict):
+                            self.compose_file[key][name] = {**existing, **body}
+                        else:
+                            self.compose_file[key][name] = body
+                else:
+                    self.compose_file[key] = val
+
+    def isolate_seeded_plan_runtime(self) -> None:
+        """Uniquify LDIO/RDFC runtime names when the plan has ``dct:identifier``.
+
+        Shared external networks cannot host two ``ldio-workbench``
+        aliases. The slug becomes the LDIO service name; ``rdf-connect:latest``
+        is retagged so two RDFC builds do not overwrite one image.
+        ``container_name`` is dropped on those services so Compose
+        project names isolate the rest.
+        """
+        slug = lookup_seeded_pipeline_identifier(self.output_reader)
+        services = self.compose_file.get("services") or {}
+        if not slug or not services:
+            return
+        if "ldio-workbench" in services:
+            body = services.pop("ldio-workbench")
+            body.pop("container_name", None)
+            services[slug] = body
+            for other in services.values():
+                deps = other.get("depends_on")
+                if isinstance(deps, list):
+                    other["depends_on"] = [
+                        slug if dep == "ldio-workbench" else dep for dep in deps
+                    ]
+        rdfc = services.get("rdfc")
+        if isinstance(rdfc, dict):
+            rdfc.pop("container_name", None)
+            if rdfc.get("image") == "rdf-connect:latest":
+                rdfc["image"] = f"rdf-connect:{slug}"
 
     def fold_in_depends_on(self) -> None:
         """Add a ``depends_on`` list to every service in :attr:`compose_file`

@@ -1,8 +1,9 @@
 from rdflib import Graph
 
-from rdfine import GraphReader, receive_first
+from rdfine import GraphReader
 
 from ..compiler_abc import Compiler
+from ..utils import lookup_seeded_pipeline_id
 
 
 class PipelineAssembler(Compiler):
@@ -54,23 +55,15 @@ class PipelineAssembler(Compiler):
         return self.output_reader.graph
 
     def lookup_pipeline_id(self) -> None:
-        """Read the target pipeline id off the seeded ``tcs:PipelineBuild``
-        node's ``prov:hadPlan``, cross-checked against the original
-        ``tcs:CompilationRequest``'s ``tcs:targetPipeline`` — same
-        pattern as :class:`GraphReducer`, not a graph-wide scan for "the"
-        ``tcs:PipelineDefinition``, which breaks once the catalog bundles
-        more than one (as the shared production config intentionally
-        does).
+        """Stash the seeded plan on :attr:`pipeline_id`.
+
+        Cross-checked against the original ``tcs:CompilationRequest``'s
+        ``tcs:targetPipeline`` — same pattern as :class:`GraphReducer`,
+        not a graph-wide scan for "the" ``tcs:PipelineDefinition``, which
+        breaks once the catalog bundles more than one (as the shared
+        production config intentionally does).
         """
-        self.pipeline_id = receive_first(
-            self.output_reader.select(
-                "?pipeline",
-                """
-                ?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .
-                ?request a tcs:CompilationRequest ; tcs:targetPipeline ?pipeline .
-                """,
-            )["pipeline"],
-        )
+        self.pipeline_id = lookup_seeded_pipeline_id(self.output_reader)
 
     def describe_docker_container(self) -> None:
         """
@@ -176,11 +169,12 @@ class PipelineAssembler(Compiler):
             - tcs:DockerContainer tcs:runs tcs:InstancePipelineComponent
         """
 
-        step_description = """
+        step_description = f"""
         ?microservice a tcs:DockerContainer .
-        ?microservice tcs:instantiates ?component . 
-        ?step a tcs:InstancePipelineComponent .
-        ?step prov:specializationOf ?component .
+        ?microservice tcs:instantiates ?component .
+        ?step a tcs:InstancePipelineComponent ;
+              p-plan:isStepOfPlan {self.pipeline_id} ;
+              prov:specializationOf ?component .
         """
 
         new_triples = self.output_reader.construct(
