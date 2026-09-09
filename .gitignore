@@ -36,3 +36,6 @@ test_output.txt
 # Generated output: only the dishacled-full reference build is tracked.
 **/out/*
 !**/out/dishacled-full/
+
+# Notes not meant for external sharing
+token-usage-postmortem-2026-09-01.md
