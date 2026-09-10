@@ -1,0 +1,338 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.6.6 Chrome/144.0.7559.236 Electron/40.8.4 Safari/537.36" version="29.6.6" pages="2">
+  <diagram id="page-original-stack" name="Original stack (without DiSHACLed)">
+    <mxGraphModel dx="2175" dy="1315" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="p1-0" />
+        <mxCell id="p1-1" parent="p1-0" />
+        <mxCell id="p1-title" parent="p1-1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;fontStyle=1" value="Brugge waterkwaliteit — original stack (hand-built NiFi process group on DSH, no DiSHACLed)" vertex="1">
+          <mxGeometry height="30" width="1200" x="40" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-src" parent="p1-1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=11" value="Azure Blob Storage (datalake)&lt;br&gt;container &quot;limits&quot;" vertex="1">
+          <mxGeometry height="90" width="220" x="920" y="198" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-pg" parent="p1-1" style="swimlane;html=1;whiteSpace=wrap;container=1;collapsible=0;fillColor=#ffffff;strokeColor=#555555;startSize=50;fontStyle=1;fontSize=13;verticalAlign=middle;align=center" value="UrbanSense (Azure / KPN DSH)" vertex="1">
+          <mxGeometry height="660" width="1060" x="180" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-canvas" parent="p1-pg" style="swimlane;html=1;whiteSpace=wrap;container=1;collapsible=0;fillColor=#faf6fd;strokeColor=#9673a6;startSize=28;fontStyle=2;fontSize=12;align=center" value="NiFi canvas — processors wired by hand" vertex="1">
+          <mxGeometry height="580" width="650" x="20" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-n1" parent="p1-canvas" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6" value="GenerateFlowFile (10 sec)" vertex="1">
+          <mxGeometry height="40" width="250" x="40" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-n2" parent="p1-canvas" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6" value="FetchAzureBlobStorage_v12" vertex="1">
+          <mxGeometry height="40" width="250" x="40" y="103" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-n3" parent="p1-canvas" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6" value="SplitText (1 line per split)" vertex="1">
+          <mxGeometry height="40" width="250" x="40" y="161" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-n4" parent="p1-canvas" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11" value="ExecuteGroovyScript&#xa;(script pasted in the property editor)" vertex="1">
+          <mxGeometry height="40" width="250" x="40" y="219" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-n5" parent="p1-canvas" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11" value="CreateVersionObjectProcessor&#xa;(LDI NAR installed by hand)" vertex="1">
+          <mxGeometry height="40" width="250" x="40" y="277" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-n6" parent="p1-canvas" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6" value="InvokeHTTP &quot;ldessink&quot; (POST)" vertex="1">
+          <mxGeometry height="40" width="250" x="40" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-cs" parent="p1-canvas" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;fontSize=11" value="AzureStorageCredentials&#xa;controller service (SAS_TOKEN)" vertex="1">
+          <mxGeometry height="55" width="250" x="40" y="430" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-funnel-fail" parent="p1-canvas" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10" value="failure funnel" vertex="1">
+          <mxGeometry height="50" width="90" x="400" y="214.5" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-funnel-http" parent="p1-canvas" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10" value="http funnel" vertex="1">
+          <mxGeometry height="50" width="90" x="400" y="329.5" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-note-manual" parent="p1-canvas" style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=top;fontSize=11;spacingLeft=6" value="Manual steps:&lt;br&gt;• AzureStorageCredentials controller service config&lt;br&gt;• LDI NAR installed on the NiFi image by hand&lt;br&gt;• flow drawn and connected in the NiFi canvas&lt;br&gt;• Groovy mapping maintained inside the processor&lt;br&gt;• no machine-readable description of the flow" vertex="1">
+          <mxGeometry height="140" width="340" x="300" y="430" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-ldes" parent="p1-1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=11" value="LDES server&lt;br&gt;ldes.urban-sense-acc&lt;br&gt;/waterkwaliteit-test" vertex="1">
+          <mxGeometry height="90" width="300" x="880" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-consumers" parent="p1-1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#999999;dashed=1;fontColor=#888888;fontSize=11" value="downstream consumers&#xa;(optional — not described in the pipeline definition)" vertex="1">
+          <mxGeometry height="80" width="300" x="880" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e-src" edge="1" parent="p1-1" source="p1-src" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=11" target="p1-n2" value="monthly JSON blob">
+          <mxGeometry relative="1" x="0.5455" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="790" y="243" />
+              <mxPoint x="790" y="243" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e12" edge="1" parent="p1-1" source="p1-n1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10" target="p1-n2" value="success">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e23" edge="1" parent="p1-1" source="p1-n2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10" target="p1-n3" value="success">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e34" edge="1" parent="p1-1" source="p1-n3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10" target="p1-n4" value="splits">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e45" edge="1" parent="p1-1" source="p1-n4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10" target="p1-n5" value="success">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e56" edge="1" parent="p1-1" source="p1-n5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10" target="p1-n6" value="data">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e-cs" edge="1" parent="p1-1" source="p1-cs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0" target="p1-n2" value="storage credentials">
+          <mxGeometry relative="1" x="0.4286" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="220" y="577" />
+              <mxPoint x="220" y="243" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e-f3" edge="1" parent="p1-1" source="p1-n3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0" target="p1-funnel-fail" value="failure">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e-f4" edge="1" parent="p1-1" source="p1-n4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0" target="p1-funnel-fail" value="failure">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-e-f5" edge="1" parent="p1-1" source="p1-n5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0" target="p1-funnel-fail" value="valueNotFound / unparseable">
+          <mxGeometry relative="1" x="-0.1467" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e-resp" edge="1" parent="p1-1" source="p1-n6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0" target="p1-funnel-http" value="Response&lt;br&gt;Retry&lt;br&gt;Failure">
+          <mxGeometry relative="1" x="0.0044" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e-ldes" edge="1" parent="p1-1" source="p1-n6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0" target="p1-ldes" value="POST JSON-LD version objects">
+          <mxGeometry relative="1" x="-0.35" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="365" y="520" />
+              <mxPoint x="820" y="520" />
+              <mxPoint x="820" y="345" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p1-e-cons" edge="1" parent="p1-1" source="p1-ldes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10" target="p1-consumers" value="follow eventstream (unconfirmed)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="page-with-dishacled" name="With DiSHACLed">
+    <mxGraphModel dx="2431" dy="1469" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="p2-0" />
+        <mxCell id="p2-1" parent="p2-0" />
+        <mxCell id="p2-title" parent="p2-1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;fontStyle=1" value="Brugge waterkwaliteit — with DiSHACLed: one pipeline definition generates the whole NiFi flow" vertex="1">
+          <mxGeometry height="30" width="1300" x="40" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-src" parent="p2-1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=11" value="pipeline_definition_nifi.ttl&lt;br&gt;:DemonstratorPipeline" vertex="1">
+          <mxGeometry height="100" width="220" x="30" y="280" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-src-dep" parent="p2-1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;fontColor=#666666;fontSize=11" value="pipeline_definition_nifi.deployment.ttl&#xa;(reference-only overlay: secret names,&#xa;remote deployment config)" vertex="1">
+          <mxGeometry height="100" width="220" x="30" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-box" parent="p2-1" style="rounded=1;arcSize=4;whiteSpace=wrap;html=1;container=1;collapsible=0;dashed=1;dashPattern=8 8;strokeWidth=3;strokeColor=#9673a6;fillColor=#f9f5fd;verticalAlign=top;align=center;fontStyle=1;fontSize=13;fontColor=#6a4b8a;recursiveResize=0;" value="DiSHACLed pipeline definition (data/pipelines/pipeline_definition_nifi.ttl)&lt;br&gt;generated nifi/flow.json, nifi/Dockerfile, configure_local.py, docker-compose" vertex="1">
+          <mxGeometry height="750" width="530" x="290" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="4mYmAKd4Ve7swo6vXmyA-16" edge="1" parent="p2-box" source="p2-pg" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="460" y="650" />
+            </Array>
+            <mxPoint x="700" y="650" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="4mYmAKd4Ve7swo6vXmyA-18" connectable="0" parent="4mYmAKd4Ve7swo6vXmyA-16" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="nifi:deploymentMode &quot;remote&quot;" vertex="1">
+          <mxGeometry relative="1" x="-0.2019" y="-2" as="geometry">
+            <mxPoint x="-24" y="-12" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-pg" parent="p2-box" style="swimlane;html=1;whiteSpace=wrap;container=1;collapsible=0;fillColor=#faf6fd;strokeColor=#9673a6;startSize=44;fontStyle=2;fontSize=12;align=center" value=":DemonstratorPipeline (NiFi) — generated service &quot;nifi&quot;&lt;br&gt;(dishacled/nifi:2.10.0-ldi-2.12.0)" vertex="1">
+          <mxGeometry height="530" width="485.79" x="18.68" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-n1" parent="p2-pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6" value=":GenerateFlowFile (10 sec)" vertex="1">
+          <mxGeometry height="40" width="233.5526315789474" x="28.026315789473692" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-n2" parent="p2-pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6" value=":FetchAzureBlobStorage_v12" vertex="1">
+          <mxGeometry height="40" width="233.5526315789474" x="28.026315789473692" y="118" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-n3" parent="p2-pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6" value=":SplitText" vertex="1">
+          <mxGeometry height="40" width="233.5526315789474" x="28.026315789473692" y="176" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-n4" parent="p2-pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11" value=":ExecuteGroovyScript&#xa;(rows → OSLO waterkwaliteit-ap JSON-LD)" vertex="1">
+          <mxGeometry height="40" width="233.5526315789474" x="28.026315789473692" y="234" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-n5" parent="p2-pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11" value=":CreateVersionObjectProcessor&#xa;(LDI NiFi processor)" vertex="1">
+          <mxGeometry height="40" width="233.5526315789474" x="28.026315789473692" y="292" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-n6" parent="p2-pg" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6" value=":ldessink (InvokeHTTP, POST)" vertex="1">
+          <mxGeometry height="40" width="233.5526315789474" x="28.026315789473692" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-cs" parent="p2-pg" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;fontSize=11" value=":AzureStorageCredentials&#xa;controller service (SAS_TOKEN)" vertex="1">
+          <mxGeometry height="55" width="233.5526315789474" x="171.3163157894737" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-funnel-fail" parent="p2-pg" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10" value=":FailureFunnel" vertex="1">
+          <mxGeometry height="50" width="84.07894736842107" x="392.3684210526317" y="229" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-funnel-http" parent="p2-pg" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10" value=":httpfunnel" vertex="1">
+          <mxGeometry height="50" width="84.07894736842107" x="392.3684210526317" y="345" as="geometry" />
+        </mxCell>
+        <mxCell id="4mYmAKd4Ve7swo6vXmyA-17" edge="1" parent="p2-box" source="p2-remote" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="460" y="680" />
+              <mxPoint x="460" y="650" />
+            </Array>
+            <mxPoint x="700" y="650" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-remote" parent="p2-box" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#999999;dashed=1;fontColor=#777777;fontSize=11" value="alternative: nifi:deploymentMode &quot;remote&quot;&lt;br&gt;&lt;div&gt;&lt;div&gt;→&amp;nbsp;&lt;/div&gt;&lt;div&gt;nifi/flow_definition.json,&lt;br&gt;deploy_flow.py,&lt;br&gt;DSH token gateway gateway.az.kpn-dsh.com/token&lt;br&gt;&lt;/div&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="233.55" x="144.8" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-legend" parent="p2-1" style="swimlane;html=1;whiteSpace=wrap;container=1;collapsible=0;fillColor=#ffffff;strokeColor=#555555;startSize=28;fontStyle=1;fontSize=12;align=left;spacingLeft=10" value="Legend" vertex="1">
+          <mxGeometry height="150" width="1150" x="90" y="850" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-s1" parent="p2-legend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6" value="" vertex="1">
+          <mxGeometry height="20" width="34" x="20" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-t1" parent="p2-legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11" value="NiFi processor" vertex="1">
+          <mxGeometry height="20" width="110" x="62" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-s2" parent="p2-legend" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1" value="" vertex="1">
+          <mxGeometry height="20" width="34" x="185" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-t2" parent="p2-legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11" value="NiFi controller service" vertex="1">
+          <mxGeometry height="20" width="140" x="227" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-s3" parent="p2-legend" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6" value="" vertex="1">
+          <mxGeometry height="20" width="34" x="380" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-t3" parent="p2-legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11" value="NiFi funnel" vertex="1">
+          <mxGeometry height="20" width="90" x="422" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-s4" parent="p2-legend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00" value="" vertex="1">
+          <mxGeometry height="20" width="34" x="520" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-t4" parent="p2-legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11" value="store / infra service" vertex="1">
+          <mxGeometry height="20" width="150" x="562" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-s5" parent="p2-legend" style="shape=note;whiteSpace=wrap;html=1;size=8;fillColor=#fff2cc;strokeColor=#d6b656" value="" vertex="1">
+          <mxGeometry height="20" width="34" x="720" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-t5" parent="p2-legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11" value="SHACL config shape (catalog-nifi.ttl)" vertex="1">
+          <mxGeometry height="20" width="240" x="762" y="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-s6" parent="p2-legend" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 8;strokeWidth=3;strokeColor=#9673a6;fillColor=#f9f5fd" value="" vertex="1">
+          <mxGeometry height="34" width="50" x="20" y="95" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-t6" parent="p2-legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12" value="dashed rounded box = defined by DiSHACLed, replaced by generated artefacts" vertex="1">
+          <mxGeometry height="34" width="430" x="80" y="95" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-s7" parent="p2-legend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555" value="" vertex="1">
+          <mxGeometry height="34" width="50" x="530" y="95" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-t7" parent="p2-legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12" value="solid box = hand-written / external infra" vertex="1">
+          <mxGeometry height="34" width="260" x="590" y="95" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-s8" parent="p2-legend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#999999;dashed=1" value="" vertex="1">
+          <mxGeometry height="34" width="50" x="860" y="95" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-lg-t8" parent="p2-legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12" value="grey dashed = optional / alternative" vertex="1">
+          <mxGeometry height="34" width="220" x="920" y="95" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-e-src" edge="1" parent="p2-1" source="p2-src" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=11;strokeColor=#9673a6;entryX=-0.001;entryY=0.194;entryDx=0;entryDy=0;entryPerimeter=0;" target="p2-box" value="dishacled compile">
+          <mxGeometry relative="1" x="0.223" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="140" y="215" />
+              <mxPoint x="279" y="215" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-e-src-dep" edge="1" parent="p2-1" source="p2-src-dep" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10;strokeColor=#999999;entryX=0;entryY=0.5;entryDx=0;entryDy=0" target="p2-remote" value="optional overlay">
+          <mxGeometry relative="1" x="-0.3" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="140" y="740" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-e-azure" edge="1" parent="p2-1" source="p2-i-azure" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=10;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0" target="p2-n2" value="&lt;span style=&quot;font-size: 11px;&quot;&gt;monthly JSON blob&lt;/span&gt;">
+          <mxGeometry relative="1" x="0.4884" y="-8" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1150" y="268" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-en12" edge="1" parent="p2-1" source="p2-n1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10" target="p2-n2" value=":nifi_channel_1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-en23" edge="1" parent="p2-1" source="p2-n2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10" target="p2-n3" value=":nifi_channel_azure">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-en34" edge="1" parent="p2-1" source="p2-n3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10" target="p2-n4" value=":nifi_channel_split">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-en45" edge="1" parent="p2-1" source="p2-n4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10" target="p2-n5" value=":nifi_channel_groovy_success">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-en56" edge="1" parent="p2-1" source="p2-n5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;fontSize=10" target="p2-n6" value=":nifi_channel_version_data">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-e-cs" edge="1" parent="p2-1" source="p2-cs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p2-n2" value="nifi:storageCredentials">
+          <mxGeometry relative="1" x="-0.6643" y="3" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="315" y="618" />
+              <mxPoint x="315" y="268" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-e-f3" edge="1" parent="p2-1" source="p2-n3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0" target="p2-funnel-fail" value=":nifi_channel_split_failure">
+          <mxGeometry relative="1" x="-0.2661" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-e-f4" edge="1" parent="p2-1" source="p2-n4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0" target="p2-funnel-fail" value=":nifi_channel_groovy_failure">
+          <mxGeometry relative="1" y="-6" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-e-f5" edge="1" parent="p2-1" source="p2-n5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0" target="p2-funnel-fail" value=":nifi_channel_version_failure">
+          <mxGeometry relative="1" x="-0.0826" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-e-resp" edge="1" parent="p2-1" source="p2-n6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;dashed=1;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0" target="p2-funnel-http" value=":ldes_response">
+          <mxGeometry relative="1" x="0.1429" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-e-ldes" edge="1" parent="p2-1" source="p2-n6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.001;entryY=0.613;entryDx=0;entryDy=0;entryPerimeter=0;" target="p2-i-ldes" value="POST JSON-LD&lt;br&gt;http://ldes.urban-sense-acc/waterkwaliteit-test">
+          <mxGeometry relative="1" x="-0.5088" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="455" y="520" />
+              <mxPoint x="455" y="550" />
+              <mxPoint x="995" y="550" />
+            </Array>
+            <mxPoint x="960" y="540" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="4mYmAKd4Ve7swo6vXmyA-0" parent="p2-1" style="swimlane;html=1;whiteSpace=wrap;container=1;collapsible=0;fillColor=#ffffff;strokeColor=#555555;startSize=50;fontStyle=1;fontSize=13;verticalAlign=middle;align=center" value="UrbanSense (Azure / KPN DSH)" vertex="1">
+          <mxGeometry height="630" width="380" x="860" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="4mYmAKd4Ve7swo6vXmyA-1" parent="4mYmAKd4Ve7swo6vXmyA-0" style="swimlane;html=1;whiteSpace=wrap;container=1;collapsible=0;fillColor=#faf6fd;strokeColor=#9673a6;startSize=28;fontStyle=2;fontSize=12;align=center" value="NiFi canvas" vertex="1">
+          <mxGeometry height="180" width="330" x="25" y="435" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-i-azure" parent="4mYmAKd4Ve7swo6vXmyA-0" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=11" value="Azure Blob Storage (datalake)&#xa;container &quot;limits&quot;" vertex="1">
+          <mxGeometry height="80" width="270" x="50" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-i-ldes" parent="4mYmAKd4Ve7swo6vXmyA-0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=11" value="LDES server&lt;br&gt;ldes.urban-sense-acc&lt;br&gt;/waterkwaliteit-test" vertex="1">
+          <mxGeometry height="90" width="270" x="55" y="325" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
