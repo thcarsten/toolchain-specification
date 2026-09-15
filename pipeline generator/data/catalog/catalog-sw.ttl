@@ -50,6 +50,17 @@ sw:deliver-email-service a tcs:PipelineComponent, mu:Microservice, dcat:Resource
   tcs:config :DeliverEmailServiceDockerCompose .
 
 
+sw:rdf-ingest-service a tcs:PipelineComponent, mu:Microservice, dcat:Resource,
+                        tcs:EntryBoundaryComponent ;
+  tcs:channelType tcs:HttpChannel ;
+  rdfs:description "Accepts an RDF payload on `POST /ingest` and writes it to the triple store with batched SPARQL INSERT DATA queries. Reads the serialization from Content-Type (Turtle, TriG, N-Triples, N-Quads, N3, JSON-LD, RDF/XML). Written as the entry point for DiSHACLeD-generated pipelines." ;
+  dcat:landingPage <https://github.com/redpencilio/rdf-ingest-service> ;
+  dct:requires sw:triple-store ,
+               sw:mu-authorization ,
+               sw:mu-identifier ;
+  tcs:config :RdfIngestServiceDockerCompose .
+
+
 sw:triple-store a tcs:PipelineComponent, dcat:Resource;
   dcat:landingPage <https://virtuoso.dev/react-virtuoso/> ;
   tcs:config :TripleStoreDockerCompose ,
@@ -135,6 +146,30 @@ error-alert:
     tcs:literal """
   berichtencentrum-deliver-email-service:
     image: lblod/berichtencentrum-deliver-email-service
+""" .
+
+
+# The queries this service emits carry no GRAPH clause on purpose —
+# mu-authorization rewrites them and decides which graphs the statements
+# land in, from the session's access rights. It therefore has to sit
+# behind identifier → dispatcher → authorization, like every other
+# write path in the stack, and `/ingest` must be routed by the
+# dispatcher (see :MuDispatcherExDefault).
+#
+# BATCH_SIZE and MAX_QUADS are already ENVs in the image; they are
+# restated here so SemanticWorksEnvVarCompiler has something to fold
+# step-level p-plan:hasInputVar overrides onto. Statements are held in
+# memory while the payload is validated, so budget ~1kB of heap per
+# statement when raising MAX_QUADS.
+:RdfIngestServiceDockerCompose
+    a tcs:Config, tcs:DefaultConfig, tcs:DockerComposeConfig ;
+    dct:format "text/yaml" ;
+    tcs:literal """
+rdf-ingest:
+    image: redpencil/rdf-ingest-service:latest
+    environment:
+        BATCH_SIZE: '1000'
+        MAX_QUADS: '100000'
 """ .
 
 
@@ -234,8 +269,13 @@ database:
 # - `MuAuthorizationConfigLispDefault` — the single-`public`-graph +
 #   everyone-can-read/write ACL matches the demonstrator's trivial
 #   authorization setup.
-# - `MuDispatcherExDefault` — only forwards `/sparql` → database and
-#   404s everything else, matching the demonstrator's minimal routes.
+# - `MuDispatcherExDefault` — forwards `/sparql` → database and
+#   `/ingest` → rdf-ingest, and 404s everything else. Both routes are
+#   hardcoded here rather than contributed by the components that serve
+#   them (`sw:mu-authorization`, `sw:rdf-ingest-service`), so a pipeline
+#   that omits either service still gets its route. Routes should be
+#   collected from the components in the build instead — see the
+#   override-mechanism roadmap item.
 #
 # See `README.md` §5 (Limitations) for the general story and the
 # override-mechanism roadmap item.
@@ -671,6 +711,10 @@ LoadPath			= /usr/local/virtuoso-opensource/lib/virtuoso/hosting
   match "/sparql", @any do
     Proxy.forward conn, [], "http://database:8890/"
     # send_resp( conn, 404, "sparql route found." )
+  end
+
+  match "/ingest", @any do
+    Proxy.forward conn, [], "http://rdf-ingest/ingest"
   end
 
   match "/*_", %{ layer: :not_found } do

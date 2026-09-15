@@ -6,9 +6,11 @@ from .core.pipeline_enricher import PipelineEnricher
 from .core.pipeline_assembler import PipelineAssembler
 from .core.bridge_transport_compiler import BridgeTransportCompiler
 from .core.graph_reducer import GraphReducer
+from .core.requirement_closure_compiler import RequirementClosureCompiler
 from .core.segment_tagger import SegmentTagger
 from .core.validation_report_compiler import ValidationReportCompiler
 from .core.docker_compose_compiler import DockerComposeCompiler
+from .core.container_service_name_compiler import ContainerServiceNameCompiler
 from .ldio.http_in_config_compiler import LdioHttpInConfigCompiler
 from .ldio.http_out_config_compiler import LdioHttpOutConfigCompiler
 from .ldio.config_compiler import LdioConfigCompiler
@@ -22,6 +24,7 @@ from .rdfc.http_out_config_compiler import RdfcHttpOutConfigCompiler
 from .rdfc.config_compiler import RdfcConfigCompiler
 from .rdfc.dockerfile_compiler import RdfcDockerFileCompiler
 from .sw.env_var_compiler import SemanticWorksEnvVarCompiler
+from .sw.rdf_ingest_config_compiler import SwRdfIngestConfigCompiler
 from .sw.virtuoso_compiler import VirtuosoCompiler
 from .sw.mu_cl_resources_compiler import MuClResourcesCompiler
 from .sw.mu_dispatcher_compiler import MuDispatcherCompiler
@@ -46,6 +49,7 @@ __all__ = [
     "GraphReducer",
     "PipelineEnricher",
     "BridgeTransportCompiler",
+    "RequirementClosureCompiler",
     "SegmentTagger",
     "ValidationReportCompiler",
     "PipelineAssembler",
@@ -57,7 +61,9 @@ __all__ = [
     "RdfcConfigCompiler",
     "RdfcDockerFileCompiler",
     "DockerComposeCompiler",
+    "ContainerServiceNameCompiler",
     "SemanticWorksEnvVarCompiler",
+    "SwRdfIngestConfigCompiler",
     "VirtuosoCompiler",
     "MuClResourcesCompiler",
     "MuDispatcherCompiler",

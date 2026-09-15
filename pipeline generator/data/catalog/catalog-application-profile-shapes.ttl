@@ -629,6 +629,61 @@ tcs:UnsupportedChannelTopologyShape a sh:NodeShape ;
     ] .
 
 
+#################################################################
+# tcs:BridgeEndpointReachableShape
+#
+# The Entry/Exit contract runs through the channel: an Entry config
+# compiler writes `tcs:endpoint` onto the shared cross-container
+# channel, and the Exit compiler on the other side points its step at
+# whatever it finds there. Nothing otherwise checks that the hostname
+# in that URL will correspond to a service the generated compose file
+# declares, so a mistake yields a project that boots cleanly and then
+# fails on the first request.
+#
+# That is not hypothetical: an auto-inserted `sw:rdf-ingest-service`
+# bridge pointed at `http://identifier/ingest` while the compose file
+# had no identifier service, because the `dct:requires` closure was
+# expanded before the bridge step existed (now handled by
+# `RequirementClosureCompiler`). This shape is the general guard, and
+# it covers the LDIO, NiFi and RDF-Connect bridges just as much.
+#
+# The compose service name lives only inside the YAML in a config's
+# `tcs:literal`, which SHACL cannot read; `ContainerServiceNameCompiler`
+# projects it onto the container as `tcs:serviceName` in the finalize
+# phase so this shape can reason about it in triples.
+#
+# Scoped to channels that genuinely cross a container boundary — a
+# `tcs:endpoint` on any other channel may legitimately point somewhere
+# outside the compose project.
+#################################################################
+
+tcs:BridgeEndpointReachableShape a sh:NodeShape ;
+    rdfs:label "BridgeEndpointReachable application-profile shape" ;
+    sh:message "Checks that every cross-container bridge endpoint names a compose service the build declares." ;
+    sh:targetClass tcs:Channel ;
+
+    sh:sparql [
+        sh:prefixes tcs:prefixes ;
+        sh:message "Cross-container channel {?this} has endpoint {?endpoint}, whose host {?host} is not declared as a compose service by any container in the build. Either the component owning that service is missing — check that its dct:requires chain is expanded into containers — or the Entry config compiler that wrote the endpoint resolved the wrong service name." ;
+        sh:select """
+            SELECT ?this ?endpoint ?host WHERE {
+                ?this a tcs:Channel ;
+                      tcs:endpoint ?endpoint .
+                ?writer tcs:writesTo ?this .
+                ?reader tcs:readsFrom ?this .
+                ?writer_container tcs:runs ?writer .
+                ?reader_container tcs:runs ?reader .
+                FILTER (?writer_container != ?reader_container)
+                BIND(REPLACE(STR(?endpoint), "^[^:]+://([^:/?#]+).*$", "$1") AS ?host)
+                FILTER NOT EXISTS {
+                    ?container a tcs:DockerContainer ;
+                               tcs:serviceName ?host .
+                }
+            }
+        """
+    ] .
+
+
 ###############################################################################
 # SECTION 2 — Compiler-specific constraints
 #

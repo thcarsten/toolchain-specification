@@ -159,6 +159,7 @@ rdfs:comment "Node.js package manager. Packages annotated with this end up in pa
     # Semantic.Works
     sw:loket-error-alert-service,
     sw:deliver-email-service ,
+    sw:rdf-ingest-service,
     sw:triple-store,
     sw:mu-identifier,
     sw:mu-dispatcher,

@@ -636,3 +636,156 @@ def rewrite_compose_volume_host_path(
         updated.prefix_store,
     ).graph
     return updated.add(add_triples)
+
+
+def lookup_pipeline_components(reader: GraphReader, pipeline_id: str) -> list[str]:
+    """Components specialized by a step of ``pipeline_id``, plus everything
+    reachable from them along ``dct:requires``.
+
+    Exactly the components the pipeline could ever need a container for.
+    Scoped to the pipeline (rather than every ``tcs:PipelineComponent`` in
+    the graph) so callers don't depend on the graph having been narrowed
+    down elsewhere.
+    """
+    used = (
+        reader.select(
+            "?component",
+            f"""
+            ?step p-plan:isStepOfPlan {pipeline_id} ;
+                  prov:specializationOf ?component .
+            """,
+        )["component"]
+        .drop_duplicates()
+        .to_list()
+    )
+    if not used:
+        return []
+    return (
+        reader.select(
+            "?component",
+            f"""
+            VALUES ?used {{ {" ".join(used)} }}
+            ?used dct:requires* ?component .
+            """,
+        )["component"]
+        .drop_duplicates()
+        .to_list()
+    )
+
+
+def mint_missing_containers(reader: GraphReader, pipeline_id: str) -> GraphReader:
+    """Give every microservice of ``pipeline_id`` a ``tcs:DockerContainer``,
+    and return the extended reader.
+
+    A component is a *microservice* — something that earns a container of
+    its own — when it owns a ``tcs:DockerComposeConfig``. Components that
+    don't (a processor inside an orchestrator, say) are attached to the
+    container of the microservice that requires them, so one container can
+    instantiate several components.
+
+    **Idempotent**: a microservice whose container is already part of the
+    build keeps it, and only the missing ones are minted.
+    :class:`RequirementClosureCompiler` depends on that — it runs after
+    :class:`BridgeTransportCompiler` has introduced a component whose
+    ``dct:requires`` chain was in nobody's closure when the assembler
+    ran, so most containers already exist and only the new requirements
+    are missing.
+
+    "Already part of the build" means ``?build dct:hasPart ?container``,
+    not merely ``?container a tcs:DockerContainer``. A container declared
+    in a pipeline definition carries no such edge — the build node is
+    minted by :class:`PipelineSeeder` at compile time, so a pipeline
+    author has nothing to attach it to — and counting one would suppress
+    the mint and leave the microservice with no container in the build at
+    all. Restricting the check to build parts keeps this a strict no-op
+    for :class:`PipelineAssembler`, whose first pass always runs before
+    any container is a build part.
+    """
+    relevant_components = lookup_pipeline_components(reader, pipeline_id)
+    if not relevant_components:
+        return reader
+
+    df_requirements = reader.select(
+        "?component ?requirement",
+        f"""
+        VALUES ?component {{ {" ".join(relevant_components)} }}
+        ?component a tcs:PipelineComponent .
+        OPTIONAL {{ ?component dct:requires ?requirement . }}
+        """,
+    )
+
+    df_requirements["microservice"] = False
+    for component in df_requirements["component"].to_list():
+        df_requirements.loc[
+            df_requirements["component"] == component, "microservice"
+        ] = reader.ask(
+            f"{component} tcs:config ?config. ?config a tcs:DockerComposeConfig .",
+        )
+
+    microservice_list = (
+        df_requirements.loc[df_requirements["microservice"], "component"]
+        .drop_duplicates()
+        .to_list()
+    )
+
+    def _lookup_dependants(microservice_id: str) -> list[str]:
+        """Components that hang off ``microservice_id`` without earning a
+        container of their own — they are instantiated by its container."""
+        dependants: set[str] = set()
+        to_process = [microservice_id]
+
+        while to_process:
+            current = to_process.pop()
+            new_deps = df_requirements.loc[
+                (df_requirements["requirement"] == current)
+                & ~df_requirements["microservice"].astype(bool),
+                "component",
+            ].tolist()
+            for dep in new_deps:
+                if dep not in dependants:
+                    dependants.add(dep)
+                    to_process.append(dep)
+
+        return list(dependants)
+
+    # Only incremented when a new blank container is minted, and checked
+    # against the graph so it never collides with a name already in use —
+    # same idiom as PipelineSeeder.name_blind_nodes.
+    next_index = 0
+
+    for microservice_id in microservice_list:
+        if reader.ask(
+            f"""
+            ?build a tcs:PipelineBuild ; dct:hasPart ?container .
+            ?container a tcs:DockerContainer ;
+                       tcs:instantiates {microservice_id} .
+            """
+        ):
+            # Already carried by the build — minted on an earlier pass.
+            # Leave it, and don't re-attach its dependants.
+            continue
+
+        container_id = f":container_{next_index}"
+        next_index += 1
+        while reader.check_exists(container_id):
+            container_id = f":container_{next_index}"
+            next_index += 1
+
+        new_triples = reader.construct(
+            f"""
+            {container_id} a tcs:DockerContainer .
+            ?build_id dct:hasPart {container_id} .
+            {container_id} tcs:instantiates {microservice_id} .
+            """,
+            "?build_id a tcs:PipelineBuild",
+        ).graph
+        reader = reader.add(new_triples)
+
+        for dependant in _lookup_dependants(microservice_id):
+            new_dependant_triples = reader.construct(
+                f"{container_id} tcs:instantiates {dependant}.",
+                "?s ?p ?o .",
+            ).graph
+            reader = reader.add(new_dependant_triples)
+
+    return reader

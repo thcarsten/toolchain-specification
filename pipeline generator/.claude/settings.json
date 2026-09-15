@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "additionalDirectories": [
+      "../semantic model"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/scripts/pytest-skill-guard.ps1\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

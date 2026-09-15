@@ -31,10 +31,12 @@ from pathlib import Path
 from .compilation_runner import CompilationConfig, CompilationRunner
 from .core.bridge_transport_compiler import BridgeTransportCompiler
 from .core.docker_compose_compiler import DockerComposeCompiler
+from .core.container_service_name_compiler import ContainerServiceNameCompiler
 from .core.graph_reducer import GraphReducer
 from .core.pipeline_assembler import PipelineAssembler
 from .core.pipeline_enricher import PipelineEnricher
 from .core.pipeline_seeder import PipelineSeeder
+from .core.requirement_closure_compiler import RequirementClosureCompiler
 from .core.segment_tagger import SegmentTagger
 from .core.semantic_model_mapper import SemanticModelMapper
 from .core.validation_report_compiler import ValidationReportCompiler
@@ -56,6 +58,7 @@ from .sw.mu_authorization_compiler import MuAuthorizationCompiler
 from .sw.mu_cl_resources_compiler import MuClResourcesCompiler
 from .sw.mu_delta_notifier_compiler import MuDeltaNotifierCompiler
 from .sw.mu_dispatcher_compiler import MuDispatcherCompiler
+from .sw.rdf_ingest_config_compiler import SwRdfIngestConfigCompiler
 from .sw.virtuoso_compiler import VirtuosoCompiler
 
 # Resolves to ``<repo>/pipeline generator/data``. Baked in at import
@@ -80,6 +83,7 @@ DEFAULT_CATALOG_FILES: tuple[str, ...] = (
 #: safe; ``PipelineGenerator(pipeline_id)`` selects one via the id.
 DEFAULT_PIPELINE_FILES: tuple[str, ...] = (
     "pipelines/pipeline_definition.ttl",
+    "pipelines/pipeline_definition_autobridge.ttl",
     "pipelines/pipeline_definition_ldio_nifi.ttl",
     "pipelines/pipeline_definition_nifi_ldio.ttl",
     "pipelines/pipeline_definition_nifi.ttl",
@@ -112,6 +116,7 @@ PipelineGeneratorConfig = CompilationConfig(
         PipelineAssembler,
         PipelineEnricher,
         BridgeTransportCompiler,
+        RequirementClosureCompiler,
         SegmentTagger,
         GraphReducer,
         # Per-boundary config compilers: write ``tcs:endpoint`` /
@@ -122,6 +127,7 @@ PipelineGeneratorConfig = CompilationConfig(
         RdfcHttpOutConfigCompiler,
         NifiListenHttpConfigCompiler,
         NifiInvokeHttpConfigCompiler,
+        SwRdfIngestConfigCompiler,
         # File-emitting compilers, generation-only.
         LdioConfigCompiler,
         RdfcConfigCompiler,
@@ -138,6 +144,10 @@ PipelineGeneratorConfig = CompilationConfig(
         ErrorAlertCompiler,
         # Fire only in the finalize phase, gated by their own
         # ``applies_to`` on ``tcs:runPhase tcs:FinalizePhase``.
+        # Projects tcs:serviceName for tcs:BridgeEndpointReachableShape;
+        # must precede ValidationReportCompiler, which consumes it in
+        # the same finalize pass.
+        ContainerServiceNameCompiler,
         ValidationReportCompiler,
         DockerComposeCompiler,
     ],

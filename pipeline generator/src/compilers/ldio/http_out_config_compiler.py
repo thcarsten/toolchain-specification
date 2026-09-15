@@ -1,3 +1,4 @@
+import pandas as pd
 from rdflib import Graph
 
 from rdfine import GraphReader, receive_first
@@ -14,8 +15,12 @@ class LdioHttpOutConfigCompiler(Compiler):
     channel by the paired Entry compiler on the downstream container,
     then attaches ``p-plan:hasInputVar tcs:PipelineConfig`` with an
     ``tcs:embedded`` body carrying ``ldio:endpoint`` (mandatory per
-    the catalog configShape) and a default ``ldio:rdf-writer`` block
-    posting ``application/ld+json``.
+    the catalog configShape) and an ``ldio:rdf-writer`` block whose
+    content-type is the channel's ``tcs:contentType`` when the Entry
+    compiler advertised one, else :attr:`default_content_type`.
+    Honouring the channel matters when the downstream Entry is picky
+    about serialisations — ``sw:rdf-ingest-service``, for one, selects
+    its parser from the request's Content-Type header.
 
     Fires only when the read channel already carries a
     ``tcs:endpoint`` — so a paired Entry compiler must have run
@@ -23,6 +28,7 @@ class LdioHttpOutConfigCompiler(Compiler):
     a ``p-plan:hasInputVar`` are left untouched.
     """
 
+    #: Fallback when the channel carries no ``tcs:contentType``.
     default_content_type: str = "application/ld+json"
 
     def __init__(self, graph: Graph) -> None:
@@ -48,27 +54,36 @@ class LdioHttpOutConfigCompiler(Compiler):
 
     def configure_unconfigured_steps(self) -> None:
         rows = self.output_reader.select(
-            "?step ?endpoint",
+            "?step ?endpoint ?content_type",
             """
             ?step a tcs:InstancePipelineComponent ;
                   prov:specializationOf ldio:HttpOut ;
                   tcs:writesTo ?channel .
             ?channel tcs:endpoint ?endpoint .
+            OPTIONAL { ?channel tcs:contentType ?content_type . }
             FILTER NOT EXISTS { ?step p-plan:hasInputVar ?c }
             """,
         )
         for _, row in rows.iterrows():
-            self._attach_config(row["step"], row["endpoint"])
+            content_type = row["content_type"]
+            self._attach_config(
+                row["step"],
+                row["endpoint"],
+                None if pd.isna(content_type) else str(content_type),
+            )
 
-    def _attach_config(self, step: str, endpoint: str) -> None:
+    def _attach_config(
+        self, step: str, endpoint: str, content_type: str | None = None
+    ) -> None:
         config_id = self._mint_config_id()
+        content_type = content_type or self.default_content_type
         new_triples = self.output_reader.construct(
             f"""
             {step} p-plan:hasInputVar {config_id} .
             {config_id} a tcs:PipelineConfig ;
                 tcs:embedded [
                     ldio:endpoint "{endpoint}" ;
-                    ldio:rdf-writer [ ldio:content-type "{self.default_content_type}" ]
+                    ldio:rdf-writer [ ldio:content-type "{content_type}" ]
                 ] .
             """,
             f"{step} a tcs:InstancePipelineComponent .",

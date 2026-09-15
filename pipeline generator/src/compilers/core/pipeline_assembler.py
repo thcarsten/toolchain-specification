@@ -3,7 +3,7 @@ from rdflib import Graph
 from rdfine import GraphReader
 
 from ..compiler_abc import Compiler
-from ..utils import lookup_seeded_pipeline_id
+from ..utils import lookup_seeded_pipeline_id, mint_missing_containers
 
 
 class PipelineAssembler(Compiler):
@@ -71,97 +71,26 @@ class PipelineAssembler(Compiler):
             - tcs:PipelineBuild dct:hasPart tcs:DockerContainer
             - tcs:DockerContainer tcs:instantiates tcs:PipelineComponent
 
-        If the pipeline definition already declares a container that
-        instantiates a given microservice (``?container a
-        tcs:DockerContainer ; tcs:instantiates {microservice}``), that
-        container is reused instead of minting a new ``:container_N`` —
-        this method only fills in containers that are still missing.
+        Mints a ``:container_N`` for every microservice of the pipeline
+        that the build does not already carry one for.
+
+        Note this does *not* honour a container hand-declared in a
+        pipeline definition, despite what this docstring claimed before:
+        such a container has no ``dct:hasPart`` edge from the build, and
+        treating it as satisfying the microservice would leave the build
+        with no container for it at all. Making declared containers
+        first-class needs a way to attach them to the seeded build.
+
+        The work itself lives in :func:`mint_missing_containers`, shared
+        with :class:`RequirementClosureCompiler`, which runs the same
+        pass again after :class:`BridgeTransportCompiler` has introduced
+        a component whose ``dct:requires`` chain was in nobody's closure
+        at this point. Sharing it is why the helper is idempotent; on the
+        graph this compiler normally sees there is nothing to skip.
         """
-
-        relevant_components = self._lookup_relevant_components()
-
-        # Create an overview df listing all components and their reliance on other components
-        df_requirements = self.output_reader.select(
-            "?component ?requirement",
-            f"""
-            VALUES ?component {{ {" ".join(relevant_components)} }}
-            ?component a tcs:PipelineComponent .
-            OPTIONAL {{ ?component dct:requires ?requirement . }}
-            """,
+        self.output_reader = mint_missing_containers(
+            self.output_reader, self.pipeline_id
         )
-
-        # Identifying the components which are microservices
-        df_requirements["microservice"] = False
-        for component in df_requirements["component"].to_list():
-            df_requirements.loc[
-                df_requirements["component"] == component, "microservice"
-            ] = self.output_reader.ask(
-                f"{component} tcs:config ?config. ?config a tcs:DockerComposeConfig .",
-            )
-
-        microservice_list = (
-            df_requirements.loc[df_requirements["microservice"], "component"]
-            .drop_duplicates()
-            .to_list()
-        )
-
-        def _lookup_dependants(microservice_id: str) -> list[str]:
-            """
-            Helper function that looks up which components are dependant on a specific docker container
-            """
-            dependants = set()  # all discovered dependants
-            to_process = [microservice_id]  # queue (or stack)
-
-            while to_process:
-                current = to_process.pop()
-
-                new_deps = df_requirements.loc[
-                    (df_requirements["requirement"] == current)
-                    & ~df_requirements["microservice"].astype(bool),
-                    "component",
-                ].tolist()
-
-                for dep in new_deps:
-                    if dep not in dependants:
-                        dependants.add(dep)
-                        to_process.append(dep)
-
-            dependants_list = list(dependants)
-            return dependants_list
-
-        # Only incremented when a new blank container is minted, and
-        # checked against the graph so it never collides with a name
-        # already in use — same idiom as
-        # PipelineSeeder.name_blind_nodes.
-        next_index = 0
-
-        # For each docker container, add the respective statements to the graph
-        for microservice_id in microservice_list:
-            container_id = f":container_{next_index}"
-            next_index += 1
-            while self.output_reader.check_exists(container_id):
-                container_id = f":container_{next_index}"
-                next_index += 1
-
-            # tcs:PipelineBuild dct:hasPart tcs:DockerContainer
-            construct_statement = f"""
-            {container_id} a tcs:DockerContainer .
-            ?build_id dct:hasPart {container_id}. 
-            {container_id} tcs:instantiates {microservice_id} .
-            """
-            new_triples = self.output_reader.construct(
-                construct_statement, "?build_id a tcs:PipelineBuild"
-            ).graph
-            self.output_reader = self.output_reader.add(new_triples)
-
-            # tcs:DockerContainer tcs:instantiates tcs:PipelineComponent
-            dependants_list = _lookup_dependants(microservice_id)
-            for dependant in dependants_list:
-                new_dependant_triples = self.output_reader.construct(
-                    f"{container_id} tcs:instantiates {dependant}.",
-                    "?s ?p ?o .",
-                ).graph
-                self.output_reader = self.output_reader.add(new_dependant_triples)
 
     def describe_step(self) -> None:
         """
@@ -181,37 +110,3 @@ class PipelineAssembler(Compiler):
             "?microservice tcs:runs ?step .", step_description
         ).graph
         self.output_reader = self.output_reader.add(new_triples)
-
-    def _lookup_relevant_components(self) -> list[str]:
-        """
-        Components actually specialized by an ``InstancePipelineComponent``
-        of this pipeline, plus every component transitively reachable
-        from them via ``dct:requires`` — exactly the components this
-        pipeline could ever need a container for. Scoping to this
-        (rather than every ``tcs:PipelineComponent`` present in the
-        graph) means this compiler doesn't depend on the graph having
-        already been narrowed down to just this pipeline elsewhere.
-        """
-        used_components = (
-            self.output_reader.select(
-                "?component",
-                f"""
-                ?step p-plan:isStepOfPlan {self.pipeline_id} ;
-                      prov:specializationOf ?component .
-                """,
-            )["component"]
-            .drop_duplicates()
-            .to_list()
-        )
-
-        return (
-            self.output_reader.select(
-                "?component",
-                f"""
-                VALUES ?used {{ {" ".join(used_components)} }}
-                ?used dct:requires* ?component .
-                """,
-            )["component"]
-            .drop_duplicates()
-            .to_list()
-        )

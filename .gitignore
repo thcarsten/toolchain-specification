@@ -34,7 +34,7 @@ _pytest_fixes.log
 test_output.txt
 
 # Claude Code
-pipeline generator/.claude/
+pipeline generator/.claude/settings.local.json
 pipeline generator/CLAUDE.md
 
 # Generated output: only the dishacled-full reference build is tracked.

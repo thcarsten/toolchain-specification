@@ -1,0 +1,433 @@
+@prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix demo: <http://example.org/example/demonstrator/> .
+@prefix demo_ab: <http://example.org/example/demonstrator-autobridge/> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix proc: <http://dishacled.example.org/processors#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix sosa: <http://www.w3.org/ns/sosa/> .
+@prefix sw: <https://semantic.works/services/> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix tm: <https://w3id.org/rdf-connect/threshold-monitor#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+
+###############################################################################
+# DiSHACLed demonstrator pipeline — auto-bridged RDFC → semantic.works variant
+#
+# The same three-framework pipeline as `demo:DishacledPipeline` in
+# `pipeline_definition.ttl`, with one deliberate difference: the
+# hand-declared `demo:SparqlIngest` terminal step is gone. Instead the
+# semantic.works triple store simply declares that it reads the
+# violations stream, and the RDFC → sw hop is left to
+# `BridgeTransportCompiler` to fill in.
+#
+# What the generator inserts, and why
+# -----------------------------------
+# `demo_ab:sdsViolations` ends up with its writer (`SdsifyViolations`,
+# RDF-Connect) and its reader (`StoreViolations`, semantic.works) on
+# different containers. Neither side declares a boundary component, so
+# the compiler auto-inserts an HTTP bridge from the catalog:
+#
+#   * Exit,  RDFC side — `rdfc:HttpOut`
+#   * Entry, sw side   — `sw:rdf-ingest-service`
+#
+# `sw:rdf-ingest-service` is selected because it is the one
+# `tcs:EntryBoundaryComponent` with `tcs:channelType tcs:HttpChannel`
+# whose `dct:requires` chain reaches `sw:triple-store`, the microservice
+# running on the reader's container.
+#
+# `SwRdfIngestConfigCompiler` then writes the transport metadata onto the
+# shared channel — `tcs:endpoint "http://identifier/ingest"`,
+# `tcs:port 80`, `tcs:contentType "application/n-triples"` — and
+# `RdfcHttpOutConfigCompiler` reads it back off the same channel to
+# configure the Exit step. The endpoint names the **identifier**, not the
+# ingest service: a mu write enters through the gateway so
+# mu-authorization can derive the target graph from the session, which is
+# why the service's INSERTs carry no `GRAPH` clause.
+#
+# How this differs from the hand-declared original
+# ------------------------------------------------
+# `demo:SparqlIngest` (`rdfc:SPARQLIngest`) pushed SDS-wrapped records
+# straight at `http://identifier/sparql` as SPARQL Update, with the target
+# graph named explicitly (`http://mu.semte.ch/graphs/public`) and
+# Virtuoso-specific handling switched on. The auto-bridged form POSTs RDF
+# to `/ingest` instead and lets mu-authorization place the statements. So
+# this is not a drop-in equivalent — it is the same dataflow expressed at
+# a higher level, where the pipeline says *where data goes* and the
+# generator decides *how it gets there*.
+#
+# Also note `demo_ab:StoreViolations`: the original pipeline never made
+# the triple store an explicit step, because nothing needed to address
+# it. Here it is the reader that gives the channel its downstream end,
+# and its `dct:requires` chain is what pulls the mu stack into the build.
+#
+# ⚠️ KNOWN BROKEN — do not deploy the output as-is
+# ------------------------------------------------
+# Compiling this pipeline emits an RDF-Connect `pipeline.ttl` whose
+# wiring is disconnected, and the validation report says so:
+#
+#   Step demo_ab:SdsifyViolations writes to demo_ab:sdsViolations
+#   according to its config, but does not declare tcs:writesTo […].
+#
+# `BridgeTransportCompiler` rewrites the framework-neutral annotations
+# when it inserts a bridge — the original writer is repointed at a fresh
+# intra-container channel, and the Exit step takes over writing the
+# cross-container one. What it does *not* rewrite is the
+# framework-specific config that also names the channel. So
+# `demo_ab:SdsifyViolations` keeps `rdfc:output demo_ab:sdsViolations`
+# while its `tcs:writesTo` now points at `:channel_bridge_0`, and the
+# emitted RDF-Connect pipeline ends up as:
+#
+#   :bridgestep_0 a rdfc:HttpOut ;
+#       rdfc:reader :channel_bridge_0 ;     # nothing writes this
+#       rdfc:writer demo_ab:sdsViolations . # inverted: it should read this
+#
+# The existing bridge tests miss this because their writer's output
+# channel is compiler-synthesized from `p-plan:isPrecededBy` and never
+# named in a config. Auto-bridging only works today on a channel no
+# framework config mentions by name; `rdfc:Sdsify` names its outputs
+# explicitly, which is what trips it.
+#
+# This file is kept as the reproducing case. See the roadmap item in the
+# dishacled-context skill for the fix.
+#
+# Loading
+# -------
+# Parse alongside the `catalog-*.ttl` files **and**
+# `pipeline_definition.ttl`: the `dcat:qualifiedRelation` shape
+# attachments below reference the `demo:` NodeShapes defined there rather
+# than duplicating ~250 lines of SHACL. Step, channel and plan IRIs use
+# the disjoint `demo_ab:` prefix, so both definitions can be loaded
+# together and selected by id.
+###############################################################################
+
+
+demo_ab:AutoBridgedPipeline a tcs:PipelineDefinition ;
+    rdfs:label "DiSHACLed demonstrator pipeline (auto-bridged RDFC → sw)" ;
+    rdfs:comment """Variant of demo:DishacledPipeline that drops the
+        hand-declared rdfc:SPARQLIngest terminal step. The semantic.works
+        triple store declares that it reads the violations stream, and
+        BridgeTransportCompiler inserts the rdfc:HttpOut /
+        sw:rdf-ingest-service pair that carries it across the container
+        boundary.""" .
+
+
+#################################################################
+# 1. LDIO segment — poll, parse, enrich, forward
+#
+# Unchanged from demo:DishacledPipeline.
+#################################################################
+
+demo_ab:ApiPoll a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:HttpInPoller ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:url "https://dishacled-api.azurewebsites.net/api/v1/source-a/current" ;
+            ldio:cron "*/10 * * * * *"
+        ]
+    ] .
+
+
+# Uses Ldio:JsonToLdAdapter (not RdfAdapter) because the source-a API
+# advertises `Content-Type: application/json` for JSON-LD bodies.
+demo_ab:JsonLdParse a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:JsonToLdAdapter ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:isPrecededBy demo_ab:ApiPoll ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation demo:WaterLevelPropertyValueShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:force-content-type true ;
+            ldio:context """{
+              \"@context\": {
+                \"@vocab\": \"https://schema.org/\",
+                \"sosa\": \"http://www.w3.org/ns/sosa/\",
+                \"dcterms\": \"http://purl.org/dc/terms/\",
+                \"measuredAt\": \"sosa:resultTime\",
+                \"conformsTo\": \"dcterms:conformsTo\",
+                \"source\": \"https://schema.org/source\"
+              }
+            }"""
+        ]
+    ] .
+
+
+# schema:PropertyValue → sosa:Observation + qudt:QuantityValue.
+demo_ab:SsnSosaMap a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:SparqlConstructTransformer ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:isPrecededBy demo_ab:JsonLdParse ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:inputShape ;
+        dct:relation demo:WaterLevelPropertyValueShape
+    ] , [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:query """
+                PREFIX schema: <https://schema.org/>
+                PREFIX sosa:   <http://www.w3.org/ns/sosa/>
+                PREFIX qudt:   <http://qudt.org/schema/qudt/>
+                PREFIX unit:   <http://qudt.org/vocab/unit/>
+                PREFIX dct:    <http://purl.org/dc/terms/>
+                PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
+                PREFIX xsd:    <http://www.w3.org/2001/XMLSchema#>
+                PREFIX ex:     <http://dishacled.example.org/>
+                CONSTRUCT {
+                  ?obs a sosa:Observation ;
+                       sosa:madeBySensor         ?sensor ;
+                       sosa:observedProperty     ?prop ;
+                       sosa:hasFeatureOfInterest ?place ;
+                       sosa:resultTime           ?time ;
+                       sosa:hasSimpleResult      ?value ;
+                       sosa:hasResult            ?result .
+                  ?result a qudt:QuantityValue ;
+                          qudt:numericValue ?value ;
+                          qudt:unit         ?unit .
+                }
+                WHERE {
+                  ?obs a schema:PropertyValue ;
+                       schema:value    ?value ;
+                       schema:unitCode ?unitCode ;
+                       sosa:resultTime ?time ;
+                       schema:source   ?source ;
+                       schema:location ?place .
+                  VALUES (?unitCode ?unit) {
+                    (\"CMT\" <http://qudt.org/vocab/unit/CentiM>)
+                  }
+                  BIND(<http://dishacled.example.org/sensor/source-a>     AS ?sensor)
+                  BIND(<http://dishacled.example.org/property/waterLevel> AS ?prop)
+                  BIND(IRI(CONCAT(STR(?obs), \"/result\"))                AS ?result)
+                }
+            """
+        ]
+    ] .
+
+
+# HTTP POST to the RDF-Connect ingest endpoint. Still hand-declared: this
+# LDIO → RDFC hop has an explicit boundary on both sides, so
+# BridgeTransportCompiler leaves it alone. Only the RDFC → sw hop at the
+# end of this file is auto-bridged.
+demo_ab:LdioForward a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:HttpOut ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:isPrecededBy demo_ab:SsnSosaMap ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:endpoint "http://rdfc:9000/source-a" ;
+            ldio:rdf-writer [ ldio:content-type "application/ld+json" ]
+        ]
+    ] .
+
+
+#################################################################
+# 2. RDF-Connect segment — accept POST, SDS, threshold
+#
+# Identical to demo:DishacledPipeline up to demo_ab:SdsifyViolations.
+# What is missing is the terminal step: no rdfc:SPARQLIngest reads
+# demo_ab:sdsViolations here.
+#################################################################
+
+demo_ab:sdsMeasurements a rdfc:Reader, rdfc:Writer .
+demo_ab:sdsMeasurementsMeta a rdfc:Reader, rdfc:Writer .
+demo_ab:sdsViolations a rdfc:Reader, rdfc:Writer .
+demo_ab:sdsViolationsMeta a rdfc:Reader, rdfc:Writer .
+
+demo_ab:HttpIngest a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:HttpServer ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:isPrecededBy demo_ab:LdioForward ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            rdfc:port 9000 ;
+            rdfc:options [
+                rdfc:method "POST" ;
+                rdfc:path "/source-a" ;
+                rdfc:successStatusCode 202
+            ]
+        ]
+    ] .
+
+
+demo_ab:JsonLdToRdf a tcs:InstancePipelineComponent ;
+    prov:specializationOf proc:JsonLdToNQuads ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:isPrecededBy demo_ab:HttpIngest ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:passthroughShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] .
+
+
+demo_ab:SdsifyMeasurements a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:Sdsify ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:isPrecededBy demo_ab:JsonLdToRdf ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:inputShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            rdfc:output demo_ab:sdsMeasurements ;
+            rdfc:metadataOutput demo_ab:sdsMeasurementsMeta ;
+            rdfc:metadataConfig [
+                rdfc:streamId demo_ab:measurementsStream ;
+                rdfc:description "SDS stream of sosa:Observation water level measurements from source-a"
+            ] ;
+            rdfc:typeFilter sosa:Observation
+        ]
+    ] ;
+    tcs:writesTo demo_ab:sdsMeasurements , demo_ab:sdsMeasurementsMeta .
+
+
+demo_ab:ThresholdMonitor a tcs:InstancePipelineComponent ;
+    prov:specializationOf tm:ThresholdMonitorJs ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:inputShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            tm:path sosa:hasSimpleResult ;
+            tm:min "0.0"^^xsd:double ;
+            tm:max "300.0"^^xsd:double ;
+            tm:stream demo_ab:measurementsStream ;
+            tm:creator demo_ab:thresholdMonitorAgent
+        ]
+    ] ;
+    tcs:readsFrom demo_ab:sdsMeasurements .
+
+
+demo_ab:SkolemizeViolations a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:SkolemizationProcessor ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:isPrecededBy demo_ab:ThresholdMonitor ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            rdfc:mime "text/turtle"
+        ]
+    ] .
+
+
+demo_ab:SdsifyViolations a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:Sdsify ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:isPrecededBy demo_ab:SkolemizeViolations ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            rdfc:output demo_ab:sdsViolations ;
+            rdfc:metadataOutput demo_ab:sdsViolationsMeta ;
+            rdfc:metadataConfig [
+                rdfc:streamId demo_ab:violationsStream ;
+                rdfc:description "SDS stream of threshold-violation alerts for source-a"
+            ] ;
+            rdfc:typeFilter <http://open-services.net/ns/core#Error>
+        ]
+    ] ;
+    tcs:writesTo demo_ab:sdsViolations , demo_ab:sdsViolationsMeta .
+
+
+# Sink steps — drain the unused metadata streams.
+demo_ab:LogMeasurementsMeta a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:LogProcessorJs ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            rdfc:level "debug" ;
+            rdfc:label "sds-measurements-metadata"
+        ]
+    ] ;
+    tcs:readsFrom demo_ab:sdsMeasurementsMeta .
+
+
+demo_ab:LogViolationsMeta a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:LogProcessorJs ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            rdfc:level "debug" ;
+            rdfc:label "sds-violations-metadata"
+        ]
+    ] ;
+    tcs:readsFrom demo_ab:sdsViolationsMeta .
+
+
+#################################################################
+# 3. semantic.works segment — receive, react, compose + deliver
+#################################################################
+
+# The reader that replaces demo:SparqlIngest.
+#
+# Declaring that the store reads the violations stream is the whole
+# change: the channel now has its writer on the RDF-Connect container and
+# its reader on a semantic.works one, with no boundary component named on
+# either side, which is exactly the condition BridgeTransportCompiler
+# auto-bridges. It inserts rdfc:HttpOut upstream and
+# sw:rdf-ingest-service downstream, and the two agree the endpoint
+# through this channel.
+#
+# Nothing else about the sw segment changes: once the alerts are in the
+# store, mu-delta-notifier drives the rest through webhooks rather than
+# named channels, the same as in demo:DishacledPipeline.
+demo_ab:StoreViolations a tcs:InstancePipelineComponent ;
+    prov:specializationOf sw:triple-store ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    tcs:readsFrom demo_ab:sdsViolations .
+
+
+demo_ab:TriggerAlert a tcs:InstancePipelineComponent ;
+    prov:specializationOf sw:loket-error-alert-service ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
+    p-plan:hasInputVar [
+        a tcs:Config ;
+        tcs:embedded [
+            :EMAIL_FROM "mail@threshold-monitoring.com" ;
+            :EMAIL_TO "firefighters@antwerpen.be" ;
+            :ERROR_TEMPLATE "/mnt/templates/error.hbs"
+        ]
+    ] .
+
+
+demo_ab:DeliverEmail a tcs:InstancePipelineComponent ;
+    prov:specializationOf sw:deliver-email-service ;
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline .
