@@ -36,6 +36,7 @@ from .core.pipeline_assembler import PipelineAssembler
 from .core.pipeline_enricher import PipelineEnricher
 from .core.pipeline_seeder import PipelineSeeder
 from .core.segment_tagger import SegmentTagger
+from .core.semantic_model_mapper import SemanticModelMapper
 from .core.validation_report_compiler import ValidationReportCompiler
 from .ldio.config_compiler import LdioConfigCompiler
 from .ldio.http_in_config_compiler import LdioHttpInConfigCompiler
@@ -107,6 +108,7 @@ PipelineGeneratorConfig = CompilationConfig(
     inference_files=[_DATA_ROOT / f for f in DEFAULT_INFERENCE_FILES],
     compilers=[
         PipelineSeeder,
+        SemanticModelMapper,
         PipelineAssembler,
         PipelineEnricher,
         BridgeTransportCompiler,

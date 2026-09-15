@@ -45,10 +45,39 @@ class GraphReducer(Compiler):
         """Fires once ``PipelineAssembler`` has recorded provenance on
         the build. See the class docstring for the temporary-trigger
         note.
+
+        Belt-and-braces guard against ``SemanticModelMapper`` (which
+        must consume every ``tcs:Connection`` it maps before narrowing
+        runs — a standalone Connection node is unreachable from the
+        build's forward traversal below, so narrowing would silently
+        drop it): this can only matter if the two compilers' list order
+        is ever reshuffled, since ``SemanticModelMapper`` always runs
+        before ``PipelineAssembler`` in both presets today.
+
+        Scoped to *this* pipeline's own steps, not "any ``tcs:Connection``
+        anywhere" — ``DEFAULT_PIPELINE_FILES`` loads every shipped
+        pipeline definition into one graph, and a Connection belonging
+        to another plan is left untouched by design
+        (``SemanticModelMapper`` never consumes it). An unscoped guard
+        would block this compiler forever once any other plan sharing
+        the graph carried a stray Connection.
         """
-        return not graph_reader.filter(
-            pred="dct:creator", obj="tcs:PipelineAssembler"
-        ).df.empty
+        if not graph_reader.ask("?s dct:creator tcs:PipelineAssembler ."):
+            return False
+        build_and_pipeline = graph_reader.select(
+            "?pipeline",
+            """
+            ?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .
+            ?request a tcs:CompilationRequest ; tcs:targetPipeline ?pipeline .
+            """,
+        )
+        pipeline_id = receive_first(build_and_pipeline["pipeline"])
+        return not graph_reader.ask(
+            f"""
+            ?c a tcs:Connection ; (tcs:from|tcs:to) ?step .
+            ?step p-plan:isStepOfPlan {pipeline_id} .
+            """
+        )
 
     def compile(self) -> Graph:
         self.reduce_to_pipeline()

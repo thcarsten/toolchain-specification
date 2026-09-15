@@ -51,6 +51,30 @@ Each entry names which pillar covers it: **shape** (SHACL), **guard**
 - [x] Two components require conflicting versions of the same npm/pip package — **guard** (`RdfcDockerFileCompiler`)
 - [x] Pipeline name is a prefix of another IRI in the same segment (e.g. `demo:Test` / `demo:TestArchive`) — **guard** (word-boundary regex in `RdfcConfigCompiler`)
 
+## tcs:Connection mapping (SemanticModelMapper)
+
+Tests live in `test_connection_mapping.py`, not `test_edge_cases.py` — same
+two-pillar convention, checked here for discoverability alongside the rest.
+
+- [x] Named `tcs:Connection`, neither side wired — mints one channel, wires both ends — **compiles**
+- [x] Blank-node `tcs:Connection` — same result (covers `PipelineSeeder.name_blind_nodes`) — **compiles**
+- [x] Minted channel is typed `a tcs:Channel` — **compiles** (regression for the untyped-minted-channel bug, §1.6 of the design)
+- [x] Producer already has a single `tcs:writesTo` — reused instead of minting — **compiles**
+- [x] Consumer already has a single `tcs:readsFrom` — reused instead of minting — **compiles**
+- [x] Both sides already wired to the same channel — no-op — **compiles**
+- [x] Conflicting existing wiring (`from`/`to` already point at two different channels) — **guard**
+- [x] Two outgoing Connections from one step (fan-out) — **guard**
+- [x] Two incoming Connections into one step (fan-in) — **guard**
+- [x] `tcs:to` points at a channel instead of a step — **guard**, message names the mistake explicitly
+- [x] Two `tcs:from` on one Connection — **guard**
+- [x] Connection between steps of another plan (multiple pipeline definitions share one graph) — silently ignored, not an error — **compiles**
+- [x] `tcs:Connection` and `p-plan:isPrecededBy` on the same step pair — idempotent, exactly one channel — **compiles**
+- [x] Cross-container Connection (LDIO → RDF-Connect) gets bridged and the shared channel carries `tcs:endpoint`/`tcs:port` — **compiles**
+- [x] No `tcs:Connection`/`tcs:from`/`tcs:to` triple survives into the build graph — **compiles**
+- [x] Connection-free pipeline — `SemanticModelMapper` never runs, no `dct:creator` entry — **compiles**
+- [x] A branching source graph — **shape** (`tcs:ConnectionCardinalityShape`, marked `TEMPORARY`, removed once fan-out/fan-in are designed)
+- [ ] Fan-out / fan-in over `tcs:Connection` itself — deferred to its own design pass (needs a channel-identity term); until then `tcs:readsFrom`/`tcs:writesTo` remain the supported escape hatch.
+
 ## Graph-level robustness
 - [x] Typo'd / nonexistent `pipeline_id` — fails loudly via `traverse()`'s `NameError`
 - [x] Pipeline definition with zero steps — compiles to an empty build, no crash

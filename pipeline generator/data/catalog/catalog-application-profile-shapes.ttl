@@ -225,6 +225,35 @@ tcs:InstancePipelineComponentShape a sh:NodeShape ;
     ] .
 
 
+# TEMPORARY: tcs:Connection is a strictly 1:1 authoring edge for now —
+# fan-out/fan-in need a channel-identity term of their own, deferred to
+# its own design pass. Remove this shape once branching lands.
+# Complements (rather than replaces) SemanticModelMapper's own
+# ValueError guard: the guard fires immediately at compile time and in
+# both PipelineGenerator/PipelineValidator presets, while this shape
+# surfaces the same constraint declaratively in the validation report —
+# but only for a caller who validates the *source* graph directly
+# (ValidationReportCompiler's pySHACL run happens in the finalize
+# phase, after SemanticModelMapper has already consumed every
+# tcs:Connection it mapped, so this shape passes vacuously there).
+tcs:ConnectionCardinalityShape a sh:NodeShape ;
+    rdfs:label "Connection cardinality shape (TEMPORARY — no branching yet)" ;
+    sh:targetClass tcs:InstancePipelineComponent ;
+    sh:message "TEMPORARY: a step may participate in at most one incoming and one outgoing tcs:Connection. Branching is not yet supported — use tcs:readsFrom / tcs:writesTo directly. Remove this shape when branching lands." ;
+
+    sh:property [
+        sh:path [ sh:inversePath tcs:from ] ;
+        sh:maxCount 1 ;
+        sh:name "outgoing tcs:Connection"
+    ] ;
+
+    sh:property [
+        sh:path [ sh:inversePath tcs:to ] ;
+        sh:maxCount 1 ;
+        sh:name "incoming tcs:Connection"
+    ] .
+
+
 # Acyclic channel graph: no step may (transitively) read from a channel
 # it feeds — including the trivial self-loop of reading and writing the
 # very same channel. Framework-agnostic: tcs:readsFrom/tcs:writesTo are

@@ -144,7 +144,7 @@ from compilers import (
     Compiler, CompilationConfig, CompilationRunner,
     PipelineGenerator, PipelineValidator, FileMaterializer,
     PipelineGeneratorConfig, PipelineValidatorConfig,
-    PipelineSeeder, PipelineAssembler, PipelineEnricher,
+    PipelineSeeder, SemanticModelMapper, PipelineAssembler, PipelineEnricher,
     BridgeTransportCompiler, SegmentTagger, GraphReducer,
     ValidationReportCompiler, DockerComposeCompiler,
     LdioConfigCompiler, LdioHttpInConfigCompiler, LdioHttpOutConfigCompiler,
@@ -317,11 +317,12 @@ A useful side effect: because provenance is attached *while the loop is running*
 | Compiler | Trigger (`applies_to`) | Reads from the build | Writes to the build |
 | --- | --- | --- | --- |
 | `PipelineSeeder` | a `tcs:CompilationRequest` node is present in the graph (the runner posts one up front) | the catalog + the request's `tcs:targetPipeline` | `<pipeline>_build a tcs:PipelineBuild ; prov:hadPlan <pipeline>`; blank-node subjects renamed to stable IRIs |
+| `SemanticModelMapper` | a `tcs:PipelineBuild` node exists and at least one `tcs:Connection` is present in the graph | this pipeline's plan-scoped `tcs:Connection` nodes | `tcs:readsFrom`/`tcs:writesTo`/`tcs:Channel` wiring for each mapped Connection; consumes (removes) the `tcs:Connection`/`tcs:from`/`tcs:to` triples it maps. See [§4.7.1](#471-tcsconnection-the-authoring-layer). |
 | `PipelineAssembler` | the seeded plan (`<build> prov:hadPlan ?pipeline`), cross-checked against the original request's `tcs:targetPipeline`, has at least one step (`p-plan:isStepOfPlan`) | the seeded pipeline + catalog | `tcs:DockerContainer`, `dct:hasPart`, `tcs:instantiates`, `tcs:runs` |
-| `PipelineEnricher` | `<build> dct:creator tcs:PipelineAssembler` present | steps and channels | synthesized `tcs:Channel`s from `p-plan:isPrecededBy`, and a `tcs:PipelineConfig` slot on every step that lacks one |
+| `PipelineEnricher` | a `tcs:PipelineBuild` node is present (fires right after the seeder's bootstrap, regardless of whether any steps exist yet) | steps and channels | synthesized, typed `tcs:Channel`s from `p-plan:isPrecededBy`, and a `tcs:PipelineConfig` slot on every step that lacks one |
 | `BridgeTransportCompiler` | `<build> dct:creator tcs:PipelineEnricher` present, and some `tcs:Channel` crosses container boundaries | cross-container channels + the catalog of boundary components | inserted Entry/Exit boundary steps (where neither side is already a boundary). See [§4.8](#48-boundary-components-and-cross-container-bridges). |
 | `SegmentTagger` | `<build> dct:creator tcs:BridgeTransportCompiler` present | the final step → channel graph | `tcs:segment` on every `tcs:InstancePipelineComponent` |
-| `GraphReducer` | `<build> dct:creator tcs:SegmentTagger` present | the full build graph | narrows the build down to just triples reachable from `<build>` and its shape subgraph |
+| `GraphReducer` | `<build> dct:creator tcs:PipelineAssembler` present, and no `tcs:Connection` remains unconsumed (belt-and-braces guard — `SemanticModelMapper` must finish before narrowing runs, since a standalone Connection node is unreachable from the build's forward traversal) | the full build graph | narrows the build down to just triples reachable from `<build>` and its shape subgraph |
 | `RdfcHttpServerConfigCompiler` | any `rdfc:HttpServer` step present | the step and its channel | `tcs:endpoint`/`tcs:port` on the channel; `rdfc:port`/`rdfc:options` on the step |
 | `RdfcHttpOutConfigCompiler` | any `rdfc:HttpOut` step present with an outgoing channel carrying `tcs:endpoint` | the step and its channel | `rdfc:endpoint` on the step |
 | `LdioHttpInConfigCompiler` | any `ldio:HttpIn` step present and `<build> dct:creator tcs:SegmentTagger` (so the step's `tcs:segment` is available for path derivation — LDIO serves each pipeline at `/{segment_name}`) | the step and its channel | `tcs:endpoint`/`tcs:port`/`tcs:contentType` on the channel |
@@ -343,6 +344,36 @@ A useful side effect: because provenance is attached *while the loop is running*
 | `NifiRemoteCompiler` | `nifi:deploymentMode "remote"` and `nifi/flow.json` is present | the persisted flow, deployment config, secret references and NiFi compose config | upload-format `nifi/flow_definition.json`, stdlib-only `nifi/deploy_flow.py`, and a one-shot deployer using native Compose secret mounts |
 | `ValidationReportCompiler` | *(finalize phase)* `<?> tcs:runPhase tcs:FinalizePhase` present. Listed in both the generation and the validation preset. | the fully shaped build + shapes graph | `spdx:File` named `validation/validation-report.ttl` |
 | `DockerComposeCompiler` | *(finalize phase)* `<?> tcs:runPhase tcs:FinalizePhase` present, and any `tcs:DockerComposeConfig` reachable from the build. Listed in the generation preset only. | every `tcs:DockerComposeConfig` reachable from the build | `spdx:File` named `./docker-compose.yml` |
+
+#### 4.7.1. `tcs:Connection`: the authoring layer
+
+A pipeline author has two ways to state a dataflow edge between two `tcs:InstancePipelineComponent`s. The terse, original form names both channel-typed predicates directly:
+
+```turtle
+demo:SdsifyMeasurements a tcs:InstancePipelineComponent ;
+    tcs:writesTo demo:sdsMeasurements .
+demo:ThresholdMonitor a tcs:InstancePipelineComponent ;
+    tcs:readsFrom demo:sdsMeasurements .
+```
+
+`tcs:Connection` reifies the same edge into a standalone node instead, as terse as `p-plan:isPrecededBy` but extensible with metadata, and without forcing the author to hand-name a channel IRI:
+
+```turtle
+[ a tcs:Connection ; tcs:from demo:SdsifyMeasurements ; tcs:to demo:ThresholdMonitor ] .
+```
+
+`tcs:Connection` is strictly a **1:1 edge** for now — a step may be the `tcs:from`/`tcs:to` of at most one Connection, and `tcs:ConnectionCardinalityShape` (in [`catalog-application-profile-shapes.ttl`](data/catalog/catalog-application-profile-shapes.ttl), marked `TEMPORARY`) makes that explicit. Fan-out/fan-in need a channel-identity term of their own and are deferred to their own design pass; an author who needs branching keeps using `tcs:readsFrom`/`tcs:writesTo` directly, which stays fully supported and is the escape hatch.
+
+`SemanticModelMapper` is the **only** compiler that understands this authoring vocabulary. Two layers exist, and the rule is: **never query the left column outside `SemanticModelMapper` or the inference rules.**
+
+| Layer | Vocabulary |
+| --- | --- |
+| Authoring (terse, user-facing) | `tcs:Connection`, `tcs:from`, `tcs:to`, `p-plan:isPrecededBy` |
+| Internal (everything downstream reasons over) | `tcs:readsFrom`, `tcs:writesTo`, `tcs:Channel` |
+
+`SemanticModelMapper` runs between `PipelineSeeder` and `PipelineAssembler`, translating every `tcs:Connection` scoped to the pipeline being compiled into internal wiring and removing the Connection triples it consumed — so every SHACL shape, inference rule, and the other ~14 compilers that read `tcs:readsFrom`/`tcs:writesTo` never need to know the authoring layer exists. `p-plan:isPrecededBy` is handled the same way, one layer later, by `PipelineEnricher` (§4.7's table). Both forms may be freely mixed across one pipeline definition; no shipped pipeline in `data/pipelines/` uses `tcs:Connection` today.
+
+`PipelineValidator` is the supported pre-generation validation entry point for a `tcs:Connection`-authored pipeline — it runs `SemanticModelMapper` before `ValidationReportCompiler`. Calling `GraphReader.infer().validate()` directly on a source graph skips the mapper, so channel-coupled shapes see an unmapped Connection and pass vacuously; that path only ever saw the authoring layer.
 
 ### 4.8. Boundary components and cross-container bridges
 

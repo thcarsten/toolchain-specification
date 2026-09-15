@@ -42,9 +42,13 @@ class PipelineEnricher(Compiler):
     producer's outputs a given consumer reads, so this compiler never
     guesses and the edge must stay fully explicit.
 
-    ``tcs:Channel`` typing on a minted channel comes for free from the
-    existing ``inference_rules.yaml`` rule keyed on ``tcs:readsFrom`` /
-    ``tcs:writesTo`` — this compiler does not need to add it itself.
+    A minted channel is typed ``a tcs:Channel`` explicitly by this
+    compiler (:meth:`synthesize_channels`) — inference runs once at
+    graph load, before any compiler, so a channel minted at compile
+    time never picks up the type from ``inference_rules.yaml`` the way
+    an author-declared channel does. Code that anchors on
+    ``tcs:Channel`` (``BridgeTransportCompiler``, every boundary
+    compiler's ``_annotate_channel``) would otherwise never see it.
     """
 
     def __init__(self, graph: Graph) -> None:
@@ -102,6 +106,7 @@ class PipelineEnricher(Compiler):
                 channel_id = self._mint_channel_id()
                 self._add(f"{successor} tcs:readsFrom {channel_id} .")
                 self._add(f"{predecessor} tcs:writesTo {channel_id} .")
+                self._add(f"{channel_id} a tcs:Channel .")
             elif len(reads) == 0 and len(writes) == 1:
                 # Predecessor already unambiguously wired — reuse it.
                 self._add(f"{successor} tcs:readsFrom {writes[0]} .")
