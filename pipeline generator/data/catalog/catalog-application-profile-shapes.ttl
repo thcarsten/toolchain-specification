@@ -244,13 +244,15 @@ tcs:ConnectionCardinalityShape a sh:NodeShape ;
     sh:property [
         sh:path [ sh:inversePath tcs:from ] ;
         sh:maxCount 1 ;
-        sh:name "outgoing tcs:Connection"
+        sh:name "outgoing tcs:Connection" ;
+        sh:message "TEMPORARY: {?this} is the tcs:from of more than one tcs:Connection. Branching is not yet supported — use tcs:writesTo directly. Remove this shape when branching lands."
     ] ;
 
     sh:property [
         sh:path [ sh:inversePath tcs:to ] ;
         sh:maxCount 1 ;
-        sh:name "incoming tcs:Connection"
+        sh:name "incoming tcs:Connection" ;
+        sh:message "TEMPORARY: {?this} is the tcs:to of more than one tcs:Connection. Branching is not yet supported — use tcs:readsFrom directly. Remove this shape when branching lands."
     ] .
 
 

@@ -81,7 +81,7 @@ rdfc:HttpOut
         spdx:downloadLocation "file:///workspace/pipeline/local_processors/rdfc_http_out" ;
         spdx:suppliedBy :pip
     ] ;
-    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl> ;
+    owl:imports <../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:configShape ;
@@ -150,7 +150,7 @@ rdfc:LogProcessorPy
         spdx:versionInfo ">=1.0.0" ;
         spdx:suppliedBy :pip
     ] ;
-    owl:imports <../../../usr/local/lib/python3.13/site-packages/rdfc_log_processor/processor.ttl> ;
+    owl:imports <../../usr/local/lib/python3.13/site-packages/rdfc_log_processor/processor.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:configShape ;

@@ -38,9 +38,10 @@ from .turtle import INDENT, banner, inline_bnode, statement, wrap
 PYTHON_VERSION = "3.13"
 
 # Prefix of the base IRI every relative import resolves against. Must
-# equal GraphReader._basepath and the container WORKDIR; the `../../../`
+# equal GraphReader._basepath and the container WORKDIR; the `../../`
 # in the Python import path is only correct because this path is exactly
-# two segments deep.
+# two segments deep AND ends in a trailing slash, which makes the path
+# itself the base directory the climb starts from.
 CONTAINER_WORKDIR = "/workspace/pipeline/"
 
 _DO_NOT_EDIT = """\
@@ -89,7 +90,7 @@ def owl_imports_path(record: HarvestRecord, request: CatalogRequest) -> str:
     """
     if record.language == "python":
         depth = len([p for p in CONTAINER_WORKDIR.strip("/").split("/") if p])
-        climb = "../" * (depth + 1)
+        climb = "../" * depth
         return (
             f"{climb}usr/local/lib/python{PYTHON_VERSION}"
             f"/site-packages/{record.source_file}"

@@ -67,14 +67,14 @@ def test_npm_import_path_is_node_modules_relative():
 def test_python_import_path_climbs_out_of_the_workdir():
     """The ``../`` count is derived from CONTAINER_WORKDIR, not hardcoded.
 
-    ``/workspace/pipeline/`` is two segments deep, so reaching ``/usr``
-    takes three ``../`` — the same shape the hand-written catalog used.
+    ``/workspace/pipeline/`` is two segments deep *and ends in a slash*, so
+    reaching ``/usr`` takes two ``../``.
     """
     record = _record(language="python", source_file="rdfc_http_out/processor.ttl")
     request = CatalogRequest(component="rdfc:HttpOut", package="rdfc_http_out")
     path = emitter.owl_imports_path(record, request)
     assert path == (
-        "../../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl"
+        "../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl"
     )
     # Resolving against the container workdir must land at an absolute path.
     from urllib.parse import urljoin
