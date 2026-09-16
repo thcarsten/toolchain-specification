@@ -62,7 +62,7 @@ rdfc:HttpFetch
     owl:imports <./node_modules/@rdfc/http-utils-processor-ts/processors.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation :HttpFetchShape
     ] .
 
@@ -84,7 +84,7 @@ rdfc:HttpOut
     owl:imports <../../usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation :HttpOutShape
     ] .
 
@@ -107,7 +107,7 @@ rdfc:HttpServer
     owl:imports <./node_modules/@rdfc/http-utils-processor-ts/server.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation :HttpServerShape
     ] .
 
@@ -130,7 +130,7 @@ rdfc:LogProcessorJs
     owl:imports <./node_modules/@rdfc/log-processor-ts/processor.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation :LogProcessorJsShape
     ] .
 
@@ -153,7 +153,7 @@ rdfc:LogProcessorPy
     owl:imports <../../usr/local/lib/python3.13/site-packages/rdfc_log_processor/processor.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation :LogProcessorPyShape
     ] .
 
@@ -176,7 +176,7 @@ rdfc:SPARQLIngest
     owl:imports <./node_modules/@rdfc/sparql-ingest-processor-ts/processors.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation :SPARQLIngestShape
     ] .
 
@@ -199,7 +199,7 @@ rdfc:Sdsify
     owl:imports <./node_modules/@rdfc/sds-processors-ts/configs/sdsify.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation :SdsifyShape
     ] .
 
@@ -222,7 +222,7 @@ rdfc:SkolemizationProcessor
     owl:imports <./node_modules/@rdfc/skolemization-processor-ts/processor.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation :SkolemizationProcessorShape
     ] .
 
@@ -245,7 +245,7 @@ tm:ThresholdMonitorJs
     owl:imports <./node_modules/@rdfc/threshold-monitor-processor-ts/processor.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation :ThresholdMonitorJsShape
     ] .
 
@@ -281,9 +281,10 @@ tm:ThresholdMonitorJs
 
 # Config shape for rdfc:HttpFetch, generated from its upstream
 # SHACL shape. Referenced from the component via
-# dcat:qualifiedRelation with role tcs:configShape, and
-# additionally carries a SPARQL target so pySHACL validates the
-# embedded step config directly.
+# dcat:qualifiedRelation with role
+# tcs:compilerFacingConfigShape, and additionally carries a
+# SPARQL target so pySHACL validates the embedded step config
+# directly.
 :HttpFetchShape
     a sh:NodeShape ;
     sh:target [
@@ -407,9 +408,10 @@ tm:ThresholdMonitorJs
 
 # Config shape for rdfc:HttpOut, generated from its upstream
 # SHACL shape. Referenced from the component via
-# dcat:qualifiedRelation with role tcs:configShape, and
-# additionally carries a SPARQL target so pySHACL validates the
-# embedded step config directly.
+# dcat:qualifiedRelation with role
+# tcs:compilerFacingConfigShape, and additionally carries a
+# SPARQL target so pySHACL validates the embedded step config
+# directly.
 :HttpOutShape
     a sh:NodeShape ;
     sh:target [
@@ -455,9 +457,10 @@ tm:ThresholdMonitorJs
 
 # Config shape for rdfc:HttpServer, generated from its upstream
 # SHACL shape. Referenced from the component via
-# dcat:qualifiedRelation with role tcs:configShape, and
-# additionally carries a SPARQL target so pySHACL validates the
-# embedded step config directly.
+# dcat:qualifiedRelation with role
+# tcs:compilerFacingConfigShape, and additionally carries a
+# SPARQL target so pySHACL validates the embedded step config
+# directly.
 :HttpServerShape
     a sh:NodeShape ;
     sh:target [
@@ -531,9 +534,10 @@ tm:ThresholdMonitorJs
 
 # Config shape for rdfc:LogProcessorJs, generated from its
 # upstream SHACL shape. Referenced from the component via
-# dcat:qualifiedRelation with role tcs:configShape, and
-# additionally carries a SPARQL target so pySHACL validates the
-# embedded step config directly.
+# dcat:qualifiedRelation with role
+# tcs:compilerFacingConfigShape, and additionally carries a
+# SPARQL target so pySHACL validates the embedded step config
+# directly.
 :LogProcessorJsShape
     a sh:NodeShape ;
     sh:target [
@@ -593,9 +597,10 @@ tm:ThresholdMonitorJs
 
 # Config shape for rdfc:LogProcessorPy, generated from its
 # upstream SHACL shape. Referenced from the component via
-# dcat:qualifiedRelation with role tcs:configShape, and
-# additionally carries a SPARQL target so pySHACL validates the
-# embedded step config directly.
+# dcat:qualifiedRelation with role
+# tcs:compilerFacingConfigShape, and additionally carries a
+# SPARQL target so pySHACL validates the embedded step config
+# directly.
 :LogProcessorPyShape
     a sh:NodeShape ;
     sh:target [
@@ -648,9 +653,10 @@ tm:ThresholdMonitorJs
 
 # Config shape for rdfc:SPARQLIngest, generated from its
 # upstream SHACL shape. Referenced from the component via
-# dcat:qualifiedRelation with role tcs:configShape, and
-# additionally carries a SPARQL target so pySHACL validates the
-# embedded step config directly.
+# dcat:qualifiedRelation with role
+# tcs:compilerFacingConfigShape, and additionally carries a
+# SPARQL target so pySHACL validates the embedded step config
+# directly.
 :SPARQLIngestShape
     a sh:NodeShape ;
     sh:target [
@@ -856,9 +862,10 @@ tm:ThresholdMonitorJs
 
 # Config shape for rdfc:Sdsify, generated from its upstream
 # SHACL shape. Referenced from the component via
-# dcat:qualifiedRelation with role tcs:configShape, and
-# additionally carries a SPARQL target so pySHACL validates the
-# embedded step config directly.
+# dcat:qualifiedRelation with role
+# tcs:compilerFacingConfigShape, and additionally carries a
+# SPARQL target so pySHACL validates the embedded step config
+# directly.
 :SdsifyShape
     a sh:NodeShape ;
     sh:target [
@@ -975,9 +982,10 @@ tm:ThresholdMonitorJs
 
 # Config shape for rdfc:SkolemizationProcessor, generated from
 # its upstream SHACL shape. Referenced from the component via
-# dcat:qualifiedRelation with role tcs:configShape, and
-# additionally carries a SPARQL target so pySHACL validates the
-# embedded step config directly.
+# dcat:qualifiedRelation with role
+# tcs:compilerFacingConfigShape, and additionally carries a
+# SPARQL target so pySHACL validates the embedded step config
+# directly.
 :SkolemizationProcessorShape
     a sh:NodeShape ;
     sh:target [
@@ -1015,9 +1023,10 @@ tm:ThresholdMonitorJs
 
 # Config shape for tm:ThresholdMonitorJs, generated from its
 # upstream SHACL shape. Referenced from the component via
-# dcat:qualifiedRelation with role tcs:configShape, and
-# additionally carries a SPARQL target so pySHACL validates the
-# embedded step config directly.
+# dcat:qualifiedRelation with role
+# tcs:compilerFacingConfigShape, and additionally carries a
+# SPARQL target so pySHACL validates the embedded step config
+# directly.
 :ThresholdMonitorJsShape
     a sh:NodeShape ;
     sh:target [

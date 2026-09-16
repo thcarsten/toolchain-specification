@@ -158,7 +158,7 @@ def test_every_generated_component_has_a_config_shape(new: Graph):
     """The hand-written file had one; all of them now do.
 
     This is the gap generation closes: only rdfc:SPARQLIngest carried a
-    configShape before, so the other components' step configs were
+    compilerFacingConfigShape before, so the other components' step configs were
     unvalidated.
     """
     for iri in GENERATED_COMPONENTS:

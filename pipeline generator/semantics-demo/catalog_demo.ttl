@@ -698,7 +698,7 @@ tcs:RdfcMandatoryReaderWiringShape a sh:NodeShape ;
                 ?this a tcs:InstancePipelineComponent ;\r
                       prov:specializationOf ?component .\r
                 ?component dcat:qualifiedRelation ?rel .\r
-                ?rel dcat:hadRole tcs:configShape ;\r
+                ?rel dcat:hadRole tcs:compilerFacingConfigShape ;\r
                      dct:relation ?shape .\r
                 ?shape sh:property ?prop .\r
                 ?prop sh:class tcs:Channel ;\r
@@ -721,7 +721,7 @@ tcs:RdfcMandatoryWriterWiringShape a sh:NodeShape ;
                 ?this a tcs:InstancePipelineComponent ;\r
                       prov:specializationOf ?component .\r
                 ?component dcat:qualifiedRelation ?rel .\r
-                ?rel dcat:hadRole tcs:configShape ;\r
+                ?rel dcat:hadRole tcs:compilerFacingConfigShape ;\r
                      dct:relation ?shape .\r
                 ?shape sh:property ?prop .\r
                 ?prop sh:class tcs:Channel ;\r
@@ -987,7 +987,7 @@ proc:JsonLdToNQuads a dcat:Resource,
     owl:imports <file:///workspace/pipeline/processors/jsonld-to-nquads/processor.ttl> ;
     dcat:qualifiedRelation [ a dcat:Relationship ;
             dct:relation :JsonLdToNQuadsShape ;
-            dcat:hadRole tcs:configShape ],
+            dcat:hadRole tcs:compilerFacingConfigShape ],
         [ a dcat:Relationship ;
             dct:relation [ a sh:NodeShape ] ;
             dcat:hadRole tcs:passthroughShape ] .
@@ -1672,7 +1672,7 @@ ldio:AmqpIn a dcat:Resource,
                             sh:maxCount 1 ;
                             sh:name "content-type" ;
                             sh:path ldio:content-type ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:AmqpOut a dcat:Resource,
         tcs:PipelineComponent ;
@@ -1712,7 +1712,7 @@ ldio:AmqpOut a dcat:Resource,
                             sh:name "rdf-writer" ;
                             sh:node ldio:RdfWriterShape ;
                             sh:path ldio:rdf-writer ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:ChangeDetectionFilter a dcat:Resource,
         tcs:PipelineComponent ;
@@ -1724,7 +1724,7 @@ ldio:ChangeDetectionFilter a dcat:Resource,
     dcat:qualifiedRelation [ a dcat:Relationship ;
             dct:relation [ a sh:NodeShape ;
                     sh:node ldio:StatePersistenceShape ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:ConsoleOut a dcat:Resource,
         tcs:PipelineComponent ;
@@ -1740,7 +1740,7 @@ ldio:ConsoleOut a dcat:Resource,
                             sh:name "rdf-writer" ;
                             sh:node ldio:RdfWriterShape ;
                             sh:path ldio:rdf-writer ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:GeoJsonToWktTransformer a dcat:Resource,
         tcs:PipelineComponent ;
@@ -1756,7 +1756,7 @@ ldio:GeoJsonToWktTransformer a dcat:Resource,
                             sh:maxCount 1 ;
                             sh:name "transform-to-rdf+wkt-enabled" ;
                             sh:path <http://example.org/example/ldio/transform-to-rdf+wkt-enabled> ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:HttpEnricher a dcat:Resource,
         tcs:PipelineComponent ;
@@ -1800,7 +1800,7 @@ ldio:HttpEnricher a dcat:Resource,
                             sh:maxCount 1 ;
                             sh:name "http-method-property-path" ;
                             sh:path ldio:http-method-property-path ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:HttpIn a dcat:Resource,
         tcs:EntryBoundaryComponent,
@@ -1836,7 +1836,7 @@ ldio:HttpOut a dcat:Resource,
                             sh:name "rdf-writer" ;
                             sh:node ldio:RdfWriterShape ;
                             sh:path ldio:rdf-writer ] ] ;
-            dcat:hadRole tcs:configShape ],
+            dcat:hadRole tcs:compilerFacingConfigShape ],
         [ a dcat:Relationship ;
             dct:relation [ a sh:NodeShape ;
                     sh:message "HttpOut serializes and POSTs the incoming model verbatim — a pure passthrough at the RDF level, no constraint on its shape." ] ;
@@ -1868,7 +1868,7 @@ ldio:JsonToLdAdapter a dcat:Resource,
                             sh:maxCount 1 ;
                             sh:name "max-jsonld-cache-capacity" ;
                             sh:path ldio:max-jsonld-cache-capacity ] ] ;
-            dcat:hadRole tcs:configShape ],
+            dcat:hadRole tcs:compilerFacingConfigShape ],
         [ a dcat:Relationship ;
             dct:relation [ a sh:NodeShape ;
                     sh:message "JsonToLdAdapter's output fully depends on the @context supplied per instance — no generic claim holds across every possible configuration." ] ;
@@ -1922,7 +1922,7 @@ ldio:KafkaIn a dcat:Resource,
                             sh:maxCount 1 ;
                             sh:name "sasl-jaas-password" ;
                             sh:path ldio:sasl-jaas-password ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:KafkaOut a dcat:Resource,
         tcs:PipelineComponent ;
@@ -1976,7 +1976,7 @@ ldio:KafkaOut a dcat:Resource,
                             sh:name "rdf-writer" ;
                             sh:node ldio:RdfWriterShape ;
                             sh:path ldio:rdf-writer ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:LdesClient a dcat:Resource,
         tcs:PipelineComponent ;
@@ -1990,7 +1990,7 @@ ldio:LdesClient a dcat:Resource,
                     sh:node ldio:HttpRequesterShape,
                         ldio:LdesClientShape,
                         ldio:StatePersistenceShape ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:LdesClientConnector a dcat:Resource,
         tcs:PipelineComponent ;
@@ -2020,7 +2020,7 @@ ldio:LdesClientConnector a dcat:Resource,
                             sh:maxCount 1 ;
                             sh:name "proxy-url-replacement" ;
                             sh:path ldio:proxy-url-replacement ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:NgsiV2ToLdAdapter a dcat:Resource,
         tcs:PipelineComponent ;
@@ -2048,7 +2048,7 @@ ldio:NgsiV2ToLdAdapter a dcat:Resource,
                             sh:minCount 1 ;
                             sh:name "data-identifier" ;
                             sh:path ldio:data-identifier ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:RepositoryMaterialiser a dcat:Resource,
         tcs:PipelineComponent ;
@@ -2086,7 +2086,7 @@ ldio:RepositoryMaterialiser a dcat:Resource,
                             sh:maxCount 1 ;
                             sh:name "batch-timeout" ;
                             sh:path ldio:batch-timeout ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:RmlAdapter a dcat:Resource,
         tcs:PipelineComponent ;
@@ -2103,7 +2103,7 @@ ldio:RmlAdapter a dcat:Resource,
                             sh:minCount 1 ;
                             sh:name "mapping" ;
                             sh:path ldio:mapping ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:SparqlConstructTransformer a dcat:Resource,
         tcs:PipelineComponent ;
@@ -2127,7 +2127,7 @@ ldio:SparqlConstructTransformer a dcat:Resource,
                             sh:minCount 0 ;
                             sh:name "infer" ;
                             sh:path ldio:infer ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:VersionMaterialiser a dcat:Resource,
         tcs:PipelineComponent ;
@@ -2149,7 +2149,7 @@ ldio:VersionMaterialiser a dcat:Resource,
                             sh:maxCount 1 ;
                             sh:name "restrict-to-members" ;
                             sh:path ldio:restrict-to-members ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 ldio:VersionObjectCreator a dcat:Resource,
         tcs:PipelineComponent ;
@@ -2185,7 +2185,7 @@ ldio:VersionObjectCreator a dcat:Resource,
                             sh:maxCount 1 ;
                             sh:name "versionOf-property" ;
                             sh:path ldio:versionOf-property ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 demo:Parse a tcs:InstancePipelineComponent ;
     p-plan:isPrecededBy demo:Poll ;
@@ -2217,7 +2217,7 @@ rdfc:HttpFetch a dcat:Resource,
     dcat:landingPage "https://github.com/rdf-connect/http-utils-processor-ts" ;
     dcat:qualifiedRelation [ a dcat:Relationship ;
             dct:relation :HttpFetchShape ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 rdfc:HttpIn a dcat:Resource,
         rdfc:Processor,
@@ -2240,7 +2240,7 @@ rdfc:HttpOut a dcat:Resource,
     owl:imports <file:///usr/local/lib/python3.13/site-packages/rdfc_http_out/processor.ttl> ;
     dcat:qualifiedRelation [ a dcat:Relationship ;
             dct:relation :HttpOutShape ;
-            dcat:hadRole tcs:configShape ] ;
+            dcat:hadRole tcs:compilerFacingConfigShape ] ;
     tcs:channelType tcs:HttpChannel .
 
 rdfc:HttpServer a dcat:Resource,
@@ -2258,7 +2258,7 @@ rdfc:HttpServer a dcat:Resource,
     dcat:landingPage "https://github.com/rdf-connect/http-utils-processor-ts" ;
     dcat:qualifiedRelation [ a dcat:Relationship ;
             dct:relation :HttpServerShape ;
-            dcat:hadRole tcs:configShape ],
+            dcat:hadRole tcs:compilerFacingConfigShape ],
         [ a dcat:Relationship ;
             dct:relation [ a sh:NodeShape ] ;
             dcat:hadRole tcs:passthroughShape ] ;
@@ -2278,7 +2278,7 @@ rdfc:LogProcessorPy a dcat:Resource,
     dcat:landingPage "https://rdf-connect.github.io" ;
     dcat:qualifiedRelation [ a dcat:Relationship ;
             dct:relation :LogProcessorPyShape ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 rdfc:SPARQLIngest a dcat:Resource,
         rdfc:Processor,
@@ -2294,7 +2294,7 @@ rdfc:SPARQLIngest a dcat:Resource,
     dcat:landingPage "https://github.com/rdf-connect/sparql-ingest-processor-ts" ;
     dcat:qualifiedRelation [ a dcat:Relationship ;
             dct:relation :SPARQLIngestShape ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 rdfc:Sdsify a dcat:Resource,
         rdfc:Processor,
@@ -2310,7 +2310,7 @@ rdfc:Sdsify a dcat:Resource,
     dcat:landingPage "https://github.com/rdf-connect/sds-processors-ts" ;
     dcat:qualifiedRelation [ a dcat:Relationship ;
             dct:relation :SdsifyShape ;
-            dcat:hadRole tcs:configShape ],
+            dcat:hadRole tcs:compilerFacingConfigShape ],
         [ a dcat:Relationship ;
             dct:relation [ a sh:NodeShape ] ;
             dcat:hadRole tcs:outputShape ] .
@@ -2329,7 +2329,7 @@ rdfc:SkolemizationProcessor a dcat:Resource,
     dcat:landingPage "https://github.com/rdf-connect/skolemization-processor-ts" ;
     dcat:qualifiedRelation [ a dcat:Relationship ;
             dct:relation :SkolemizationProcessorShape ;
-            dcat:hadRole tcs:configShape ],
+            dcat:hadRole tcs:compilerFacingConfigShape ],
         [ a dcat:Relationship ;
             dct:relation [ a sh:NodeShape ] ;
             dcat:hadRole tcs:passthroughShape ] .
@@ -2354,7 +2354,7 @@ tm:ThresholdMonitorJs a dcat:Resource,
     dcat:landingPage "https://github.com/rdf-connect/threshold-monitor-processor-ts" ;
     dcat:qualifiedRelation [ a dcat:Relationship ;
             dct:relation :ThresholdMonitorJsShape ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 tcs:DefaultConfig rdfs:subClassOf tcs:Config .
 
@@ -2397,7 +2397,7 @@ ldio:HttpInPoller a dcat:Resource,
                             sh:maxCount 1 ;
                             sh:name "continueOnFail" ;
                             sh:path ldio:continueOnFail ] ] ;
-            dcat:hadRole tcs:configShape ],
+            dcat:hadRole tcs:compilerFacingConfigShape ],
         [ a dcat:Relationship ;
             dct:relation [ a sh:NodeShape ;
                     sh:message "HttpInPoller relays the raw HTTP response body verbatim — not yet RDF at this point, so no constraint can be asserted." ] ;
@@ -2460,7 +2460,7 @@ ldio:RdfAdapter a dcat:Resource,
                             sh:maxCount 1 ;
                             sh:name "max-jsonld-cache-capacity" ;
                             sh:path ldio:max-jsonld-cache-capacity ] ] ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 rdfc:LogProcessorJs a dcat:Resource,
         rdfc:Processor,
@@ -2476,7 +2476,7 @@ rdfc:LogProcessorJs a dcat:Resource,
     dcat:landingPage "https://github.com/rdf-connect/log-processor-ts" ;
     dcat:qualifiedRelation [ a dcat:Relationship ;
             dct:relation :LogProcessorJsShape ;
-            dcat:hadRole tcs:configShape ] .
+            dcat:hadRole tcs:compilerFacingConfigShape ] .
 
 tcs:Catalog rdfs:subClassOf dcat:Catalog .
 

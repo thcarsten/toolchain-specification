@@ -4,7 +4,7 @@
 # Every `rdfc:*` / `tm:*` / `proc:*` `tcs:PipelineComponent`
 # definition (types, labels, `owl:imports`, `dct:requires` including
 # `spdx:Package` dependencies), their `dcat:qualifiedRelation`
-# configShapes, and the RDF-Connect `tcs:Config` docker-compose +
+# compiler-facing config shapes, and the RDF-Connect `tcs:Config` docker-compose +
 # Dockerfile bodies (`:RdfcOrchestratorDockerCompose`,
 # `:RdfcOrchestratorDockerImage`).
 #
@@ -55,7 +55,7 @@ rdfc:SPARQLIngest a tcs:PipelineComponent, dcat:Resource;
     ];
     owl:imports <./node_modules/@rdfc/sparql-ingest-processor-ts/processors.ttl> ;
     dcat:qualifiedRelation [
-      dcat:hadRole tcs:configShape ;
+      dcat:hadRole tcs:compilerFacingConfigShape ;
       dct:relation [
         a sh:NodeShape ;
         sh:property [

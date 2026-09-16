@@ -210,7 +210,7 @@ proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     owl:imports <./processors/jsonld-to-nquads/processor.ttl> ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation :JsonLdToNQuadsShape
     ] ;
     dcat:qualifiedRelation [
@@ -291,7 +291,7 @@ rdfc:thresholdMonitoringProcessor a tcs:PipelineComponent, dcat:Resource, rdfc:P
 # `dcat:qualifiedRelation` entries whose `dcat:hadRole` is about the
 # *data* a component moves — `tcs:passthroughShape`, `tcs:outputShape` —
 # rather than its configuration. The emitter only ever writes
-# `tcs:configShape`, because a config shape is derivable from the
+# `tcs:compilerFacingConfigShape`, because a config shape is derivable from the
 # package's own `processors.ttl` and these are not: whether a processor
 # passes its input through unchanged is a fact about what its code does
 # to records, which upstream does not publish anywhere.

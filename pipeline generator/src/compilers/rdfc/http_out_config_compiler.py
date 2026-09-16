@@ -20,7 +20,7 @@ class RdfcHttpOutConfigCompiler(Compiler):
     channel by the paired Entry compiler on the downstream container,
     then attaches ``p-plan:hasInputVar tcs:PipelineConfig`` with an
     ``tcs:embedded`` body carrying ``rdfc:endpoint``. The RDF-Connect
-    ``rdfc:HttpOut`` component has no configShape declared in the
+    ``rdfc:HttpOut`` component has no compiler-facing config shape declared in the
     catalog, so the default field name is a best guess; a pipeline
     that needs different behaviour should hand-author the config.
 

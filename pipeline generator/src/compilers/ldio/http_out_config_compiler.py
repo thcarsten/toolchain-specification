@@ -15,7 +15,7 @@ class LdioHttpOutConfigCompiler(Compiler):
     channel by the paired Entry compiler on the downstream container,
     then attaches ``p-plan:hasInputVar tcs:PipelineConfig`` with an
     ``tcs:embedded`` body carrying ``ldio:endpoint`` (mandatory per
-    the catalog configShape) and an ``ldio:rdf-writer`` block whose
+    the catalog compiler-facing config shape) and an ``ldio:rdf-writer`` block whose
     content-type is the channel's ``tcs:contentType`` when the Entry
     compiler advertised one, else :attr:`default_content_type`.
     Honouring the channel matters when the downstream Entry is picky

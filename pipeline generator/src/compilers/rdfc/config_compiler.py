@@ -208,9 +208,9 @@ class RdfcConfigCompiler(Compiler):
         """Fill in a step's reader/writer config key when it's unambiguous.
 
         For each RDF-Connect step with exactly one ``tcs:readsFrom`` (or
-        ``tcs:writesTo``) channel, looks up its component's configShape
+        ``tcs:writesTo``) channel, looks up its component's compiler-facing config shape
         (the same ``dcat:qualifiedRelation`` / ``dcat:hadRole
-        tcs:configShape`` attachment used by ``rdfc:SPARQLIngest``) for
+        tcs:compilerFacingConfigShape`` attachment used by ``rdfc:SPARQLIngest``) for
         ``sh:property`` entries typed ``sh:class rdfc:Reader`` /
         ``rdfc:Writer``. If exactly one candidate ``sh:path`` exists,
         injects ``<path> <channel>`` into the step's config.
@@ -310,8 +310,8 @@ class RdfcConfigCompiler(Compiler):
     ) -> str | None:
         """Return the component's single reader/writer predicate, or ``None``.
 
-        Looks up ``component_id``'s configShape (the same
-        ``dcat:qualifiedRelation`` / ``dcat:hadRole tcs:configShape``
+        Looks up ``component_id``'s compiler-facing config shape (the same
+        ``dcat:qualifiedRelation`` / ``dcat:hadRole tcs:compilerFacingConfigShape``
         attachment used by ``rdfc:SPARQLIngest``) for ``sh:property``
         entries carrying a channel of the requested direction, and
         returns the single candidate ``sh:path``.
@@ -337,7 +337,7 @@ class RdfcConfigCompiler(Compiler):
             "?path",
             f"""
             {component_id} dcat:qualifiedRelation ?rel .
-            ?rel dcat:hadRole tcs:configShape .
+            ?rel dcat:hadRole tcs:compilerFacingConfigShape .
             ?rel dct:relation ?shape .
             ?shape sh:property ?prop .
             ?prop sh:path ?path ;
@@ -363,7 +363,7 @@ class RdfcConfigCompiler(Compiler):
         Every ``tcs:Channel`` in the build graph is typed as both
         ``rdfc:Reader`` and ``rdfc:Writer`` so downstream SHACL
         shapes checking ``sh:class rdfc:Reader``/``rdfc:Writer`` on
-        catalog configShapes pass on every channel the pipeline
+        catalog compilerFacingConfigShapes pass on every channel the pipeline
         touches. In the emitted ``pipeline.ttl`` (``rdfc_reader``)
         only channels the RDFC step wiring actually references pick
         up the typing — this keeps ``pipeline.ttl`` free of dead

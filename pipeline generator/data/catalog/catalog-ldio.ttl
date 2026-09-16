@@ -3,7 +3,7 @@
 #
 # Every `ldio:*` `tcs:PipelineComponent` definition: types, labels,
 # `ldio:type`, `dcat:landingPage`, `dct:requires`, and their
-# `dcat:qualifiedRelation` configShapes. Also hosts the SHACL shapes
+# `dcat:qualifiedRelation` compiler-facing config shapes. Also hosts the SHACL shapes
 # shared across multiple LDIO components (`ldio:HttpRequesterShape`,
 # `ldio:RdfWriterShape`, `ldio:StatePersistenceShape`,
 # `ldio:LdesClientShape`) and the LDIO `tcs:Config` docker-compose
@@ -45,7 +45,7 @@ ldio:HttpInPoller a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:message "Checks that ldio:HttpInPoller's wiring (url/cron/interval/continueOnFail plus shared HTTP-requester options) is well-typed.";
@@ -108,7 +108,7 @@ ldio:AmqpIn a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [
@@ -158,7 +158,7 @@ ldio:KafkaIn a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [
@@ -220,7 +220,7 @@ ldio:LdesClient a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:node ldio:HttpRequesterShape, ldio:StatePersistenceShape, ldio:LdesClientShape;
@@ -236,7 +236,7 @@ ldio:LdesClientConnector a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:node ldio:HttpRequesterShape, ldio:StatePersistenceShape, ldio:LdesClientShape;
@@ -277,7 +277,7 @@ ldio:JsonToLdAdapter a tcs:PipelineComponent, dcat:Resource ;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:message "Checks that ldio:JsonToLdAdapter's wiring (context/force-content-type/max-jsonld-cache-capacity) is well-typed.";
@@ -324,7 +324,7 @@ ldio:RdfAdapter a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [
@@ -346,7 +346,7 @@ ldio:RmlAdapter a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [
@@ -369,7 +369,7 @@ ldio:NgsiV2ToLdAdapter a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [
@@ -406,7 +406,7 @@ ldio:SparqlConstructTransformer
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:message "Checks that ldio:SparqlConstructTransformer's wiring (query/infer) is well-typed.";
@@ -437,7 +437,7 @@ ldio:ChangeDetectionFilter a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:node ldio:StatePersistenceShape;
@@ -453,7 +453,7 @@ ldio:GeoJsonToWktTransformer a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [
@@ -475,7 +475,7 @@ ldio:HttpEnricher a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:node ldio:HttpRequesterShape;
@@ -534,7 +534,7 @@ ldio:VersionMaterialiser a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [
@@ -563,7 +563,7 @@ ldio:VersionObjectCreator a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [
@@ -610,7 +610,7 @@ ldio:HttpOut a tcs:PipelineComponent, dcat:Resource, tcs:ExitBoundaryComponent;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:message "Checks that ldio:HttpOut's wiring (endpoint/rdf-writer plus shared HTTP-requester options) is well-typed.";
@@ -672,7 +672,7 @@ ldio:ConsoleOut a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [
@@ -691,7 +691,7 @@ ldio:ConsoleOut a tcs:PipelineComponent, dcat:Resource;
 # client library — their landing pages document byte-identical
 # `auth.*` / `retries.*` / `rate-limit.*` / `http.headers` config
 # sections. Modeled once here and pulled into both components' root
-# configShape via `sh:node`.
+# compiler-facing config shape via `sh:node`.
 ldio:HttpRequesterShape a sh:NodeShape ;
     rdfs:comment "Shared config properties of the LDIO Http Requester client, used by both Ldio:HttpInPoller and Ldio:HttpOut." ;
     sh:property [
@@ -964,7 +964,7 @@ ldio:AmqpOut a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [
@@ -1014,7 +1014,7 @@ ldio:KafkaOut a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [
@@ -1081,7 +1081,7 @@ ldio:RepositoryMaterialiser a tcs:PipelineComponent, dcat:Resource;
     dct:requires ldio:LinkedDataInteractionsOrchestrator ;
     dcat:qualifiedRelation [
         a dcat:Relationship;
-        dcat:hadRole tcs:configShape ;
+        dcat:hadRole tcs:compilerFacingConfigShape ;
         dct:relation [
           a sh:NodeShape;
           sh:property [

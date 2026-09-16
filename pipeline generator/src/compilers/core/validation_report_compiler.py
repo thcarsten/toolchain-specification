@@ -2,7 +2,7 @@
 
 Implements pillar 1 of the strategy in ``test suite/README.md`` (plain,
 ``sh:target``-based SHACL validation): ``normalize_config_shapes`` gives
-every configShape a ``sh:target``, ``validate_normal_shapes`` runs
+every compilerFacingConfigShape a ``sh:target``, ``validate_normal_shapes`` runs
 pySHACL over the result.
 
 Pillar 2 (turning passthroughShapes into inputShapes/outputShapes,
@@ -50,7 +50,7 @@ class ValidationReportCompiler(Compiler):
     forward-reachable subgraph of every ``sh:NodeShape`` in the source
     graph and re-adding it after the pipeline traversal, so
     :meth:`validate_normal_shapes` sees both these and
-    component-attached configShapes.
+    component-attached compilerFacingConfigShapes.
     """
 
     #: Override on a subclass to change where the report is attached.
@@ -93,16 +93,16 @@ class ValidationReportCompiler(Compiler):
         return self.output_reader.graph
 
     def normalize_config_shapes(self) -> None:
-        """Give every configShape a ``sh:target`` so a normal SHACL
+        """Give every compilerFacingConfigShape a ``sh:target`` so a normal SHACL
         validator can evaluate it.
 
         For each ``tcs:PipelineComponent`` with a ``dcat:qualifiedRelation``
-        / ``dcat:hadRole tcs:configShape`` / ``dct:relation`` attachment,
+        / ``dcat:hadRole tcs:compilerFacingConfigShape`` / ``dct:relation`` attachment,
         adds a SHACL-AF ``sh:SPARQLTarget`` selecting ``?this`` = the
         ``tcs:embedded`` config body of any step that specializes that
         component - exactly what the shape's own ``sh:property``
         constraints are already written to assume (see the
-        ``configShape`` example in ``test suite/README.md``).
+        ``compilerFacingConfigShape`` example in ``test suite/README.md``).
 
         Shapes that already carry a ``sh:target`` (e.g. a re-run, or an
         author-supplied one) are left untouched.
@@ -111,7 +111,7 @@ class ValidationReportCompiler(Compiler):
             "?component ?shape",
             """
             ?component dcat:qualifiedRelation ?rel .
-            ?rel dcat:hadRole tcs:configShape ;
+            ?rel dcat:hadRole tcs:compilerFacingConfigShape ;
                  dct:relation ?shape .
             """,
         )
@@ -153,7 +153,7 @@ class ValidationReportCompiler(Compiler):
 
     def validate_normal_shapes(self) -> None:
         """Run pySHACL over every shape with a ``sh:target`` (the
-        newly-normalized configShapes, plus whatever else in the
+        newly-normalized compilerFacingConfigShapes, plus whatever else in the
         current build graph already carries one) and stash the
         resulting report for :meth:`generate_validation_report` to
         combine with the throughput-matching results and attach as a

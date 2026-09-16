@@ -11,7 +11,7 @@ Authoring model (Turtle → NiFi)
   on the *writer* step as ``tcs:embedded`` / ``nifi:route`` (not on the
   Channel resource). Readers only declare ``tcs:readsFrom``.
 * **Properties** — predicates in ``tcs:embedded`` are renamed via
-  ``nifi:propertyName`` on the component's ``configShape``. Only authored
+  ``nifi:propertyName`` on the component's ``compilerFacingConfigShape``. Only authored
   keys are emitted; NiFi fills the rest from the NAR at load time.
 * **Controller services** — plan steps like processors/funnels
   (``tcs:InstancePipelineComponent`` + ``tcs:runs``), referenced from
@@ -220,7 +220,7 @@ class NifiConfigCompiler(Compiler):
             {_NIFI_RUNS_STEP}
             ?step p-plan:hasInputVar/tcs:embedded ?properties .
             ?component dcat:qualifiedRelation [
-                    dcat:hadRole "configShape" ;
+                    dcat:hadRole tcs:compilerFacingConfigShape ;
                     dct:relation ?shape
                 ] .
             ?shape sh:property ?property_shape .
@@ -723,7 +723,7 @@ class NifiConfigCompiler(Compiler):
         """Map ``tcs:embedded`` predicates to NiFi property name/value pairs.
 
         Lookup uses ``nifi:propertyName`` (and optional ``nifi:sensitive``) on
-        the component ``configShape``. ``nifi:route`` blocks are skipped.
+        the component ``compilerFacingConfigShape``. ``nifi:route`` blocks are skipped.
         Values that specialize a controller-service component become that
         service's deterministic UUID, with ``identifiesControllerService``.
         """
@@ -739,7 +739,7 @@ class NifiConfigCompiler(Compiler):
 
             OPTIONAL {{
                 {component} dcat:qualifiedRelation ?relationship .
-                ?relationship dcat:hadRole "configShape" ;
+                ?relationship dcat:hadRole tcs:compilerFacingConfigShape ;
                     dct:relation ?shape .
 
                 ?shape sh:property ?property_shape .

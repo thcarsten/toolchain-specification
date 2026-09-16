@@ -384,7 +384,7 @@ def translate(
         _sparql_target(component),
         f"Config shape for {compact(component)}, generated from its upstream "
         "SHACL shape. Referenced from the component via dcat:qualifiedRelation "
-        "with role tcs:configShape, and additionally carries a SPARQL target so "
+        "with role tcs:compilerFacingConfigShape, and additionally carries a SPARQL target so "
         "pySHACL validates the embedded step config directly.",
         set(),
     )

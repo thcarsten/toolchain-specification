@@ -151,7 +151,7 @@ def _component_block(
         relation = inline_bnode(
             [
                 ("a", "dcat:Relationship"),
-                ("dcat:hadRole", "tcs:configShape"),
+                ("dcat:hadRole", "tcs:compilerFacingConfigShape"),
                 ("dct:relation", shape.iri),
             ],
             INDENT,

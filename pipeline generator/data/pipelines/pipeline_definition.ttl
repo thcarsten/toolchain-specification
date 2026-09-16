@@ -273,7 +273,7 @@ demo:LdioForward a tcs:InstancePipelineComponent ;
 
 # rdfc:Reader/rdfc:Writer typing is explicit-author responsibility for
 # now (no inference rule yet) — every channel named here is written by
-# one step's Writer-role configShape path and read by another's
+# one step's Writer-role compilerFacingConfigShape path and read by another's
 # Reader-role path, so both types apply. Compiler-minted channels
 # (the anonymous :channel_N wiring synthesized by PipelineEnricher for
 # isPrecededBy edges, e.g. HttpIngest -> JsonLdToRdf) have no stable

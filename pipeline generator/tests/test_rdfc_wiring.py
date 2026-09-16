@@ -14,7 +14,7 @@ PREFIXES = """
 
 
 def test_reader_injected_when_unambiguous(catalog_graph):
-    # rdfc:LogProcessorJs's generated configShape declares exactly one
+    # rdfc:LogProcessorJs's generated compilerFacingConfigShape declares exactly one
     # reader slot (rdfc:reader, tcs:upstreamClass rdfc:Reader) and no
     # writer slot.
     parse_extra(
@@ -33,7 +33,7 @@ def test_reader_injected_when_unambiguous(catalog_graph):
 
 
 def test_writer_injected_when_unambiguous(catalog_graph):
-    # rdfc:HttpServer's generated configShape declares exactly one
+    # rdfc:HttpServer's generated compilerFacingConfigShape declares exactly one
     # writer slot (rdfc:writer, tcs:upstreamClass rdfc:Writer) and no
     # reader slot.
     parse_extra(
@@ -52,7 +52,7 @@ def test_writer_injected_when_unambiguous(catalog_graph):
 
 
 def test_ambiguous_writer_paths_left_unwired(catalog_graph):
-    # rdfc:Sdsify's generated configShape declares two writer slots
+    # rdfc:Sdsify's generated compilerFacingConfigShape declares two writer slots
     # (rdfc:output / rdfc:metadataOutput) — genuinely
     # ambiguous, so neither gets auto-injected even though there are
     # exactly two tcs:writesTo channels to match them.

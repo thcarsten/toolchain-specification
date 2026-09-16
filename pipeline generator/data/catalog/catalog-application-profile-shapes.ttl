@@ -1397,10 +1397,11 @@ tcs:RdfcProcessorShape a sh:NodeShape ;
 # "is this step wired to anything at all".
 #
 # Discriminator: instance components whose specialized component's
-# configShape (the same dcat:qualifiedRelation / dcat:hadRole
-# tcs:configShape attachment used throughout catalog-rdfc.ttl) has a
-# sh:property carrying a channel — sh:class tcs:Channel with
-# tcs:upstreamClass rdfc:Reader — that upstream made mandatory.
+# compiler-facing config shape (the same dcat:qualifiedRelation /
+# dcat:hadRole tcs:compilerFacingConfigShape attachment used throughout
+# catalog-rdfc.ttl) has a sh:property carrying a channel — sh:class
+# tcs:Channel with tcs:upstreamClass rdfc:Reader — that upstream made
+# mandatory.
 tcs:RdfcMandatoryReaderWiringShape a sh:NodeShape ;
     rdfs:label "RDF-Connect mandatory reader wiring shape" ;
 
@@ -1412,7 +1413,7 @@ tcs:RdfcMandatoryReaderWiringShape a sh:NodeShape ;
                 ?this a tcs:InstancePipelineComponent ;
                       prov:specializationOf ?component .
                 ?component dcat:qualifiedRelation ?rel .
-                ?rel dcat:hadRole tcs:configShape ;
+                ?rel dcat:hadRole tcs:compilerFacingConfigShape ;
                      dct:relation ?shape .
                 ?shape sh:property ?prop .
                 ?prop sh:class tcs:Channel ;
@@ -1446,7 +1447,7 @@ tcs:RdfcMandatoryWriterWiringShape a sh:NodeShape ;
                 ?this a tcs:InstancePipelineComponent ;
                       prov:specializationOf ?component .
                 ?component dcat:qualifiedRelation ?rel .
-                ?rel dcat:hadRole tcs:configShape ;
+                ?rel dcat:hadRole tcs:compilerFacingConfigShape ;
                      dct:relation ?shape .
                 ?shape sh:property ?prop .
                 ?prop sh:class tcs:Channel ;

@@ -789,7 +789,7 @@ def test_rdfc_package_manager_invalid_supplier_triggers_shape(catalog_with_shape
 
 
 def test_rdfc_mandatory_writer_wiring_missing_triggers_shape(catalog_with_shapes):
-    # rdfc:Sdsify's configShape marks rdfc:output/rdfc:metadataOutput
+    # rdfc:Sdsify's compilerFacingConfigShape marks rdfc:output/rdfc:metadataOutput
     # sh:minCount 1 (both sh:class rdfc:Writer) — a step with neither
     # explicit nor synthesized tcs:writesTo cannot actually run.
     parse_extra(

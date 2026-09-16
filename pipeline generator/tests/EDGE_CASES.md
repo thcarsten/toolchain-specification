@@ -31,13 +31,13 @@ Each entry names which pillar covers it: **shape** (SHACL), **guard**
 - [ ] **Maintenance risk (not a test gap):** `data/inference_rules.yaml` carries a second, declarative implementation of this same three-case logic (mint-fresh / reuse-predecessor's-writesTo / reuse-successor's-readsFrom), used only to give pre-compile SHACL shapes (`LdioStepOrderingShape`, `AcyclicGraphShape`, ...) visibility into `p-plan:isPrecededBy`-implied wiring before the generator ever runs. `PipelineGenerator.compile()` never calls `GraphReader.infer()`, so the two never interact at runtime — but if `synthesize_channels()`'s case logic ever changes, the inference rules must be updated to match by hand.
 
 ## RdfcConfigCompiler reader/writer auto-injection
-- [x] Component configShape declares exactly one `sh:class rdfc:Reader`/`rdfc:Writer` path — key auto-injected from the step's single channel — **compiles** (`test_rdfc_wiring.py`)
-- [x] Component configShape declares two `sh:class rdfc:Writer` paths (e.g. `rdfc:Sdsify`) — genuinely ambiguous, left unwired even with exactly two channels present — **compiles**
+- [x] Component compilerFacingConfigShape declares exactly one `sh:class rdfc:Reader`/`rdfc:Writer` path — key auto-injected from the step's single channel — **compiles** (`test_rdfc_wiring.py`)
+- [x] Component compilerFacingConfigShape declares two `sh:class rdfc:Writer` paths (e.g. `rdfc:Sdsify`) — genuinely ambiguous, left unwired even with exactly two channels present — **compiles**
 - [x] Step already has the reader/writer key explicit — never overwritten — **compiles**
 - [ ] Known gap (deferred): dropping an explicit `rdfc:memberStream`-style key from the pipeline definition in favor of compile-time injection makes the *source* file fail `:SparqlIngestShape`'s `sh:minCount 1` check (it validates the pre-compile graph, which no longer has the key explicit) — the compiled *output* is correct, but the SHACL shapes haven't been updated yet to account for compiler-synthesized wiring. Tracked for a follow-up session.
 
 ## Mandatory reader/writer wiring
-- [x] Component's configShape marks a `sh:class rdfc:Writer` path `sh:minCount 1` (e.g. `rdfc:Sdsify`'s `rdfc:output`/`rdfc:metadataOutput`) and the step has no `tcs:writesTo` — **shape** (`RdfcMandatoryWriterWiringShape`)
+- [x] Component's compilerFacingConfigShape marks a `sh:class rdfc:Writer` path `sh:minCount 1` (e.g. `rdfc:Sdsify`'s `rdfc:output`/`rdfc:metadataOutput`) and the step has no `tcs:writesTo` — **shape** (`RdfcMandatoryWriterWiringShape`)
 - [x] Same step with `tcs:writesTo` present — shape stays silent — **shape** (`RdfcMandatoryWriterWiringShape`)
 - [ ] Mirror case for `sh:class rdfc:Reader` / `tcs:readsFrom` (`RdfcMandatoryReaderWiringShape`) — currently untestable against real catalog data since no component's Reader path is marked `sh:minCount` mandatory yet; shape is written and will fire the moment one is.
 

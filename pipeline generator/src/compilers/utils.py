@@ -171,7 +171,7 @@ def extract_config(reader: GraphReader, config_id: str) -> Union[dict, str]:
     # step's tcs:readsFrom channel), and a plain traversal would keep
     # following *that* resource's own outgoing edges too — including
     # any SHACL role attachment (ValidationReportCompiler's
-    # inputShape/outputShape/configShape relations) it happens to
+    # inputShape/outputShape/compilerFacingConfigShape relations) it happens to
     # carry, silently leaking validation bookkeeping into the
     # extracted config. stop_at_named_nodes still names the referenced
     # resource but never chases its own description, while still
