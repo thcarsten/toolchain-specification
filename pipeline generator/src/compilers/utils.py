@@ -185,11 +185,30 @@ def extract_config(reader: GraphReader, config_id: str) -> Union[dict, str]:
     # blank-node-reachable subject instead, or this call ever grows a
     # direction/along/against override, this exclude keeps holding
     # regardless.
-    config_gd = GraphDict(
-        reader.traverse(
-            config_id, stop_at_named_nodes=True, exclude="dcat:qualifiedRelation"
+    body = reader.traverse(
+        config_id, stop_at_named_nodes=True, exclude="dcat:qualifiedRelation"
+    ).graph
+
+    # A config whose ``tcs:embedded`` root is itself *named* needs a
+    # second hop. ``stop_at_named_nodes`` is what keeps a config value
+    # that happens to be a real resource (a channel IRI) from dragging
+    # its own description in, and it cannot tell that apart from the
+    # body root -- so it stops there too and the config reads as empty.
+    # ``ConfigTranslator`` mints exactly such a root
+    # (``:compilerembedded_N``): a CONSTRUCT template needs a named
+    # ``?target``, since a blank node in a template is minted afresh per
+    # solution and a multi-row WHERE would scatter the body over several
+    # unconnected nodes. Traversing from the named root applies the same
+    # CBD rule one level down, so nested blank structure still comes
+    # across and referenced resources still don't.
+    for embedded in reader.filter(sub=config_id, pred="tcs:embedded").df["obj"]:
+        if str(embedded).startswith("_:"):
+            continue
+        body += reader.traverse(
+            embedded, stop_at_named_nodes=True, exclude="dcat:qualifiedRelation"
         ).graph
-    )
+
+    config_gd = GraphDict(body)
     config_gd = config_gd.frame({"@id": config_id})
     return parse_config(config_gd.dict)[":config"]
 

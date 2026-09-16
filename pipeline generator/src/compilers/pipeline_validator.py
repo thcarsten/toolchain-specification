@@ -28,6 +28,7 @@ from pathlib import Path
 
 from .compilation_runner import CompilationConfig, CompilationRunner
 from .core.bridge_transport_compiler import BridgeTransportCompiler
+from .core.config_translator import ConfigTranslator
 from .core.graph_reducer import GraphReducer
 from .core.pipeline_assembler import PipelineAssembler
 from .core.pipeline_enricher import PipelineEnricher
@@ -100,6 +101,9 @@ PipelineValidatorConfig = CompilationConfig(
         RdfcHttpOutConfigCompiler,
         NifiListenHttpConfigCompiler,
         NifiInvokeHttpConfigCompiler,
+        # After the per-boundary config compilers above, which mint the
+        # authored configs it translates from.
+        ConfigTranslator,
         # Fires only in the finalize phase, gated by its own
         # ``applies_to`` on ``tcs:runPhase tcs:FinalizePhase``.
         ValidationReportCompiler,

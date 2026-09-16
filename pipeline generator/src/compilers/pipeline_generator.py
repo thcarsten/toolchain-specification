@@ -30,6 +30,7 @@ from pathlib import Path
 
 from .compilation_runner import CompilationConfig, CompilationRunner
 from .core.bridge_transport_compiler import BridgeTransportCompiler
+from .core.config_translator import ConfigTranslator
 from .core.docker_compose_compiler import DockerComposeCompiler
 from .core.container_service_name_compiler import ContainerServiceNameCompiler
 from .core.graph_reducer import GraphReducer
@@ -128,6 +129,11 @@ PipelineGeneratorConfig = CompilationConfig(
         NifiListenHttpConfigCompiler,
         NifiInvokeHttpConfigCompiler,
         SwRdfIngestConfigCompiler,
+        # Derives each step's compiler-facing config from its authored
+        # one. Listed after the per-boundary compilers, which mint the
+        # authored configs it translates from, and before the file
+        # emitters, which will read what it writes.
+        ConfigTranslator,
         # File-emitting compilers, generation-only.
         LdioConfigCompiler,
         RdfcConfigCompiler,
