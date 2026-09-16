@@ -102,14 +102,27 @@ guards all over the compilers would break if both hung off `hasInputVar`.
 
 **Query contract.** The translator binds `?source` (the authored
 `tcs:embedded` node), `?target` (the fresh compiler-side `tcs:embedded` node),
-`?step` and `?component` into the query before running it via
-`GraphReader.sparql()`, which already dispatches `CONSTRUCT` to a new reader
-([`graph_reader.py:490`](../src/rdfine/graph_reader.py)). Binding by textual
-substitution matches how `RdfcConfigCompiler` and `ValidationReportCompiler`
-already build queries. `?target` must be a named IRI, not a blank node, so the
-CONSTRUCT template stays safe across multi-row WHERE results — the same
-constraint documented at
+`?step` and `?component` into the query before running it. `?target` must be a
+named IRI, not a blank node, so the CONSTRUCT template stays safe across
+multi-row WHERE results — the same constraint documented at
 [`validation_report_compiler.py:127-131`](../src/compilers/core/validation_report_compiler.py).
+
+**Corrected while implementing (2026-09-16): the four bindings cannot all be
+textual.** This section originally said to substitute all of them as text,
+matching `RdfcConfigCompiler` and `ValidationReportCompiler`. That works for
+`?target`, `?step` and `?component`, which are named IRIs — but *not* for
+`?source`. The authored `tcs:embedded` node is virtually always a blank node,
+and a blank-node label written into a SPARQL `WHERE` clause is not a reference
+to that node: it is an existential variable that matches anything. Pasting one
+in silently turns `?source ?p ?o` into "every triple in the graph", so the
+translated config swallows the catalog — observed as a pySHACL
+`ShapeLoadError` ("a NodeShape cannot be the subject of a `sh:path`") once the
+shapes landed inside the config body. `?source`, `?step` and `?component` are
+therefore bound as *terms* via rdflib's `initBindings`, which takes a blank
+node correctly; only `?target` is substituted textually, because it has to
+appear in the CONSTRUCT template. Note `initBindings` requires calling
+`graph.query()` directly rather than `GraphReader.sparql()`, which does not
+expose it.
 
 ---
 

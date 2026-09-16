@@ -276,41 +276,61 @@ class ConfigTranslator(Compiler):
     ) -> Graph:
         """Run a component's ``tcs:configTranslation``.
 
-        ``?source`` (the authored ``tcs:embedded`` node), ``?target``
-        (the compiler-facing one), ``?step`` and ``?component`` are bound
-        by textual substitution before the query runs — the same way
-        :class:`RdfcConfigCompiler` and
-        :class:`ValidationReportCompiler` already build their queries.
-        ``?target`` is substituted with a named IRI on purpose: a blank
+        ``?target`` is substituted textually with a named IRI: a blank
         node in a ``CONSTRUCT`` template is minted afresh per solution,
         so a multi-row ``WHERE`` would scatter the body across several
         unconnected nodes.
+
+        ``?source``, ``?step`` and ``?component`` are bound as *terms*
+        through rdflib's ``initBindings`` instead, and that difference is
+        load-bearing. ``?source`` is the authored ``tcs:embedded`` node,
+        which is virtually always a blank node — and a blank-node label
+        written into a SPARQL ``WHERE`` clause is not a reference to that
+        node at all, it is an existential that matches anything. Pasting
+        one in turns ``?source ?p ?o`` into "every triple in the graph",
+        so the translated config swallows the catalog. ``initBindings``
+        binds the actual term, blank node included.
         """
         authored_embedded = (
             self.output_reader.filter(sub=source, pred="tcs:embedded")
             .df["obj"]
             .to_list()
         )
-        bindings = {
+        prefix_store = self.output_reader.prefix_store
+        bound = re.sub(r"\?target(?![A-Za-z0-9_])", target, query)
+
+        terms = {
             "source": authored_embedded[0] if authored_embedded else source,
-            "target": target,
             "step": step,
             "component": component,
         }
-        bound = query
-        for name, value in bindings.items():
-            # A plain word boundary would also match inside
-            # ``?sourceThing``; the lookahead keeps substitution to whole
-            # variable names.
-            bound = re.sub(rf"\?{name}(?![A-Za-z0-9_])", value, bound)
-
-        result = self.output_reader.sparql(bound)
-        if not isinstance(result, GraphReader):
+        results = self.output_reader.graph.query(
+            prefix_store.include_in_query(bound),
+            initBindings={
+                name: self._as_term(value) for name, value in terms.items()
+            },
+        )
+        if results.type != "CONSTRUCT":
             raise ValueError(
                 f"{component}'s tcs:configTranslation must be a CONSTRUCT "
-                f"query; got a {type(result).__name__} result instead."
+                f"query; got a {results.type} query instead."
             )
-        return result.graph
+        # ``results.graph`` is only ``None`` for non-CONSTRUCT
+        # queries, which the guard above has already rejected.
+        return results.graph if results.graph is not None else Graph()
+
+    def _as_term(self, value: str) -> BNode | URIRef:
+        """Turn one of rdfine's node strings back into an rdflib term.
+
+        ``python_to_node(..., URIRef)`` would render ``_:b0`` as a URI
+        whose text happens to start with ``_:``, which matches nothing —
+        and the authored ``tcs:embedded`` root is a blank node almost
+        every time. Same ``_:``-prefix convention ``GraphReader.rename``
+        already keys off.
+        """
+        if value.startswith("_:"):
+            return BNode(value[2:])
+        return URIRef(self.output_reader.prefix_store.expand_string(value))
 
     def _mint_id(self, prefix: str) -> str:
         """``:{prefix}_N``, skipping any name already taken."""
