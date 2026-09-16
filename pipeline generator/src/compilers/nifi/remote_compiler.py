@@ -7,7 +7,7 @@ from rdflib import Graph, Literal, URIRef
 from rdfine import GraphReader, receive_first
 
 from ..compiler_abc import Compiler
-from ..utils import attach_file
+from ..utils import attach_file, step_config_clause
 
 
 class NifiRemoteCompiler(Compiler):
@@ -111,17 +111,18 @@ class NifiRemoteCompiler(Compiler):
 
         azure = self.output_reader.select(
             "?account_name_secret ?sas_token_secret",
-            """
+            f"""
             ?step prov:specializationOf
-                    nifi:AzureStorageCredentialsControllerService_v12 ;
-                p-plan:hasInputVar/tcs:embedded ?properties .
-            OPTIONAL {
+                    nifi:AzureStorageCredentialsControllerService_v12 .
+            {step_config_clause()}
+            ?config tcs:embedded ?properties .
+            OPTIONAL {{
                 ?properties nifi:storageAccountName/tcs:secretName
                     ?account_name_secret .
-            }
-            OPTIONAL {
+            }}
+            OPTIONAL {{
                 ?properties nifi:sasToken/tcs:secretName ?sas_token_secret .
-            }
+            }}
             """,
         )
         if not azure.empty:

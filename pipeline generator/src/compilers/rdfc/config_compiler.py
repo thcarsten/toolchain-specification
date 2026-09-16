@@ -8,6 +8,7 @@ from ..utils import (
     extract_config,
     rewrite_compose_volume_host_path,
     lookup_seeded_pipeline_id,
+    lookup_step_config,
 )
 
 # The RDF-Connect Python / Node runners mount their pipeline
@@ -190,17 +191,13 @@ class RdfcConfigCompiler(Compiler):
         """
 
         step_list = self.rdfc_reader.filter(pred="rdfc:processor").df["obj"].to_list()
-        config_df = self.output_reader.filter(
-            sub=step_list, pred="p-plan:hasInputVar"
-        ).df
-        config_list = config_df["obj"].to_list()
-
-        for config_id in config_list:
-            step_id = receive_first(
-                self.output_reader.filter(
-                    sub=step_list, pred="p-plan:hasInputVar", obj=config_id
-                ).df["sub"],
-            )
+        # Keyed by step rather than by config: a step's config is now
+        # whichever of the two predicates applies, so looking the step up
+        # from the config would have to search both.
+        for step_id in sorted(step_list):
+            config_id = lookup_step_config(self.output_reader, step_id)
+            if config_id is None:
+                continue
             config_dict = extract_config(self.output_reader, config_id)
             config_dict["@id"] = step_id
             config_graph = GraphDict(
@@ -282,11 +279,8 @@ class RdfcConfigCompiler(Compiler):
             # leave to manual authoring.
             return
 
-        configs = (
-            self.output_reader.filter(sub=step_id, pred="p-plan:hasInputVar")
-            .df["obj"]
-            .to_list()
-        )
+        config_id = lookup_step_config(self.output_reader, step_id)
+        configs = [] if config_id is None else [config_id]
         if len(configs) != 1:
             # PipelineEnricher guarantees at least one; more than one is
             # a modelling error the generic cardinality shape already

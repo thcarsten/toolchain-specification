@@ -1,13 +1,11 @@
-"""`ConfigTranslator` derives a step's compiler-facing config from its
-authored one.
+"""`ConfigTranslator` derives a compiler-facing config for the steps that
+need one — and only those.
 
-The split exists so an author can omit what the generator infers and a
-component can hard-code what the author must not set. Slice 1 of
-docs/config-shape-split-plan.md puts the mechanism in place without
-changing behaviour, so most of what is worth pinning here is that the
-identity path is *exactly* an identity — same content, but not the same
-blank nodes, because sharing them would let a later injection into the
-compiler-facing config mutate the author's.
+A component that declares no `tcs:userFacingConfigShape` has one config
+contract, not two, so its authored `p-plan:hasInputVar` config already is
+the compiler-facing config and nothing is derived. `lookup_step_config`
+is what makes that invisible to consumers. See
+docs/config-shape-split-plan.md.
 """
 
 import pytest
@@ -43,76 +41,58 @@ demo:Out a tcs:InstancePipelineComponent ; prov:specializationOf ldio:ConsoleOut
     tcs:readsFrom demo:ch1 .
 """
 
+# A user-facing shape that omits the channel key, plus the query that
+# puts it back. `?config tcs:embedded ?source` is how the query reaches
+# the authored body: ?config is a named IRI and can be substituted,
+# whereas the body root is a blank node and a blank-node label in a
+# WHERE clause matches anything rather than referring to that node.
+TRANSLATED = """
+ldio:HttpInPoller dcat:qualifiedRelation [
+    a dcat:Relationship ;
+    dcat:hadRole tcs:userFacingConfigShape ;
+    dct:relation demo:PollerAuthoringShape
+] ;
+    tcs:configTranslation \"\"\"
+        CONSTRUCT { ?target ?p ?o . ?target rdfc:writer ?channel . }
+        WHERE {
+            ?config tcs:embedded ?source .
+            ?source ?p ?o .
+            OPTIONAL { ?step tcs:writesTo ?channel }
+        } \"\"\" .
+"""
 
-def _translated(build):
-    """step -> (authored config, compiler-facing config)."""
-    rows = build.select(
-        "?step ?authored ?compiler",
-        """
-        ?step a tcs:InstancePipelineComponent ;
-              p-plan:hasInputVar ?authored ;
-              tcs:compilerConfig ?compiler .
-        """,
-    )
-    return {
-        row["step"]: (row["authored"], row["compiler"]) for _, row in rows.iterrows()
-    }
 
-
-def test_every_configured_step_gets_a_compiler_facing_config(catalog_graph):
+def test_a_component_with_one_contract_is_not_translated(catalog_graph):
+    """No `tcs:userFacingConfigShape` means the authored config already
+    is the compiler-facing one. Deriving a copy would buy nothing, and
+    making every consumer wait for that copy is what silently stopped the
+    autobridge pipeline emitting its files."""
     parse_extra(catalog_graph, PIPELINE)
     _, build = compile_pipeline(catalog_graph, "demo:Test")
 
-    unconfigured = build.select(
-        "?step",
-        """
-        ?step a tcs:InstancePipelineComponent ; p-plan:hasInputVar ?config .
-        FILTER NOT EXISTS { ?step tcs:compilerConfig ?compiler_config }
-        """,
+    derived = build.select(
+        "?step", "?step a tcs:InstancePipelineComponent ; tcs:compilerConfig ?config ."
     )
-    assert unconfigured.empty, f"untranslated steps: {list(unconfigured['step'])}"
-    assert set(_translated(build)) >= {"demo:In", "demo:Out"}
+    assert derived.empty, f"unexpectedly translated: {list(derived['step'])}"
 
 
-def test_identity_copy_preserves_the_authored_body(catalog_graph):
+def test_lookup_step_config_falls_back_to_the_authored_config(catalog_graph):
     parse_extra(catalog_graph, PIPELINE)
     _, build = compile_pipeline(catalog_graph, "demo:Test")
-    from compilers.utils import extract_config
+    from compilers.utils import extract_config, lookup_step_config
 
-    # ldio:ConsoleOut declares no tcs:userFacingConfigShape, so its
-    # compiler-facing config is an identity copy. Read both through
-    # extract_config: a translated config's tcs:embedded root is named
-    # rather than blank, and reading it back is exactly where that
-    # difference could bite.
-    authored, compiler = _translated(build)["demo:Out"]
-    authored_body = extract_config(build, authored)
-    compiler_body = extract_config(build, compiler)
-    for body in (authored_body, compiler_body):
-        body.pop("@id", None)
-    assert compiler_body == authored_body
-    assert compiler_body != {}, "a config that reads as empty is the failure mode"
-
-
-def test_the_two_configs_share_no_blank_nodes(catalog_graph):
-    """The point of the split: injecting into one must not touch the other."""
-    parse_extra(catalog_graph, PIPELINE)
-    _, build = compile_pipeline(catalog_graph, "demo:Test")
-
-    shared = build.select(
-        "?authored ?compiler ?node",
-        """
-        ?step p-plan:hasInputVar ?authored ; tcs:compilerConfig ?compiler .
-        ?authored tcs:embedded ?node .
-        ?compiler tcs:embedded ?node .
-        """,
-    )
-    assert shared.empty, "compiler-facing config reuses the authored body"
+    config_id = lookup_step_config(build, "demo:Out")
+    assert config_id is not None
+    authored = build.filter(sub="demo:Out", pred="p-plan:hasInputVar").df["obj"].iloc[0]
+    assert config_id == authored
+    # And it is readable as a config, not just present.
+    assert extract_config(build, config_id) != {}
 
 
 def test_a_user_facing_shape_without_a_translation_raises(catalog_graph):
     """Two declared contracts and nothing to bridge them is an authoring
-    error, not a licence to identity-copy: the copy would not satisfy the
-    compiler-facing shape."""
+    error, not a licence to compile the authored config unchanged: it may
+    not satisfy the compiler-facing shape."""
     parse_extra(
         catalog_graph,
         PIPELINE + """
@@ -127,39 +107,67 @@ def test_a_user_facing_shape_without_a_translation_raises(catalog_graph):
         compile_pipeline(catalog_graph, "demo:Test")
 
 
-def test_a_translation_query_replaces_the_identity_copy(catalog_graph):
+def test_a_translation_query_supplies_what_the_author_omitted(catalog_graph):
     """The mechanism slice 2 relocates RDF-Connect's channel injection
     into: the author omits the channel key and the query supplies it."""
-    parse_extra(
-        catalog_graph,
-        PIPELINE + """
-    ldio:HttpInPoller dcat:qualifiedRelation [
-        a dcat:Relationship ;
-        dcat:hadRole tcs:userFacingConfigShape ;
-        dct:relation demo:PollerAuthoringShape
-    ] ;
-        tcs:configTranslation \"\"\"
-            CONSTRUCT { ?target ?p ?o . ?target rdfc:writer ?channel . }
-            WHERE {
-                ?source ?p ?o .
-                OPTIONAL { ?step tcs:writesTo ?channel }
-            } \"\"\" .
-    """,
-    )
+    parse_extra(catalog_graph, PIPELINE + TRANSLATED)
     _, build = compile_pipeline(catalog_graph, "demo:Test")
 
-    _, compiler = _translated(build)["demo:In"]
     injected = build.select(
         "?channel",
-        f"{compiler} tcs:embedded ?embedded . ?embedded rdfc:writer ?channel .",
+        """
+        demo:In tcs:compilerConfig ?config .
+        ?config tcs:embedded ?embedded .
+        ?embedded rdfc:writer ?channel .
+        """,
     )
     assert not injected.empty, "the query's constructed triple never landed"
 
-    # The authored config keeps its own shape — the query writes to the
-    # compiler-facing node only.
-    authored, _ = _translated(build)["demo:In"]
+    # The authored body came across too — a translation replaces the
+    # config, it does not start from an empty one.
+    copied = build.select(
+        "?url",
+        """
+        demo:In tcs:compilerConfig ?config .
+        ?config tcs:embedded ?embedded .
+        ?embedded ldio:url ?url .
+        """,
+    )
+    assert not copied.empty, "the authored body was dropped"
+
+
+def test_a_translation_does_not_touch_the_authored_config(catalog_graph):
+    """The point of the split: what the compiler reads must not be what
+    the author wrote, or injecting into one mutates the other."""
+    parse_extra(catalog_graph, PIPELINE + TRANSLATED)
+    _, build = compile_pipeline(catalog_graph, "demo:Test")
+
     leaked = build.select(
         "?channel",
-        f"{authored} tcs:embedded ?embedded . ?embedded rdfc:writer ?channel .",
+        """
+        demo:In p-plan:hasInputVar ?config .
+        ?config tcs:embedded ?embedded .
+        ?embedded rdfc:writer ?channel .
+        """,
     )
     assert leaked.empty, "translation leaked into the authored config"
+
+    shared = build.select(
+        "?node",
+        """
+        demo:In p-plan:hasInputVar ?authored ; tcs:compilerConfig ?compiler .
+        ?authored tcs:embedded ?node .
+        ?compiler tcs:embedded ?node .
+        """,
+    )
+    assert shared.empty, "the two configs share a body node"
+
+
+def test_a_translated_step_compiles_through_lookup_step_config(catalog_graph):
+    """Consumers must pick the derived config over the authored one."""
+    parse_extra(catalog_graph, PIPELINE + TRANSLATED)
+    _, build = compile_pipeline(catalog_graph, "demo:Test")
+    from compilers.utils import lookup_step_config
+
+    derived = build.filter(sub="demo:In", pred="tcs:compilerConfig").df["obj"].iloc[0]
+    assert lookup_step_config(build, "demo:In") == derived

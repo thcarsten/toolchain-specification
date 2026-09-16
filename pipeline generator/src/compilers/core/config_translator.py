@@ -9,44 +9,36 @@ from ..utils import lookup_seeded_pipeline_id
 
 
 class ConfigTranslator(Compiler):
-    """Derive each step's *compiler-facing* config from its authored one.
+    """Derive a compiler-facing config for the steps that need one.
 
     A ``tcs:PipelineComponent`` declares what the compiler needs under
     ``dcat:hadRole tcs:compilerFacingConfigShape``, and — optionally —
     the smaller contract its author must satisfy under
-    ``tcs:userFacingConfigShape``. When the two differ, the component
-    carries a ``tcs:configTranslation`` SPARQL ``CONSTRUCT`` that bridges
-    them: it is what lets an author omit what the generator can infer
-    (an RDF-Connect ``rdfc:writer`` the wiring already implies) and lets
-    a component hard-code what the author must not set (a fixed
-    semantic.works ``GRAPH_NAME``).
+    ``tcs:userFacingConfigShape``. When a component declares both, it
+    also carries a ``tcs:configTranslation`` SPARQL ``CONSTRUCT`` that
+    bridges them: that is what lets an author omit what the generator can
+    infer (an RDF-Connect ``rdfc:writer`` the wiring already implies) and
+    lets a component hard-code what the author must not set (a fixed
+    semantic.works ``GRAPH_NAME``). The result is attached at
+    ``tcs:compilerConfig``, leaving the authored config untouched at
+    ``p-plan:hasInputVar``.
 
-    The authored config stays untouched at ``p-plan:hasInputVar``; the
-    translated one is attached at ``tcs:compilerConfig``. Two predicates
-    rather than one because each shape has to target its own config, and
-    because the ``len(configs) != 1`` guards throughout the framework
-    compilers would break if both hung off ``hasInputVar``.
+    **A component that declares no user-facing shape is not translated
+    at all.** Its two contracts are the same document, so the authored
+    config already *is* the compiler-facing config, and
+    :func:`compilers.utils.lookup_step_config` reads it directly. An
+    earlier version copied every config to make ``tcs:compilerConfig``
+    universal; that bought nothing and cost a great deal — consumers
+    then had to be gated on the translation having happened, and one
+    such gate was unsatisfiable on a pipeline whose bridge-inserted
+    ``sw:rdf-ingest-service`` step never gets an authored config,
+    silently dropping every LDIO and RDF-Connect file from the build.
+    Translating only what needs translating keeps that whole class of
+    ordering problem out of the design.
 
-    **Most components need no query.** Absent a
-    ``tcs:userFacingConfigShape`` the compiler-facing shape *is* the
-    authoring contract, and translation is an identity copy. Declaring a
-    user-facing shape without a ``tcs:configTranslation`` is an authoring
-    error and raises rather than silently identity-copying — the author
-    asked for two different contracts and supplied nothing to bridge
-    them.
-
-    The copy is a Concise Bounded Description
-    (``GraphReader.traverse`` in ``stop_at_named_nodes`` mode, excluding
-    ``dcat:qualifiedRelation``) — the same traversal
-    :func:`compilers.utils.extract_config` performs, and for the same
-    reason: a config value may *be* a named resource (a channel IRI),
-    whose own description must not be dragged in.
-
-    Every blank node in the body is re-minted. Were the copy to reuse
-    the authored config's blank nodes, the two configs would share
-    structure and a later injection into the compiler-facing config
-    would silently mutate the authored one — which is exactly what the
-    split exists to prevent.
+    Declaring a user-facing shape without a ``tcs:configTranslation``
+    raises: the author asked for two different contracts and supplied
+    nothing to bridge them.
     """
 
     #: Component roles, as they appear on a ``dcat:Relationship``.
@@ -61,18 +53,14 @@ class ConfigTranslator(Compiler):
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
-        """Triggered once bridging and per-boundary configuration have
-        settled, for as long as some step still lacks a
-        ``tcs:compilerConfig``.
+        """Triggered once bridging has settled, while some step whose
+        component declares a user-facing shape still lacks its derived
+        config.
 
         ``dct:creator tcs:SegmentTagger`` marks the end of bridging (the
-        same gate :class:`RdfcConfigCompiler` uses). That alone is not
-        enough: the per-boundary config compilers mint
-        ``p-plan:hasInputVar`` for the steps
-        :class:`BridgeTransportCompiler` inserted, and a compiler runs at
-        most once — translating before they finish would leave a bridge
-        step with no compiler-facing config and no second chance. So this
-        also waits until no boundary step is left unconfigured.
+        same gate :class:`RdfcConfigCompiler` uses), so the steps
+        :class:`BridgeTransportCompiler` inserts are present and their
+        authored configs minted before anything is translated.
         """
         segments_tagged = not graph_reader.filter(
             pred="dct:creator", obj="tcs:SegmentTagger"
@@ -80,26 +68,15 @@ class ConfigTranslator(Compiler):
         if not segments_tagged:
             return False
 
-        boundary_unconfigured = graph_reader.select(
-            "?step",
-            """
-            ?step a tcs:InstancePipelineComponent ;
-                  prov:specializationOf ?component .
-            { ?component a tcs:EntryBoundaryComponent }
-            UNION
-            { ?component a tcs:ExitBoundaryComponent }
-            FILTER NOT EXISTS { ?step p-plan:hasInputVar ?config }
-            """,
-        )
-        if not boundary_unconfigured.empty:
-            return False
-
         return not graph_reader.select(
             "?step",
-            """
+            f"""
             ?step a tcs:InstancePipelineComponent ;
-                  p-plan:hasInputVar ?config .
-            FILTER NOT EXISTS { ?step tcs:compilerConfig ?compiler_config }
+                  p-plan:hasInputVar ?config ;
+                  prov:specializationOf ?component .
+            ?component dcat:qualifiedRelation ?relation .
+            ?relation dcat:hadRole {cls.user_facing_role} .
+            FILTER NOT EXISTS {{ ?step tcs:compilerConfig ?compiler_config }}
             """,
         ).empty
 
@@ -118,13 +95,12 @@ class ConfigTranslator(Compiler):
 
     def list_translatable_steps(self) -> None:
         """Collect ``(step, component, config)`` for every step of the
-        target pipeline carrying exactly one authored config.
+        target pipeline whose component declares a user-facing shape and
+        carries exactly one authored config.
 
-        :class:`PipelineEnricher` has already given every step exactly
-        one ``tcs:PipelineConfig``, so "exactly one" is the norm rather
-        than a filter that discards work. A step that somehow has two is
-        skipped rather than guessed at, matching the ``len(configs) != 1``
-        guards the framework compilers already apply.
+        A step with two configs is skipped rather than guessed at,
+        matching the ``len(configs) != 1`` guards the framework compilers
+        already apply.
         """
         rows = self.output_reader.select(
             "?step ?component ?config",
@@ -133,6 +109,8 @@ class ConfigTranslator(Compiler):
                   p-plan:isStepOfPlan {self.pipeline_id} ;
                   prov:specializationOf ?component ;
                   p-plan:hasInputVar ?config .
+            ?component dcat:qualifiedRelation ?relation .
+            ?relation dcat:hadRole {self.user_facing_role} .
             FILTER NOT EXISTS {{ ?step tcs:compilerConfig ?existing }}
             """,
         )
@@ -152,61 +130,43 @@ class ConfigTranslator(Compiler):
         )
 
     def translate_step_configs(self) -> None:
-        """Attach a compiler-facing config to each collected step.
-
-        Identity copy by default; a component declaring a user-facing
-        shape gets its ``tcs:configTranslation`` run instead.
-        """
+        """Run each collected step's ``tcs:configTranslation`` and attach
+        the result at ``tcs:compilerConfig``."""
         for step, component, config in self.translatable_steps:
-            translation = self._lookup_config_translation(component)
+            query = self._lookup_config_translation(component)
             compiler_config = self._mint_id("compilerconfig")
-            embedded = self._mint_id("compilerembedded")
-
-            if translation is None:
-                body = self._copy_config(config, compiler_config, embedded)
-            else:
-                body = self._run_translation(
-                    translation,
-                    source=config,
-                    target=embedded,
-                    step=step,
-                    component=component,
-                )
+            body, embedded = self._run_translation(
+                query, config=config, step=step, component=component
+            )
 
             self.output_reader = self.output_reader.add(body)
             self.output_reader = self.output_reader.add(
                 self.output_reader.construct(
                     f"""
                     {step} tcs:compilerConfig {compiler_config} .
-                    {compiler_config} a tcs:CompilerConfig ;
-                        tcs:embedded {embedded} .
+                    {compiler_config} a tcs:CompilerConfig .
                     """,
                     f"{step} a tcs:InstancePipelineComponent .",
                 ).graph
             )
+            self.output_reader = self.output_reader.add(
+                self._attach_embedded(compiler_config, embedded)
+            )
 
-    def _lookup_config_translation(self, component: str) -> str | None:
-        """The component's ``tcs:configTranslation``, or ``None`` when it
-        declares no user-facing shape.
+    def _lookup_config_translation(self, component: str) -> str:
+        """The component's ``tcs:configTranslation``.
 
-        Raises when a user-facing shape is declared without a query: the
+        Raises when it declares a user-facing shape without one: the
         component asked for two distinct contracts and supplied nothing
-        to bridge them, so an identity copy would quietly emit a config
-        that does not satisfy the compiler-facing shape.
+        to bridge them, so compiling its authored config unchanged would
+        quietly emit something the compiler-facing shape rejects.
         """
         queries = (
             self.output_reader.filter(sub=component, pred="tcs:configTranslation")
             .df["obj"]
             .to_list()
         )
-        declares_user_facing = self.output_reader.ask(
-            f"""
-            {component} dcat:qualifiedRelation ?relation .
-            ?relation dcat:hadRole {self.user_facing_role} .
-            """
-        )
-
-        if declares_user_facing and not queries:
+        if not queries:
             raise ValueError(
                 f"{component} declares a {self.user_facing_role} but no "
                 "tcs:configTranslation to derive its "
@@ -214,123 +174,80 @@ class ConfigTranslator(Compiler):
                 "query, or drop the user-facing shape, which makes the "
                 "compiler-facing shape the authoring contract."
             )
-        if not declares_user_facing:
-            return None
         return queries[0]
 
-    def _copy_config(self, config: str, compiler_config: str, embedded: str) -> Graph:
-        """The identity path: the authored config's CBD, re-rooted on
-        ``compiler_config`` with every blank node re-minted.
-
-        ``rdf:type`` on the authored root is dropped — the new node is a
-        ``tcs:CompilerConfig``, asserted by the caller, not a second
-        ``tcs:PipelineConfig`` competing with the original. Everything
-        else the root carries (``dct:format`` above all, which decides
-        how the body parses) comes across untouched.
-        """
-        source = self.output_reader.traverse(
-            config, stop_at_named_nodes=True, exclude="dcat:qualifiedRelation"
-        ).graph
-
-        expand = self.output_reader.prefix_store.expand_string
-        config_node = URIRef(expand(config))
-        embedded_predicate = URIRef(expand("tcs:embedded"))
-        rdf_type = URIRef(expand("rdf:type"))
-
-        # The authored embedded root becomes the named ``?target`` node,
-        # so a compiler-facing shape can target
-        # ``tcs:compilerConfig/tcs:embedded`` the same way a user-facing
-        # one targets ``p-plan:hasInputVar/tcs:embedded``.
-        mapping: dict[object, object] = {config_node: URIRef(expand(compiler_config))}
-        for embedded_root in source.objects(config_node, embedded_predicate):
-            mapping[embedded_root] = URIRef(expand(embedded))
-
-        # Labelled from a sorted walk rather than ``BNode()``'s random
-        # uuid: these nodes are minted per run, and a random label would
-        # make anything that serializes them differ between runs over
-        # identical input.
-        remaining = sorted(
-            {
-                term
-                for triple in source
-                for term in triple
-                if isinstance(term, BNode) and term not in mapping
-            },
-            key=str,
-        )
-        stem = embedded.lstrip(":").replace(":", "_")
-        for index, node in enumerate(remaining):
-            mapping[node] = BNode(f"{stem}_{index}")
-
-        copied = Graph(bind_namespaces="none")
-        for subject, predicate, obj in source:
-            if subject == config_node and predicate == rdf_type:
-                continue
-            copied.add(
-                (mapping.get(subject, subject), predicate, mapping.get(obj, obj))
-            )
-        return copied
-
     def _run_translation(
-        self, query: str, *, source: str, target: str, step: str, component: str
-    ) -> Graph:
-        """Run a component's ``tcs:configTranslation``.
+        self, query: str, *, config: str, step: str, component: str
+    ) -> tuple[Graph, BNode]:
+        """Run one ``tcs:configTranslation``; return its graph and the
+        body root to hang off the compiler-facing config.
 
-        ``?target`` is substituted textually with a named IRI: a blank
-        node in a ``CONSTRUCT`` template is minted afresh per solution,
-        so a multi-row ``WHERE`` would scatter the body across several
-        unconnected nodes.
+        ``?config``, ``?step`` and ``?component`` are bound by textual
+        substitution, matching how :class:`RdfcConfigCompiler` and
+        :class:`ValidationReportCompiler` build their queries. All three
+        are named IRIs, which is what makes that safe: a query reaches
+        the authored body by matching ``?config tcs:embedded ?source``
+        rather than by having ``?source`` pasted in. That matters —
+        the authored ``tcs:embedded`` node is a blank node, and a
+        blank-node label written into a ``WHERE`` clause is not a
+        reference to that node but an existential that matches anything,
+        which turns ``?source ?p ?o`` into "every triple in the graph".
 
-        ``?source``, ``?step`` and ``?component`` are bound as *terms*
-        through rdflib's ``initBindings`` instead, and that difference is
-        load-bearing. ``?source`` is the authored ``tcs:embedded`` node,
-        which is virtually always a blank node — and a blank-node label
-        written into a SPARQL ``WHERE`` clause is not a reference to that
-        node at all, it is an existential that matches anything. Pasting
-        one in turns ``?source ?p ?o`` into "every triple in the graph",
-        so the translated config swallows the catalog. ``initBindings``
-        binds the actual term, blank node included.
+        ``?target`` is substituted with a temporary named IRI, because a
+        blank node in a ``CONSTRUCT`` template is minted afresh per
+        solution and a multi-row ``WHERE`` would scatter the body over
+        several unconnected nodes. That name is an implementation
+        detail: the result is relabelled back to a blank node before it
+        reaches the build, so a translated config has exactly the shape
+        an authored one has and nothing downstream needs to know the
+        difference.
         """
-        authored_embedded = (
-            self.output_reader.filter(sub=source, pred="tcs:embedded")
-            .df["obj"]
-            .to_list()
-        )
-        prefix_store = self.output_reader.prefix_store
-        bound = re.sub(r"\?target(?![A-Za-z0-9_])", target, query)
+        target = self._mint_id("compilerembedded")
+        bound = query
+        for name, value in (
+            ("target", target),
+            ("config", config),
+            ("step", step),
+            ("component", component),
+        ):
+            # A plain word boundary would also match inside
+            # ``?configThing``; the lookahead keeps substitution to whole
+            # variable names.
+            bound = re.sub(rf"\?{name}(?![A-Za-z0-9_])", value, bound)
 
-        terms = {
-            "source": authored_embedded[0] if authored_embedded else source,
-            "step": step,
-            "component": component,
-        }
-        results = self.output_reader.graph.query(
-            prefix_store.include_in_query(bound),
-            initBindings={
-                name: self._as_term(value) for name, value in terms.items()
-            },
-        )
-        if results.type != "CONSTRUCT":
+        result = self.output_reader.sparql(bound)
+        if not isinstance(result, GraphReader):
             raise ValueError(
                 f"{component}'s tcs:configTranslation must be a CONSTRUCT "
-                f"query; got a {results.type} query instead."
+                f"query; got a {type(result).__name__} result instead."
             )
-        # ``results.graph`` is only ``None`` for non-CONSTRUCT
-        # queries, which the guard above has already rejected.
-        return results.graph if results.graph is not None else Graph()
 
-    def _as_term(self, value: str) -> BNode | URIRef:
-        """Turn one of rdfine's node strings back into an rdflib term.
+        expand = self.output_reader.prefix_store.expand_string
+        target_node = URIRef(expand(target))
+        body_root = BNode(target.lstrip(":").replace(":", "_"))
+        relabelled = Graph(bind_namespaces="none")
+        for subject, predicate, obj in result.graph:
+            relabelled.add(
+                (
+                    body_root if subject == target_node else subject,
+                    predicate,
+                    body_root if obj == target_node else obj,
+                )
+            )
+        return relabelled, body_root
 
-        ``python_to_node(..., URIRef)`` would render ``_:b0`` as a URI
-        whose text happens to start with ``_:``, which matches nothing —
-        and the authored ``tcs:embedded`` root is a blank node almost
-        every time. Same ``_:``-prefix convention ``GraphReader.rename``
-        already keys off.
+    def _attach_embedded(self, compiler_config: str, embedded: BNode) -> Graph:
+        """``<compiler_config> tcs:embedded <body root>``.
+
+        Built directly rather than through ``construct``, whose template
+        is text and so cannot carry a blank node through by identity.
         """
-        if value.startswith("_:"):
-            return BNode(value[2:])
-        return URIRef(self.output_reader.prefix_store.expand_string(value))
+        expand = self.output_reader.prefix_store.expand_string
+        graph = Graph(bind_namespaces="none")
+        graph.add(
+            (URIRef(expand(compiler_config)), URIRef(expand("tcs:embedded")), embedded)
+        )
+        return graph
 
     def _mint_id(self, prefix: str) -> str:
         """``:{prefix}_N``, skipping any name already taken."""

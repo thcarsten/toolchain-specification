@@ -28,7 +28,7 @@ from rdfine import GraphReader, receive_first
 import pandas as pd
 
 from ..compiler_abc import Compiler
-from ..utils import attach_file, parse_docker_compose_config
+from ..utils import attach_file, parse_docker_compose_config, step_config_clause
 
 _PROCESSOR_X_SPACING = 650.0
 _PROCESSOR_Y_SPACING = 250.0
@@ -218,7 +218,8 @@ class NifiConfigCompiler(Compiler):
             "?controller_service_type ?scheduled_state",
             f"""
             {_NIFI_RUNS_STEP}
-            ?step p-plan:hasInputVar/tcs:embedded ?properties .
+            {step_config_clause()}
+            ?config tcs:embedded ?properties .
             ?component dcat:qualifiedRelation [
                     dcat:hadRole tcs:compilerFacingConfigShape ;
                     dct:relation ?shape
@@ -363,9 +364,7 @@ class NifiConfigCompiler(Compiler):
                 nifi:bundleArtifact ?bundle_artifact ;
                 nifi:bundleVersion ?bundle_version .
 
-            OPTIONAL {{
-                ?step p-plan:hasInputVar ?config .
-            }}
+            OPTIONAL {{ {step_config_clause()} }}
             OPTIONAL {{
                 ?step nifi:scheduledState ?scheduled_state .
             }}
@@ -404,7 +403,7 @@ class NifiConfigCompiler(Compiler):
                 nifi:serviceApiBundleArtifact ?service_api_bundle_artifact ;
                 nifi:serviceApiBundleVersion ?service_api_bundle_version .
 
-            OPTIONAL {{ ?step p-plan:hasInputVar ?config . }}
+            OPTIONAL {{ {step_config_clause()} }}
             OPTIONAL {{ ?step nifi:scheduledState ?scheduled_state . }}
             """,
         )
@@ -616,7 +615,10 @@ class NifiConfigCompiler(Compiler):
                 ?source_component nifi:outgoingRelationship ?default_relationship .
             }
             OPTIONAL {
-                ?source p-plan:hasInputVar/tcs:embedded/nifi:route ?route .
+                """
+                + step_config_clause("?source", "?sourceConfig")
+                + """
+                ?sourceConfig tcs:embedded/nifi:route ?route .
                 ?route nifi:channel ?channel ;
                     nifi:selectedRelationship ?selected_relationship .
             }

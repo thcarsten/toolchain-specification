@@ -107,22 +107,60 @@ named IRI, not a blank node, so the CONSTRUCT template stays safe across
 multi-row WHERE results — the same constraint documented at
 [`validation_report_compiler.py:127-131`](../src/compilers/core/validation_report_compiler.py).
 
-**Corrected while implementing (2026-09-16): the four bindings cannot all be
-textual.** This section originally said to substitute all of them as text,
-matching `RdfcConfigCompiler` and `ValidationReportCompiler`. That works for
-`?target`, `?step` and `?component`, which are named IRIs — but *not* for
-`?source`. The authored `tcs:embedded` node is virtually always a blank node,
-and a blank-node label written into a SPARQL `WHERE` clause is not a reference
-to that node: it is an existential variable that matches anything. Pasting one
-in silently turns `?source ?p ?o` into "every triple in the graph", so the
-translated config swallows the catalog — observed as a pySHACL
-`ShapeLoadError` ("a NodeShape cannot be the subject of a `sh:path`") once the
-shapes landed inside the config body. `?source`, `?step` and `?component` are
-therefore bound as *terms* via rdflib's `initBindings`, which takes a blank
-node correctly; only `?target` is substituted textually, because it has to
-appear in the CONSTRUCT template. Note `initBindings` requires calling
-`graph.query()` directly rather than `GraphReader.sparql()`, which does not
-expose it.
+**Corrected while implementing (2026-09-16).** Two things in this section
+did not survive contact with the code.
+
+*The query reaches the authored body by matching, not by substitution.* This
+section originally had the translator substitute `?source` as text. That
+cannot work: the authored `tcs:embedded` node is a blank node, and a
+blank-node label written into a SPARQL `WHERE` clause is not a reference to
+that node — it is an existential that matches anything, so `?source ?p ?o`
+becomes "every triple in the graph" and the translated config swallows the
+catalog (observed as a pySHACL `ShapeLoadError` once the profile shapes ended
+up inside a config body). The contract is now that a query binds `?config` —
+a named IRI, since `PipelineSeeder` names every config node — and reaches the
+body itself:
+
+```sparql
+CONSTRUCT { ?target ?p ?o . ?target rdfc:writer ?channel . }
+WHERE {
+    ?config tcs:embedded ?source .
+    ?source ?p ?o .
+    OPTIONAL { ?step tcs:writesTo ?channel }
+}
+```
+
+*`?target` is named only inside the query.* The named-IRI requirement is real
+but purely local: a blank node in a CONSTRUCT template is minted afresh per
+solution, so a multi-row WHERE would scatter the body over unconnected nodes.
+The translator therefore substitutes a temporary IRI and **relabels the result
+back to a blank node** before it reaches the build. A translated config then
+has exactly the shape an authored one has, and nothing downstream knows the
+difference. An earlier attempt left the name in place and paid for it twice:
+`extract_config`'s CBD traversal stops at named nodes, so every translated
+config read as empty, and framing a named root yields an `@id` key that
+`SemanticWorksEnvVarCompiler` duly emitted as a docker-compose environment
+variable.
+
+**`tcs:compilerConfig` exists only for steps that need it.** A component
+declaring no `tcs:userFacingConfigShape` has one contract, not two, so its
+authored config already *is* the compiler-facing config and nothing is
+derived. Consumers read through `utils.lookup_step_config` (Python) or
+`utils.step_config_clause` (SPARQL), which prefer a derived config and fall
+back to the authored one.
+
+That fallback is what keeps the two predicates from becoming an ordering
+problem, and the problem is not hypothetical. The first implementation copied
+*every* config so `tcs:compilerConfig` would be universal, which forced every
+consumer to wait for the translation to have happened, which needed a gate on
+each of them. One such gate — "wait until every boundary step has an authored
+config" — is unsatisfiable on
+`pipeline_definition_autobridge.ttl`, whose bridge-inserted
+`sw:rdf-ingest-service` step never gets one: `ConfigTranslator` never fired,
+and the gated emitters silently dropped `ldio/` and `rdfc/pipeline.ttl` from
+the build. With the fallback, a consumer that runs before the translator still
+reads the right config, because for a one-contract component they are the same
+node.
 
 ---
 
@@ -240,13 +278,45 @@ cosmetic: once NiFi's targets are gone, a NiFi shape that still spells its role
 as a string literal would be targeted by nothing and validate nothing.
 
 **1f. Downstream config readers.** Every compiler that consumes a step config
-switches from `p-plan:hasInputVar` to `tcs:compilerConfig`:
-`rdfc/config_compiler.py:190,197,282`, `ldio/config_compiler.py:140,143,201`,
-`nifi/config_compiler.py:221,737`, `nifi/remote_compiler.py:117`,
-`sw/env_var_compiler.py:95`, `nifi/dockerfile_compiler.py:48`,
-`rdfc/dockerfile_compiler.py:170`. The `FILTER NOT EXISTS { ?step
-p-plan:hasInputVar ?c }` *minting* guards in the boundary compilers stay on
-`hasInputVar` — they run before translation and mint authored-side configs.
+switches from `p-plan:hasInputVar` to `tcs:compilerConfig`. The `FILTER NOT
+EXISTS { ?step p-plan:hasInputVar ?c }` *minting* guards in the boundary
+compilers stay on `hasInputVar` — they run before translation and mint
+authored-side configs.
+
+**Done 2026-09-16.** The inventory above was close but not right on two
+counts, both worth recording:
+
+- `nifi/dockerfile_compiler.py:48` and `rdfc/dockerfile_compiler.py:170` are
+  **not** step-config readers. They read a *component-level* `tcs:config` of
+  type `tcs:DockerImageConfig` (`rdfc:Orchestrator tcs:config ?config`), which
+  translation does not touch. Left alone.
+- `nifi/config_compiler.py` has four read sites, not two: the property table,
+  two `OPTIONAL { ?step p-plan:hasInputVar ?config }` joins in the processor
+  and controller-service queries, and the `nifi:route` path used for
+  relationship selection.
+
+Final list, 11 sites in 5 files: `ldio/config_compiler.py` (2),
+`rdfc/config_compiler.py` (3), `nifi/config_compiler.py` (4),
+`nifi/remote_compiler.py` (1), `sw/env_var_compiler.py` (1).
+
+**Ordering needs no gate at all, in the end.** 1d proposed gating the file
+emitters on `dct:creator tcs:ConfigTranslator`. A provenance gate is exactly
+the wrong shape: it blocks forever on a pipeline the translator never applies
+to. An attempt at a smarter gate ("wait until every boundary step has a
+config") failed the same way on the autobridge pipeline for a different
+reason. What works is not gating at all — `lookup_step_config` /
+`step_config_clause` let a consumer run before or after the translator and
+read the right config either way. `SemanticWorksEnvVarCompiler` keeps one
+narrow gate, `utils.configs_translated`, because it folds a config body into
+a compose file rather than merely resolving a reference; that gate asks only
+whether the steps that *need* translating have been translated, so it is
+vacuous while no component declares a user-facing shape.
+
+**One more thing the plan assumed and should not have.** 1f is described here
+as rerouting reads "from `p-plan:hasInputVar` to `tcs:compilerConfig`". It is
+not a swap: the authored predicate remains the answer for every component with
+a single contract, which today is all of them. The reads go through a helper
+that expresses the preference, not through a different predicate.
 
 **Exit criterion:** the demonstrator pipeline still compiles to
 `conforms: true` and byte-identical output. This slice is a pure no-op.

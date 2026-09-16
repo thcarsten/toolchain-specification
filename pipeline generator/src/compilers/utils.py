@@ -185,30 +185,11 @@ def extract_config(reader: GraphReader, config_id: str) -> Union[dict, str]:
     # blank-node-reachable subject instead, or this call ever grows a
     # direction/along/against override, this exclude keeps holding
     # regardless.
-    body = reader.traverse(
-        config_id, stop_at_named_nodes=True, exclude="dcat:qualifiedRelation"
-    ).graph
-
-    # A config whose ``tcs:embedded`` root is itself *named* needs a
-    # second hop. ``stop_at_named_nodes`` is what keeps a config value
-    # that happens to be a real resource (a channel IRI) from dragging
-    # its own description in, and it cannot tell that apart from the
-    # body root -- so it stops there too and the config reads as empty.
-    # ``ConfigTranslator`` mints exactly such a root
-    # (``:compilerembedded_N``): a CONSTRUCT template needs a named
-    # ``?target``, since a blank node in a template is minted afresh per
-    # solution and a multi-row WHERE would scatter the body over several
-    # unconnected nodes. Traversing from the named root applies the same
-    # CBD rule one level down, so nested blank structure still comes
-    # across and referenced resources still don't.
-    for embedded in reader.filter(sub=config_id, pred="tcs:embedded").df["obj"]:
-        if str(embedded).startswith("_:"):
-            continue
-        body += reader.traverse(
-            embedded, stop_at_named_nodes=True, exclude="dcat:qualifiedRelation"
+    config_gd = GraphDict(
+        reader.traverse(
+            config_id, stop_at_named_nodes=True, exclude="dcat:qualifiedRelation"
         ).graph
-
-    config_gd = GraphDict(body)
+    )
     config_gd = config_gd.frame({"@id": config_id})
     return parse_config(config_gd.dict)[":config"]
 
@@ -808,3 +789,84 @@ def mint_missing_containers(reader: GraphReader, pipeline_id: str) -> GraphReade
             reader = reader.add(new_dependant_triples)
 
     return reader
+
+
+def configs_translated(reader: GraphReader) -> bool:
+    """Whether every step that *needs* a translated config already has one.
+
+    The ordering gate for compilers that read a step config. Only a
+    component declaring a ``tcs:userFacingConfigShape`` gets one:
+    everywhere else the authored config already is the compiler-facing
+    config, and :func:`lookup_step_config` falls back to it. So this asks
+    the narrow question rather than "has ConfigTranslator run", which
+    would block forever on a pipeline it never applies to — the mistake
+    that silently stopped the autobridge pipeline emitting its LDIO and
+    RDF-Connect files.
+
+    Vacuously true while no component declares a user-facing shape, so
+    it cannot deadlock a run today.
+    """
+    return reader.select(
+        "?step",
+        """
+        ?step a tcs:InstancePipelineComponent ;
+              p-plan:hasInputVar ?config ;
+              prov:specializationOf ?component .
+        ?component dcat:qualifiedRelation ?relation .
+        ?relation dcat:hadRole tcs:userFacingConfigShape .
+        FILTER NOT EXISTS { ?step tcs:compilerConfig ?compiler_config }
+        """,
+    ).empty
+
+
+def step_config_clause(step_var: str = "?step", config_var: str = "?config") -> str:
+    """A SPARQL fragment binding ``config_var`` to the config a compiler
+    should read for ``step_var``.
+
+    The query-side counterpart of :func:`lookup_step_config`, and it
+    encodes the same preference: a ``tcs:compilerConfig`` derived by
+    :class:`ConfigTranslator` when there is one, the authored
+    ``p-plan:hasInputVar`` otherwise.
+
+    Written as an ``OPTIONAL`` + ``COALESCE`` rather than the shorter
+    alternation ``(tcs:compilerConfig|p-plan:hasInputVar)``, which would
+    match *both* for a translated step and compile the step twice.
+
+    Expressing the fallback in the query, rather than waiting for every
+    step to have a derived config, is what keeps the two predicates from
+    becoming an ordering dependency: a consumer that runs before
+    :class:`ConfigTranslator` still reads the authored config and is
+    still correct, because for a component with no separate authoring
+    contract they are the same document.
+    """
+    authored = f"{config_var}Authored"
+    derived = f"{config_var}Derived"
+    return f"""
+        {step_var} p-plan:hasInputVar {authored} .
+        OPTIONAL {{ {step_var} tcs:compilerConfig {derived} }}
+        BIND(COALESCE({derived}, {authored}) AS {config_var})
+    """
+
+
+def lookup_step_config(reader: GraphReader, step_id: str) -> str | None:
+    """The config a compiler should read for ``step_id``.
+
+    ``tcs:compilerConfig`` when :class:`ConfigTranslator` derived one,
+    the authored ``p-plan:hasInputVar`` otherwise — which is the common
+    case, and not a fallback in any grudging sense: absent a
+    ``tcs:userFacingConfigShape`` the two contracts *are* the same
+    document, so translating would copy a config to itself.
+
+    Reading through here rather than gating every consumer on the
+    translation having happened is what keeps the two predicates from
+    turning into an ordering problem across the whole compiler set.
+    """
+    for predicate in ("tcs:compilerConfig", "p-plan:hasInputVar"):
+        configs = reader.filter(sub=step_id, pred=predicate).df["obj"].to_list()
+        if len(configs) == 1:
+            return configs[0]
+        if configs:
+            # More than one is a modelling error the cardinality shapes
+            # already report; guessing which to compile would bury it.
+            return None
+    return None

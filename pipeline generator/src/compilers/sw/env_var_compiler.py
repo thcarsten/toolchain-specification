@@ -4,7 +4,12 @@ import pandas as pd
 import json
 
 from ..compiler_abc import Compiler
-from ..utils import extract_config, parse_docker_compose_config
+from ..utils import (
+    configs_translated,
+    extract_config,
+    parse_docker_compose_config,
+    step_config_clause,
+)
 
 
 class SemanticWorksEnvVarCompiler(Compiler):
@@ -28,8 +33,18 @@ class SemanticWorksEnvVarCompiler(Compiler):
     def applies_to(cls, graph_reader: GraphReader) -> bool:
         """Triggered by any ``tcs:PipelineComponent`` in the ``sw:`` namespace,
         but only once ``PipelineAssembler`` has produced ``tcs:DockerContainer``
-        nodes — otherwise there is nothing to fold env vars into yet."""
+        nodes — otherwise there is nothing to fold env vars into yet — and
+        once any step that needs a translated config has one.
+
+        The translation gate is explicit here because this compiler's
+        trigger keys off a container existing, which happens long before
+        :class:`ConfigTranslator` could run. It is vacuous while no
+        component declares a ``tcs:userFacingConfigShape``, so it cannot
+        stall a run.
+        """
         if graph_reader.filter(pred="rdf:type", obj="tcs:DockerContainer").df.empty:
+            return False
+        if not configs_translated(graph_reader):
             return False
         df = graph_reader.filter(pred="rdf:type", obj="tcs:PipelineComponent").df
         return bool(df["sub"].str.startswith("sw:").any())
@@ -47,10 +62,10 @@ class SemanticWorksEnvVarCompiler(Compiler):
         # Checking that a bunch of conditions are met
         component_df = self.output_reader.select(
             "?component ?step ?step_config ?docker_config",
-            """
+            f"""
             ?component a tcs:PipelineComponent .
             ?step prov:specializationOf ?component .
-            ?step p-plan:hasInputVar ?step_config .
+            {step_config_clause(config_var="?step_config")}
             ?component tcs:config ?docker_config .
             ?docker_config a tcs:DockerComposeConfig .
             """,

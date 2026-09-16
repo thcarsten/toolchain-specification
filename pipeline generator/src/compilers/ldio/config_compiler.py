@@ -10,6 +10,7 @@ from ..utils import (
     extract_config,
     prepare_ldio_config,
     lookup_seeded_pipeline_id,
+    lookup_step_config,
 )
 
 
@@ -137,12 +138,8 @@ class LdioConfigCompiler(Compiler):
                 "name": ldio_label,
             }
 
-            if self.output_reader.ask(f"{step_id} p-plan:hasInputVar ?config ."):
-                config_id = receive_first(
-                    self.output_reader.filter(
-                        sub=step_id, pred="p-plan:hasInputVar"
-                    ).df["obj"],
-                )
+            config_id = lookup_step_config(self.output_reader, step_id)
+            if config_id is not None:
                 record["config"] = config_id
 
             list_records.append(record)
