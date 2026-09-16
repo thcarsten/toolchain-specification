@@ -123,7 +123,12 @@ class SemanticModelMapper(Compiler):
             .df["sub"]
             .to_list()
         )
-        conn_ids = (
+        # Sorted: the order connections are resolved in decides which one
+        # mints `:channel_0`, and those channel names are written into
+        # every emitted framework config. Connection nodes named by an
+        # author sort by IRI; anonymous ones were already given stable
+        # `:connection_N` IRIs by ``PipelineSeeder.name_blind_nodes``.
+        conn_ids = sorted(
             self.output_reader.filter(pred="rdf:type", obj="tcs:Connection")
             .df["sub"]
             .to_list()

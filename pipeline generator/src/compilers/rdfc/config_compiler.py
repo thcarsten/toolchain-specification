@@ -117,8 +117,12 @@ class RdfcConfigCompiler(Compiler):
             - :env_{env_i} rdfc:processor ?step .
         """
 
-        # Fetching the rdfc:Runners as list
-        runner_list = (
+        # Fetching the rdfc:Runners as list. Sorted: the enumeration
+        # order below decides which runner becomes ``:env_1``, and that
+        # name is written straight into the emitted ``pipeline.ttl``, so
+        # an unordered result makes the same pipeline emit different
+        # bytes between runs. Runners are always named IRIs.
+        runner_list = sorted(
             self.input_reader.filter(pred="rdf:type", obj="rdfc:Runner")
             .df["sub"]
             .to_list()

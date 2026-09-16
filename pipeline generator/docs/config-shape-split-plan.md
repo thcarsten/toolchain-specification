@@ -367,11 +367,41 @@ as a functional gain.
 - **`semantics-demo-pipeline.ttl` is not loaded.** It is untracked and absent
   from `DEFAULT_PIPELINE_FILES` in both configs. It is the cleanest existing
   example of the authoring style this feature targets, so it is the natural
-  acceptance test. Two small fixes first: `demo:TriggerAlert` uses
-  `a tcs:Config` where every other step uses `a tcs:PipelineConfig` (**[D]**
-  clerical — strictly optional, since `inference_rules.yaml` can derive it, but
-  worth correcting at source), and `demo:DeliverEmail` has no
-  `p-plan:hasInputVar` at all. Its `tcs:Connection` wiring is *not* a problem:
+  acceptance test. **Prepared for that, 2026-09-16** — it was *not* loadable as
+  written, and for a worse reason than this note first recorded: it did not
+  merely reuse the `demo:DishacledPipeline` plan IRI, it reused *every* named
+  subject in `pipeline_definition.ttl` (`demo:ApiPoll`,
+  `demo:ThresholdMonitor`, `demo:TriggerAlert`, `demo:DeliverEmail`,
+  `demo:measurementsStream`, `demo:thresholdMonitorAgent`). Loading both would
+  not have produced two pipelines but one, with each step carrying two
+  `prov:specializationOf` values and belonging to two plans —
+  `DEFAULT_PIPELINE_FILES` is documented as safe to load wholesale precisely
+  because "definitions use disjoint pipeline-id IRIs"
+  ([`pipeline_generator.py:81`](../src/compilers/pipeline_generator.py)).
+  Resolved by moving the file's own entities to `demo_sd:`
+  (`http://example.org/example/semantics-demo/`) with the plan as
+  `demo_sd:SemanticsDemoPipeline`, keeping the borrowed
+  `demo:SosaWaterLevelObservationShape` on `demo:` — exactly what
+  `pipeline_definition_autobridge.ttl` already does. An audit of all eight
+  definitions found no other cross-file subject overlap, bar the deliberate
+  one between `pipeline_definition_nifi.ttl` and its `.deployment.ttl`
+  overlay. Also fixed: `a tcs:Config` → `a tcs:PipelineConfig` on
+  `demo_sd:TriggerAlert` (**[D]** clerical), and a dangling
+  `tcs:outputShape` of `shape:Observation` on `demo_sd:ApiPoll` — an IRI
+  declared nowhere in `data/` — repointed at
+  `demo:SosaWaterLevelObservationShape`, which is what
+  `demo_sd:ThresholdMonitor` already names on its input side. That last one
+  matters beyond tidiness: this demo elides the demonstrator's parse/map
+  steps and wires poller straight into monitor, so those two shapes are the
+  two ends of one channel and `ValidationReportCompiler`'s throughput check
+  compares them.
+
+  **Not** fixed: `demo_sd:DeliverEmail` still has no `p-plan:hasInputVar`.
+  This note previously listed that as a defect; it is not one. The
+  demonstrator's own `demo:DeliverEmail` omits it too, deliberately and with
+  a comment saying so, and `sw:deliver-email-service` declares no config
+  shape to satisfy — it carries only a `tcs:config` docker-compose stanza.
+  Its `tcs:Connection` wiring is likewise *not* a problem:
   `SemanticModelMapper` is in both `PipelineGeneratorConfig` and
   `PipelineValidatorConfig` and expands connections into
   `tcs:readsFrom`/`tcs:writesTo` early in the fixpoint loop, long before
@@ -404,6 +434,11 @@ permission, per the `run-pipeline-generator-tests` skill.
    and should be a hard gate: any byte difference in slice 1 is a bug.
    The byte-identical semantic.works Tier-1/2 comparison cells at the end of
    [`src/demo.ipynb`](../src/demo.ipynb) cover the same ground.
+   **This gate is only meaningful because of the determinism work in §8** —
+   before it, the same input produced different bytes on every run and the
+   diff was pure noise. Run each side in a *fresh process*: within one
+   process, rdflib reuses blank-node labels and the hash seed is fixed, so
+   two back-to-back generations can agree while two real runs do not.
 3. **Validation still fires.** `PipelineValidator("demo:DishacledPipeline")`
    then `compilers[ValidationReportCompiler].conforms is True`. Crucially, also
    snapshot `validated_shapes` before the change and assert the **set is
@@ -422,3 +457,59 @@ permission, per the `run-pipeline-generator-tests` skill.
    `tcs:Connection`. Then re-run
    `data/pipelines/pipeline_definition_autobridge.ttl` to check the bonus claim
    in §5.
+
+---
+
+## 8. Prerequisite (done) — deterministic output
+
+Slice 1's exit criterion is "byte-identical output", and when this plan was
+written the generator could not meet it *for unchanged code*: the same input
+produced different bytes on every run. Two independent causes, both upstream of
+any emitted file:
+
+- **Unordered SPARQL / `set` iteration decided minted names.** Every
+  `:channel_N`, `:pipelineconfig_N`, `:segment_N`, `:env_N` and
+  `:throughputresult_N` is numbered from an enumeration whose order the
+  engine does not guarantee, and those names are written straight into the
+  emitted configs — `segment_N` is even a *filename*
+  (`ldio/pipelines/segment_N.yml`).
+- **Blank-node labels are per-parse random.** `PipelineSeeder.name_blind_nodes`
+  sorted its rename list with `sorted(set(...))` over rdflib blank-node
+  labels, which change on every parse, so the numbering was reshuffled even
+  with a fixed hash seed.
+
+Fixed by sorting each such enumeration on a *run-stable* key — named IRIs
+where they exist, and for blank nodes a recursive content-derived description
+(outgoing predicate/object pairs, descending into nested blank nodes, plus
+incoming edges). Sites: `pipeline_seeder`, `pipeline_enricher`,
+`segment_tagger`, `semantic_model_mapper`, `validation_report_compiler`,
+`nifi/config_compiler`, `rdfc/config_compiler`.
+
+**One of these was a real bug, not cosmetic.**
+`DockerComposeCompiler._lookup_container_service_names` built a
+container → service-name dict by comprehension, so a container instantiating
+two compose-config components kept whichever row arrived last. That is not
+hypothetical: `BridgeTransportCompiler` attaches `sw:rdf-ingest-service` to the
+triple store's container, so every `depends_on` in the emitted compose file
+flipped between `triplestore` and `rdf-ingest` from run to run. Resolved by
+ranking a bridge-inserted `tcs:{Entry,Exit}BoundaryComponent` *below* the
+component the container was minted for — a passenger does not name its host —
+which also happens to be what the hand-built demonstrator's compose file says.
+
+**Status: verified.** All four pipelines in `DEFAULT_PIPELINE_FILES` with a
+reachable definition (`demo:DishacledPipeline`, `demo_ab:AutoBridgedPipeline`,
+`demo_ln:LdioNifiBridgePipeline`, `demo_nl:NifiLdioBridgePipeline`) generate
+byte-identical folders across two fresh processes.
+
+**Known remaining wobble, deliberately left:** three bare `sh:NodeShape`
+passthrough shapes are structurally indistinguishable and so tie in the sort.
+Which one wins a given index does not reach an emitted file —
+`ValidationReportCompiler._unblank_synthetic_shape_ids` renders them back as
+blank nodes in the report — so this is inert. If a future change starts
+emitting those names, it stops being inert.
+
+**Also worth knowing:** `FileMaterializer` writes but never prunes, so an `out/`
+folder regenerated after a segment renumbering keeps the old `segment_N.yml`
+alongside the new one. Stale files from before the fix are still sitting in
+`out/dishacled-full` and `out/ldio-nifi`; clear the folder before using it as a
+diff baseline.

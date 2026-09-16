@@ -85,6 +85,13 @@ class PipelineEnricher(Compiler):
             "?successor ?predecessor",
             "?successor p-plan:isPrecededBy ?predecessor .",
         )
+        # SPARQL result order is not guaranteed, and the iteration order
+        # decides which edge gets `:channel_0`. Those names are written
+        # into every emitted framework config, so leaving the order to
+        # the engine makes the generator emit different bytes for
+        # identical input. Both columns are named IRIs, so sorting them
+        # is total and stable.
+        edges = edges.sort_values(["successor", "predecessor"])
 
         for _, row in edges.iterrows():
             successor = row["successor"]
@@ -128,7 +135,9 @@ class PipelineEnricher(Compiler):
         steps that have none, and never guesses which existing config a
         later compiler should use.
         """
-        steps = (
+        # Sorted for the same reason as the channel edges above: the
+        # iteration order decides which step gets `:pipelineconfig_0`.
+        steps = sorted(
             self.output_reader.filter(
                 pred="rdf:type", obj="tcs:InstancePipelineComponent"
             )

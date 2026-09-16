@@ -100,9 +100,12 @@ class SegmentTagger(Compiler):
                     stack.append(successor)
 
     def _lookup_container(self, step: str) -> str | None:
-        containers = (
+        containers = sorted(
             self.output_reader.filter(pred="tcs:runs", obj=step).df["sub"].to_list()
         )
+        # Sorted before taking the first: a step run by more than one
+        # container is a modelling error, but picking a different one
+        # per run would make the segment walk itself unstable.
         return containers[0] if containers else None
 
     def _is_exit(self, step: str) -> bool:
@@ -118,7 +121,7 @@ class SegmentTagger(Compiler):
             ?next tcs:readsFrom ?ch .
             """,
         )
-        successors = rows["next"].drop_duplicates().to_list()
+        successors = sorted(rows["next"].drop_duplicates().to_list())
         if container is None:
             return successors
         return [
@@ -136,7 +139,11 @@ class SegmentTagger(Compiler):
             .drop_duplicates()
             .to_list()
         )
-        return [s for s in all_steps if s not in assigned]
+        # Sorted: this order decides which connected component gets
+        # `:segment_0`, and the segment id becomes an emitted LDIO
+        # filename (`ldio/pipelines/segment_N.yml`). An unordered result
+        # here renames output files between otherwise identical runs.
+        return sorted(s for s in all_steps if s not in assigned)
 
     def _tag_connected_component(
         self, seed: str, segment_id: str, assigned: dict[str, str]

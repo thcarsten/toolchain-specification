@@ -262,20 +262,54 @@ class DockerComposeCompiler(Compiler):
         one container per such component). Reuses
         :attr:`config_service_name` — the names :meth:`merge_docker_compose_configs`
         already derived — instead of re-parsing configs a second time.
+
+        One container can break that one-to-one rule: a boundary
+        component inserted by :class:`BridgeTransportCompiler` is
+        attached to the container on its side of the hop, and if that
+        component is itself a microservice the container ends up owning
+        two compose services — ``sw:rdf-ingest-service`` landing on the
+        triple store's container is the shipped example. The host
+        component wins: ``depends_on`` is a statement about the service
+        the container was minted for, and the bridge service is a
+        passenger on it. Sorting breaks any remaining tie so the emitted
+        compose file does not depend on SPARQL result order.
         """
         rows = self.output_reader.select(
-            "?container ?config",
+            "?container ?component ?config",
             """
             ?container a tcs:DockerContainer ; tcs:instantiates ?component .
             ?component tcs:config ?config .
             ?config a tcs:DockerComposeConfig .
             """,
         )
+
+        candidates: dict[str, list[tuple[int, str, str]]] = {}
+        for container, component, config in zip(
+            rows["container"], rows["component"], rows["config"]
+        ):
+            if config not in self.config_service_name:
+                continue
+            candidates.setdefault(container, []).append(
+                (self._is_boundary_component(component), component, config)
+            )
+
         return {
-            container: self.config_service_name[config]
-            for container, config in zip(rows["container"], rows["config"])
-            if config in self.config_service_name
+            container: self.config_service_name[sorted(entries)[0][2]]
+            for container, entries in candidates.items()
         }
+
+    def _is_boundary_component(self, component: str) -> int:
+        """``1`` for a bridge-inserted boundary component, ``0`` otherwise
+        — a sort key that ranks host components ahead of passengers."""
+        return int(
+            self.output_reader.ask(
+                f"""
+                {{ {component} a tcs:EntryBoundaryComponent }}
+                UNION
+                {{ {component} a tcs:ExitBoundaryComponent }}
+                """
+            )
+        )
 
     def _lookup_explicit_container_dependencies(self) -> set[tuple[str, str]]:
         """Phase 1: container pairs ``(c1, c2)`` meaning c1 depends_on c2,

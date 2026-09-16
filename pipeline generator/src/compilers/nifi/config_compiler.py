@@ -761,6 +761,15 @@ class NifiConfigCompiler(Compiler):
             """,
         )
 
+        # Sorted by the NiFi property name: the row order is carried
+        # straight into the emitted flow.json's property objects, whose
+        # key order a JSON dump preserves. SPARQL does not guarantee an
+        # order, so without this the same pipeline serializes its
+        # properties differently between runs.
+        properties = properties.sort_values(
+            ["property_name", "predicate"], na_position="last"
+        ).reset_index(drop=True)
+
         unmapped = properties[properties["property_name"].isna()]
         if not unmapped.empty:
             predicates = ", ".join(unmapped["predicate"].astype(str))

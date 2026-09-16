@@ -1,4 +1,4 @@
-from rdflib import Graph
+from rdflib import BNode, Graph
 
 from rdfine import GraphReader, receive_first
 
@@ -91,9 +91,23 @@ class PipelineSeeder(Compiler):
             .df["sub"]
             .to_list()
         )
-        rename_ids = list(set(rename_ids))
+        # Sorted by a content-derived key, never by blank-node label:
+        # rdflib mints a fresh random label on every parse, so both the
+        # raw list order and ``set`` iteration order differ from run to
+        # run. The index below is baked into the resulting IRI, which is
+        # then baked into every emitted file that references the
+        # resource, so an unstable order means the generator emits
+        # different bytes for identical input.
+        rename_ids = sorted(set(rename_ids), key=self._describe_node_canonically)
 
-        for i, rename_id in enumerate(rename_ids):
+        # One counter per type prefix rather than a single running index
+        # across all blank nodes: with ~150 renameable nodes in a loaded
+        # catalog, a global counter numbered the pipeline's third channel
+        # `:channel_139`, which reads like a bug every time someone opens
+        # the generated pipeline.ttl.
+        next_index: dict[str, int] = {}
+
+        for rename_id in rename_ids:
             type_list = (
                 self.output_reader.filter(sub=rename_id, pred="rdf:type")
                 .df["obj"]
@@ -104,6 +118,7 @@ class PipelineSeeder(Compiler):
             prefix = (
                 ":" + self.output_reader.prefix_store.drop_string(first_type).lower()
             )
+            i = next_index.get(prefix, 0)
             new_name = f"{prefix}_{i}"
             # Guard against colliding with a name already in use (e.g. an
             # author-declared resource in the pipeline definition) — bump
@@ -112,4 +127,57 @@ class PipelineSeeder(Compiler):
             while self.output_reader.check_exists(new_name):
                 i += 1
                 new_name = f"{prefix}_{i}"
+            next_index[prefix] = i + 1
             self.output_reader = self.output_reader.rename(rename_id, new_name)
+
+    def _describe_node_canonically(self, node_id: str) -> tuple[str, tuple[str, ...]]:
+        """Return a run-stable sort key describing ``node_id`` by content.
+
+        Blank-node labels cannot be used to order anything that survives
+        into generated output — rdflib assigns them fresh on every
+        parse. This builds a key out of what the node *says* instead:
+        its outgoing predicate/object pairs (descending recursively into
+        nested blank nodes, so two shapes that differ only in a nested
+        ``sh:property`` still sort apart) plus the edges pointing at it,
+        which is what separates otherwise-identical configs attached to
+        different named steps.
+
+        Nodes that remain tied are structurally indistinguishable, so
+        which of them wins a given index does not change the meaning of
+        the build. Against the shipped catalog exactly one tie remains:
+        three bare ``sh:NodeShape`` passthrough shapes, whose minted
+        names never reach an emitted file —
+        ``ValidationReportCompiler._unblank_synthetic_shape_ids`` renders
+        them back as blank nodes in the report.
+        """
+        graph = self.output_reader.graph
+        # Every id reaching here came from a ``sub="^_:"`` filter, so it
+        # is a blank node in rdfine's ``_:<label>`` rendering.
+        node = BNode(node_id[2:])
+
+        def describe(term, seen: frozenset) -> str:
+            if not isinstance(term, BNode):
+                return str(term)
+            if term in seen:
+                # Blank-node cycles are legal RDF; stop rather than recur
+                # forever, and let the rest of the description separate.
+                return "<cycle>"
+            inner = seen | {term}
+            return (
+                "["
+                + ";".join(
+                    sorted(
+                        f"{pred}={describe(obj, inner)}"
+                        for pred, obj in graph.predicate_objects(term)
+                    )
+                )
+                + "]"
+            )
+
+        incoming = tuple(
+            sorted(
+                f"{describe(subject, frozenset({node}))}<{pred}"
+                for subject, pred in graph.subject_predicates(node)
+            )
+        )
+        return describe(node, frozenset()), incoming

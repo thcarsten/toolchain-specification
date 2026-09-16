@@ -466,8 +466,15 @@ class ValidationReportCompiler(Compiler):
             ?outputRel dcat:hadRole tcs:outputShape ; dct:relation ?outputShape .
             """,
         )
-        self.shapes_to_match = pairs[pairs["channel"].isin(channels)].reset_index(
-            drop=True
+        # Sorted by channel: this row order decides which channel gets
+        # `:throughputresult_0` in the emitted report, so leaving it to
+        # the SPARQL engine makes the report's bytes differ between runs
+        # over identical input. Sorting on the shape columns too keeps
+        # the order total when one channel carries several pairs.
+        self.shapes_to_match = (
+            pairs[pairs["channel"].isin(channels)]
+            .sort_values(["channel", "inputShape", "outputShape"])
+            .reset_index(drop=True)
         )
 
     def validate_throughput_shapes(self) -> None:
@@ -625,7 +632,19 @@ class ValidationReportCompiler(Compiler):
         if not synthetic:
             return report
 
-        replacement = {node: BNode() for node in synthetic}
+        # Labelled in sorted order rather than left to ``BNode()``'s
+        # random uuid. A synthetic shape referenced from exactly one
+        # place serializes as an inline ``[]`` and its label never
+        # shows; one referenced from several ``tcs:ThroughputMatchResult``
+        # rows cannot be inlined, so Turtle prints the label — and a
+        # random one makes the emitted report differ between runs over
+        # identical input. The IRIs sort deterministically because
+        # ``PipelineSeeder.name_blind_nodes`` numbers them from a
+        # content-derived order.
+        replacement = {
+            node: BNode(f"syntheticshape{index}")
+            for index, node in enumerate(sorted(synthetic, key=str))
+        }
         new_graph = Graph(bind_namespaces="none")
         for triple in report.graph:
             new_graph.add(tuple(replacement.get(term, term) for term in triple))
