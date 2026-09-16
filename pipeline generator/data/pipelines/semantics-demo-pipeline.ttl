@@ -76,11 +76,48 @@ demo_sd:ThresholdMonitor a tcs:InstancePipelineComponent ;
         dct:relation demo:SosaWaterLevelObservationShape
     ] .
 
+# The monitor's violations reach the alert service through the triple
+# store, not by a direct hand-off. `demo_sd:TriggerAlert` reacts to a
+# delta notification from the store; there is no channel between them,
+# and asserting one made the build unbridgeable -- nothing in the
+# catalog can accept an HTTP payload on the error-alert service's
+# behalf, because it has no ingest endpoint at all.
+#
+# Routed through `demo_sd:StoreViolations` instead, which does have one:
+# `sw:rdf-ingest-service` fronts the triple store, so the generator can
+# insert it as a boundary step (with an `rdfc:HttpOut` on the far side)
+# and the hop becomes expressible.
+
 [
     a tcs:Connection ;
     tcs:from demo_sd:ThresholdMonitor ;
-    tcs:to demo_sd:TriggerAlert
+    tcs:to demo_sd:LogViolations
 ] .
+
+# In series rather than as a branch off the monitor's output: a tap
+# would be a fan-out, which `SemanticModelMapper` still rejects. The
+# logger declares an optional `rdfc:writer`, so it can pass what it
+# reads straight on to the store and print it on the way.
+demo_sd:LogViolations a tcs:InstancePipelineComponent ;
+    prov:specializationOf rdfc:LogProcessorJs ;
+    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            rdfc:label "threshold-violations" ;
+            rdfc:level "info"
+        ]
+    ] .
+
+[
+    a tcs:Connection ;
+    tcs:from demo_sd:LogViolations ;
+    tcs:to demo_sd:StoreViolations
+] .
+
+demo_sd:StoreViolations a tcs:InstancePipelineComponent ;
+    prov:specializationOf sw:triple-store ;
+    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline .
 
 demo_sd:TriggerAlert a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:loket-error-alert-service ;
@@ -94,11 +131,11 @@ demo_sd:TriggerAlert a tcs:InstancePipelineComponent ;
         ]
     ] .
 
-[
-    a tcs:Connection ;
-    tcs:from demo_sd:TriggerAlert ;
-    tcs:to demo_sd:DeliverEmail
-] .
+# Likewise store-mediated, and for the same reason: `TriggerAlert`
+# writes `nmo:Email` triples and `DeliverEmail` polls the mail folder
+# they land in. Neither reads nor writes a channel, so both are left
+# without `tcs:readsFrom`/`tcs:writesTo` -- the same modelling the
+# demonstrator uses (see pipeline_definition.ttl, note 3).
 
 demo_sd:DeliverEmail a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:deliver-email-service ;
