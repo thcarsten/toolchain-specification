@@ -117,7 +117,8 @@ class RdfcHttpServerConfigCompiler(Compiler):
         config_id = self._mint_config_id()
         new_triples = self.output_reader.construct(
             f"""
-            {step} p-plan:hasInputVar {config_id} .
+            {step} p-plan:hasInputVar {config_id} ;
+                tcs:compilerConfig {config_id} .
             {config_id} a tcs:PipelineConfig ;
                 tcs:embedded [
                     rdfc:port {port} ;

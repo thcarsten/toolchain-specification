@@ -49,7 +49,7 @@ class LdioConfigCompiler(Compiler):
         """Fires once a container instantiates the LDIO orchestrator,
         :class:`SegmentTagger` has recorded provenance so every LDIO
         step already carries its ``tcs:segment`` tag, and every LDIO
-        step in the container has a ``p-plan:hasInputVar``. The last
+        step in the container has a ``tcs:compilerConfig``. The last
         gate defers this compiler until the boundary config compilers
         have finished populating any Bridge-inserted steps — otherwise
         this compiler would emit YAML that silently omits an
@@ -75,7 +75,7 @@ class LdioConfigCompiler(Compiler):
             ?step a tcs:InstancePipelineComponent ;
                   prov:specializationOf ?comp .
             ?comp ldio:type ?anytype .
-            FILTER NOT EXISTS { ?step p-plan:hasInputVar ?c }
+            FILTER NOT EXISTS { ?step tcs:compilerConfig ?c }
             """,
         )
         return unconfigured.empty

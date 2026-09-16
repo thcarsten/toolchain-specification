@@ -83,7 +83,8 @@ class NifiInvokeHttpConfigCompiler(Compiler):
         )
         new_triples = self.output_reader.construct(
             f"""
-            {step} p-plan:hasInputVar {config_id} .
+            {step} p-plan:hasInputVar {config_id} ;
+                tcs:compilerConfig {config_id} .
             {config_id} a tcs:PipelineConfig ;
                 tcs:embedded [
                     nifi:httpMethod "{self.default_http_method}" ;

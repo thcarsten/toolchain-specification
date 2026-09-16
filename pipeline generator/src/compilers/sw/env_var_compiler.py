@@ -4,12 +4,7 @@ import pandas as pd
 import json
 
 from ..compiler_abc import Compiler
-from ..utils import (
-    configs_translated,
-    extract_config,
-    parse_docker_compose_config,
-    step_config_clause,
-)
+from ..utils import extract_config, parse_docker_compose_config
 
 
 class SemanticWorksEnvVarCompiler(Compiler):
@@ -44,7 +39,13 @@ class SemanticWorksEnvVarCompiler(Compiler):
         """
         if graph_reader.filter(pred="rdf:type", obj="tcs:DockerContainer").df.empty:
             return False
-        if not configs_translated(graph_reader):
+        if not graph_reader.select(
+            "?step",
+            """
+            ?step a tcs:InstancePipelineComponent ; p-plan:hasInputVar ?config .
+            FILTER NOT EXISTS { ?step tcs:compilerConfig ?compiler_config }
+            """,
+        ).empty:
             return False
         df = graph_reader.filter(pred="rdf:type", obj="tcs:PipelineComponent").df
         return bool(df["sub"].str.startswith("sw:").any())
@@ -62,10 +63,10 @@ class SemanticWorksEnvVarCompiler(Compiler):
         # Checking that a bunch of conditions are met
         component_df = self.output_reader.select(
             "?component ?step ?step_config ?docker_config",
-            f"""
+            """
             ?component a tcs:PipelineComponent .
             ?step prov:specializationOf ?component .
-            {step_config_clause(config_var="?step_config")}
+            ?step tcs:compilerConfig ?step_config .
             ?component tcs:config ?docker_config .
             ?docker_config a tcs:DockerComposeConfig .
             """,

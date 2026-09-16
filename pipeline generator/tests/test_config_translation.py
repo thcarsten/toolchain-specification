@@ -62,18 +62,36 @@ ldio:HttpInPoller dcat:qualifiedRelation [
 """
 
 
-def test_a_component_with_one_contract_is_not_translated(catalog_graph):
+def test_a_component_with_one_contract_aliases_its_authored_config(catalog_graph):
     """No `tcs:userFacingConfigShape` means the authored config already
-    is the compiler-facing one. Deriving a copy would buy nothing, and
-    making every consumer wait for that copy is what silently stopped the
-    autobridge pipeline emitting its files."""
+    is the compiler-facing one, so `tcs:compilerConfig` points at that
+    very node — one triple, no copy. The predicate still has to be there:
+    a compiler-facing shape targets `tcs:compilerConfig/tcs:embedded`,
+    and without the alias it would select nothing and validate nothing
+    while still reporting `conforms: true`."""
     parse_extra(catalog_graph, PIPELINE)
     _, build = compile_pipeline(catalog_graph, "demo:Test")
 
-    derived = build.select(
-        "?step", "?step a tcs:InstancePipelineComponent ; tcs:compilerConfig ?config ."
+    for step in ("demo:In", "demo:Out"):
+        authored = build.filter(sub=step, pred="p-plan:hasInputVar").df["obj"].to_list()
+        derived = build.filter(sub=step, pred="tcs:compilerConfig").df["obj"].to_list()
+        assert derived == authored, f"{step}: {derived!r} is not the authored config"
+
+
+def test_every_configured_step_has_a_compiler_config(catalog_graph):
+    """Both shape roles target their own path unconditionally, so the
+    predicate must exist for every step that has a config at all."""
+    parse_extra(catalog_graph, PIPELINE)
+    _, build = compile_pipeline(catalog_graph, "demo:Test")
+
+    missing = build.select(
+        "?step",
+        """
+        ?step a tcs:InstancePipelineComponent ; p-plan:hasInputVar ?config .
+        FILTER NOT EXISTS { ?step tcs:compilerConfig ?compiler_config }
+        """,
     )
-    assert derived.empty, f"unexpectedly translated: {list(derived['step'])}"
+    assert missing.empty, f"no compiler-facing config: {list(missing['step'])}"
 
 
 def test_lookup_step_config_falls_back_to_the_authored_config(catalog_graph):
@@ -84,6 +102,9 @@ def test_lookup_step_config_falls_back_to_the_authored_config(catalog_graph):
     config_id = lookup_step_config(build, "demo:Out")
     assert config_id is not None
     authored = build.filter(sub="demo:Out", pred="p-plan:hasInputVar").df["obj"].iloc[0]
+    # Resolves to the authored node either way here, since the alias
+    # points at it — the helper's job is that a consumer running before
+    # ConfigTranslator gets the same answer.
     assert config_id == authored
     # And it is readable as a config, not just present.
     assert extract_config(build, config_id) != {}

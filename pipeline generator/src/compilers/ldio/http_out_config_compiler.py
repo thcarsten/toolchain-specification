@@ -79,7 +79,8 @@ class LdioHttpOutConfigCompiler(Compiler):
         content_type = content_type or self.default_content_type
         new_triples = self.output_reader.construct(
             f"""
-            {step} p-plan:hasInputVar {config_id} .
+            {step} p-plan:hasInputVar {config_id} ;
+                tcs:compilerConfig {config_id} .
             {config_id} a tcs:PipelineConfig ;
                 tcs:embedded [
                     ldio:endpoint "{endpoint}" ;

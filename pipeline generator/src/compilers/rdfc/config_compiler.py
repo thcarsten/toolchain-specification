@@ -50,7 +50,7 @@ class RdfcConfigCompiler(Compiler):
         orchestrator, :class:`SegmentTagger` has recorded provenance
         (which implies :class:`BridgeTransportCompiler` has finished
         inserting any boundary steps), and every RDFC step in that
-        container already has a ``p-plan:hasInputVar``. The last two
+        container already has a ``tcs:compilerConfig``. The last two
         gates together defer this compiler until the boundary config
         compilers have populated any Bridge-inserted steps — otherwise
         the emitted ``pipeline.ttl`` would silently omit their type
@@ -75,7 +75,7 @@ class RdfcConfigCompiler(Compiler):
             ?step a tcs:InstancePipelineComponent ;
                   prov:specializationOf ?comp .
             ?comp a rdfc:Processor .
-            FILTER NOT EXISTS { ?step p-plan:hasInputVar ?c }
+            FILTER NOT EXISTS { ?step tcs:compilerConfig ?c }
             """,
         )
         return unconfigured.empty

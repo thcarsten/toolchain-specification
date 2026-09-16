@@ -142,25 +142,63 @@ config read as empty, and framing a named root yields an `@id` key that
 `SemanticWorksEnvVarCompiler` duly emitted as a docker-compose environment
 variable.
 
-**`tcs:compilerConfig` exists only for steps that need it.** A component
-declaring no `tcs:userFacingConfigShape` has one contract, not two, so its
-authored config already *is* the compiler-facing config and nothing is
-derived. Consumers read through `utils.lookup_step_config` (Python) or
-`utils.step_config_clause` (SPARQL), which prefer a derived config and fall
-back to the authored one.
+**Every configured step carries `tcs:compilerConfig`; only some carry a
+*derived* one.** A component declaring no `tcs:userFacingConfigShape` has one
+contract, not two, so the predicate is pointed straight at the authored config
+node — one triple, no copy. A component declaring both gets a node built by its
+`tcs:configTranslation`.
 
-That fallback is what keeps the two predicates from becoming an ordering
-problem, and the problem is not hypothetical. The first implementation copied
-*every* config so `tcs:compilerConfig` would be universal, which forced every
-consumer to wait for the translation to have happened, which needed a gate on
-each of them. One such gate — "wait until every boundary step has an authored
-config" — is unsatisfiable on
-`pipeline_definition_autobridge.ttl`, whose bridge-inserted
-`sw:rdf-ingest-service` step never gets one: `ConfigTranslator` never fired,
-and the gated emitters silently dropped `ldio/` and `rdfc/pipeline.ttl` from
-the build. With the fallback, a consumer that runs before the translator still
-reads the right config, because for a one-contract component they are the same
-node.
+That alias is what lets each role's SHACL target stay unconditional, which is
+the whole reason it exists:
+
+```sparql
+# compilerFacingConfigShape
+SELECT ?this WHERE { ?instance prov:specializationOf <Component> ;
+                     tcs:compilerConfig/tcs:embedded ?this . }
+# userFacingConfigShape
+SELECT ?this WHERE { ?instance prov:specializationOf <Component> ;
+                     p-plan:hasInputVar/tcs:embedded ?this . }
+```
+
+Without it, a compiler-facing shape would select nothing for an untranslated
+step and validate nothing at all, while still reporting `conforms: true`.
+
+**Compilers read `tcs:compilerConfig` and never `p-plan:hasInputVar`.** The
+author writes one document, the compilers read another, and nothing in the
+compiler package looks at both — that separation is the point of the split, not
+an implementation detail. `utils.lookup_step_config` is the single read path.
+
+**Whoever mints a config states both predicates.** This is the part that took
+two wrong attempts to find. `ConfigTranslator` runs at most once, but configs
+are not all minted by then: the per-boundary compilers mint one for each step
+`BridgeTransportCompiler` inserted, and `RdfcHttpOutConfigCompiler` /
+`LdioHttpOutConfigCompiler` only become eligible in a *later* fixpoint pass,
+after the translator has already run. A step configured then would keep no
+`tcs:compilerConfig` at all and its file-emitting compiler would stall —
+silently dropping `ldio/`, `rdfc/pipeline.ttl` or `nifi/flow.json` from the
+build, observed on three of the four shipped pipelines.
+
+The resolution is not a gate but an observation: a generator-minted config has
+no author, so it *is* compiler-facing by construction. Each of the six minting
+sites now writes `p-plan:hasInputVar` and `tcs:compilerConfig` together, and
+`ConfigTranslator` handles only author-written configs, which exist from
+`PipelineEnricher` onwards — long before it runs. Should a boundary component
+ever declare a user-facing shape, the translator replaces the alias rather than
+skipping the step.
+
+**Invariant:** every config carries `tcs:compilerConfig` from the moment it
+exists, and the authored side never leaves `p-plan:hasInputVar`.
+
+**Rejected along the way**, both recorded because they look reasonable:
+
+- *Copy every config so the predicate is universal.* Makes consumers wait for
+  the copy, so each needs an ordering gate; one such gate ("wait until every
+  boundary step has an authored config") is unsatisfiable on
+  `pipeline_definition_autobridge.ttl`, whose bridge-inserted
+  `sw:rdf-ingest-service` step never gets one.
+- *Let consumers fall back to the authored config when no derived one exists.*
+  Removes the ordering problem, but reinstates exactly the mixing the two roles
+  exist to prevent — a compiler reading the authoring contract.
 
 ---
 
@@ -299,24 +337,21 @@ Final list, 11 sites in 5 files: `ldio/config_compiler.py` (2),
 `rdfc/config_compiler.py` (3), `nifi/config_compiler.py` (4),
 `nifi/remote_compiler.py` (1), `sw/env_var_compiler.py` (1).
 
-**Ordering needs no gate at all, in the end.** 1d proposed gating the file
-emitters on `dct:creator tcs:ConfigTranslator`. A provenance gate is exactly
-the wrong shape: it blocks forever on a pipeline the translator never applies
-to. An attempt at a smarter gate ("wait until every boundary step has a
-config") failed the same way on the autobridge pipeline for a different
-reason. What works is not gating at all — `lookup_step_config` /
-`step_config_clause` let a consumer run before or after the translator and
-read the right config either way. `SemanticWorksEnvVarCompiler` keeps one
-narrow gate, `utils.configs_translated`, because it folds a config body into
-a compose file rather than merely resolving a reference; that gate asks only
-whether the steps that *need* translating have been translated, so it is
-vacuous while no component declares a user-facing shape.
+**Ordering.** 1d proposed gating the file emitters on `dct:creator
+tcs:ConfigTranslator`. A provenance gate is the wrong shape — it blocks
+forever on a pipeline the translator never applies to. What works is the
+mint-time alias described in §2: because every config carries
+`tcs:compilerConfig` from the moment it exists, an emitter's existing "every
+step in scope has a config" trigger simply asks for the compiler-facing one
+and is satisfied at the same moment it used to be.
+`SemanticWorksEnvVarCompiler` keeps one explicit check, its trigger keying off
+a container existing rather than off configs.
 
-**One more thing the plan assumed and should not have.** 1f is described here
-as rerouting reads "from `p-plan:hasInputVar` to `tcs:compilerConfig`". It is
-not a swap: the authored predicate remains the answer for every component with
-a single contract, which today is all of them. The reads go through a helper
-that expresses the preference, not through a different predicate.
+**A note on the 1f framing.** This section describes rerouting reads "from
+`p-plan:hasInputVar` to `tcs:compilerConfig`", which is right — but the two
+predicates point at the *same node* for every component in the catalog today,
+so the reroute is a no-op at the data level and a real change at the
+architectural one: after it, no compiler reads the authoring contract.
 
 **Exit criterion:** the demonstrator pipeline still compiles to
 `conforms: true` and byte-identical output. This slice is a pure no-op.
