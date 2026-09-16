@@ -1,0 +1,105 @@
+@prefix : <http://example.org/example/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix demo: <http://example.org/example/demonstrator/> .
+@prefix demo_sd: <http://example.org/example/semantics-demo/> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix ldio: <http://example.org/example/ldio/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix p-plan: <http://purl.org/net/p-plan#> .
+@prefix proc: <http://dishacled.example.org/processors#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix qudt: <http://qudt.org/schema/qudt/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdfc: <https://w3id.org/rdf-connect#> .
+@prefix schema: <https://schema.org/> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix sosa: <http://www.w3.org/ns/sosa/> .
+@prefix sw: <https://semantic.works/services/> .
+@prefix tcs: <https://w3id.org/toolchain#> .
+@prefix tm: <https://w3id.org/rdf-connect/threshold-monitor#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:      <https://example.org/> .
+
+demo_sd:SemanticsDemoPipeline a tcs:PipelineDefinition ;
+    rdfs:label "DiSHACLed demonstrator pipeline (scenario a)" ;
+    rdfs:comment """
+        Annotated api -> 
+        polling -> 
+        threshold-monitor -> 
+        oslc:Error alerts in store '->' 
+        email write '->' 
+        delivery 
+        """ .
+
+demo_sd:ApiPoll a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:HttpInPoller ;
+    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:url "https://dishacled-api.azurewebsites.net/api/v1/source-a/current" ;
+            ldio:cron "*/10 * * * * *"
+        ]
+    ] ;
+    dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:outputShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] .
+
+[
+    a tcs:Connection ;
+    tcs:from demo_sd:ApiPoll ;
+    tcs:to demo_sd:ThresholdMonitor
+] .
+
+
+# Reader side stays explicit — the upstream producer (SdsifyMeasurements)
+# branches, so isPrecededBy alone couldn't tell which output this reads.
+demo_sd:ThresholdMonitor a tcs:InstancePipelineComponent ;
+    prov:specializationOf tm:ThresholdMonitorJs ;
+    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            tm:path sosa:hasSimpleResult ;
+            tm:min "0.0"^^xsd:double ;
+            tm:max "300.0"^^xsd:double ;
+            # tm:stream demo_sd:measurementsStream ;
+            tm:creator demo_sd:thresholdMonitorAgent
+        ]
+    ] ;
+        dcat:qualifiedRelation [
+        a dcat:Relationship ;
+        dcat:hadRole tcs:inputShape ;
+        dct:relation demo:SosaWaterLevelObservationShape
+    ] .
+
+[
+    a tcs:Connection ;
+    tcs:from demo_sd:ThresholdMonitor ;
+    tcs:to demo_sd:TriggerAlert
+] .
+
+demo_sd:TriggerAlert a tcs:InstancePipelineComponent ;
+    prov:specializationOf sw:loket-error-alert-service ;
+    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            :EMAIL_FROM "mail@threshold-monitoring.com" ;
+            :EMAIL_TO "firefighters@antwerpen.be" ;
+            :ERROR_TEMPLATE "/mnt/templates/error.hbs"
+        ]
+    ] .
+
+[
+    a tcs:Connection ;
+    tcs:from demo_sd:TriggerAlert ;
+    tcs:to demo_sd:DeliverEmail
+] .
+
+demo_sd:DeliverEmail a tcs:InstancePipelineComponent ;
+    prov:specializationOf sw:deliver-email-service ;
+    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline .
