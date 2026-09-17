@@ -240,13 +240,34 @@ class DockerComposeCompiler(Compiler):
         pointing at a nonexistent service.
         """
         container_service = self._lookup_container_service_names()
+        component_service = self._lookup_component_service_names()
         explicit = self._lookup_explicit_container_dependencies()
         floworder = self._lookup_floworder_container_dependencies(explicit)
 
+        def service_of(component: str | None, container: str) -> str | None:
+            """The service a dependency belongs to.
+
+            A container can host more than one compose service — a
+            boundary component inserted by
+            :class:`BridgeTransportCompiler` rides on the container of
+            the step it fronts, which for ``sw:rdf-ingest-service`` is
+            the triple store's. Resolving through the container would
+            then charge rdf-ingest's ``dct:requires`` to ``triplestore``,
+            and since ``mu-authorization`` requires the triple store in
+            turn, docker compose refuses the file outright:
+            ``database -> triplestore -> database``. The requirement
+            belongs to the component that declares it. The container is
+            the fallback for a component with no compose service of its
+            own (a processor folded into its orchestrator).
+            """
+            if component is not None and component in component_service:
+                return component_service[component]
+            return container_service.get(container)
+
         depends_on: dict[str, set[str]] = {}
-        for container1, container2 in explicit | floworder:
-            name1 = container_service.get(container1)
-            name2 = container_service.get(container2)
+        for component1, container1, component2, container2 in explicit | floworder:
+            name1 = service_of(component1, container1)
+            name2 = service_of(component2, container2)
             if name1 is None or name2 is None or name1 == name2:
                 continue
             depends_on.setdefault(name1, set()).add(name2)
@@ -254,6 +275,42 @@ class DockerComposeCompiler(Compiler):
         for name, deps in depends_on.items():
             if name in self.compose_file["services"]:
                 self.compose_file["services"][name]["depends_on"] = sorted(deps)
+
+    def _lookup_component_service_names(self) -> dict[str, str]:
+        """Map each component that owns a ``tcs:DockerComposeConfig`` to
+        the compose service it contributes.
+
+        Finer-grained than :meth:`_lookup_container_service_names`, and
+        the two answer different questions: this one says "which service
+        *is* this component", the other "which service represents this
+        container". They differ exactly when a container hosts more than
+        one compose service, which is when charging a dependency to the
+        container gets it wrong.
+
+        A component contributing several services is skipped rather than
+        guessed at — no shipped component does, and picking one would
+        silently attach a dependency to an arbitrary half of it.
+        """
+        rows = self.output_reader.select(
+            "?component ?config",
+            """
+            ?component tcs:config ?config .
+            ?config a tcs:DockerComposeConfig .
+            """,
+        )
+
+        per_component: dict[str, set[str]] = {}
+        for component, config in zip(rows["component"], rows["config"]):
+            if config not in self.config_service_name:
+                continue
+            per_component.setdefault(component, set()).add(
+                self.config_service_name[config]
+            )
+        return {
+            component: next(iter(names))
+            for component, names in per_component.items()
+            if len(names) == 1
+        }
 
     def _lookup_container_service_names(self) -> dict[str, str]:
         """Map each ``tcs:DockerContainer`` to the compose service name it
@@ -322,7 +379,7 @@ class DockerComposeCompiler(Compiler):
         sw:mu-delta-notifier``).
         """
         rows = self.output_reader.select(
-            "?c1 ?c2",
+            "?comp1 ?c1 ?comp2 ?c2",
             """
             ?c1 a tcs:DockerContainer ; tcs:instantiates ?comp1 .
             ?comp1 dct:requires ?comp2 .
@@ -330,7 +387,7 @@ class DockerComposeCompiler(Compiler):
             FILTER (?c1 != ?c2)
             """,
         )
-        return set(zip(rows["c1"], rows["c2"]))
+        return set(zip(rows["comp1"], rows["c1"], rows["comp2"], rows["c2"]))
 
     def _lookup_floworder_container_dependencies(
         self, explicit_pairs: set[tuple[str, str]]
@@ -344,20 +401,22 @@ class DockerComposeCompiler(Compiler):
         duplicate and a 2-cycle (docker-compose rejects mutual
         depends_on).
         """
-        covered = {frozenset(pair) for pair in explicit_pairs}
+        covered = {frozenset((pair[1], pair[3])) for pair in explicit_pairs}
         rows = self.output_reader.select(
-            "?cProd ?cCons",
+            "?compProd ?cProd ?compCons ?cCons",
             """
-            ?prodStep tcs:writesTo ?ch .
-            ?consStep tcs:readsFrom ?ch .
+            ?prodStep tcs:writesTo ?ch ; prov:specializationOf ?compProd .
+            ?consStep tcs:readsFrom ?ch ; prov:specializationOf ?compCons .
             ?cProd tcs:runs ?prodStep .
             ?cCons tcs:runs ?consStep .
             FILTER (?cProd != ?cCons)
             """,
         )
         return {
-            (c_prod, c_cons)
-            for c_prod, c_cons in zip(rows["cProd"], rows["cCons"])
+            (comp_prod, c_prod, comp_cons, c_cons)
+            for comp_prod, c_prod, comp_cons, c_cons in zip(
+                rows["compProd"], rows["cProd"], rows["compCons"], rows["cCons"]
+            )
             if frozenset((c_prod, c_cons)) not in covered
         }
 
