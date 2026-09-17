@@ -32,6 +32,7 @@ venv/
 htmlcov/
 _pytest_fixes.log
 test_output.txt
+pytest_results.txt
 
 # Claude Code
 pipeline generator/.claude/settings.local.json

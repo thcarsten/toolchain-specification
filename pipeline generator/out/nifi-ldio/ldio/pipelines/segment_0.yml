@@ -1,4 +1,11 @@
 name: segment_0
+description: "Minimal cross-framework pipeline: a NiFi GenerateFlowFile\r\n      \
+  \  emits one N-Triples line every 10 s; LDIO receives it and prints it to\r\n  \
+  \      its container stdout via ConsoleOut. Neither side declares a boundary\r\n\
+  \        component \u2014 BridgeTransportCompiler auto-inserts nifi:InvokeHTTP on\
+  \ the\r\n        NiFi side and ldio:HttpIn on the LDIO side, and the paired per-boundary\r\
+  \n        config compilers agree the transport metadata through the shared\r\n \
+  \       channel."
 input:
   adapter:
     name: Ldio:RdfAdapter

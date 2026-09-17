@@ -73,21 +73,21 @@
                     "version": "2.10.0"
                 },
                 "properties": {
-                    "HTTP URL": "http://ldio-workbench:8080/segment_0",
                     "HTTP Method": "POST",
+                    "HTTP URL": "http://ldio-workbench:8080/segment_0",
                     "Request Content-Type": "application/n-triples"
                 },
                 "propertyDescriptors": {
-                    "HTTP URL": {
-                        "name": "HTTP URL",
-                        "displayName": "HTTP URL",
+                    "HTTP Method": {
+                        "name": "HTTP Method",
+                        "displayName": "HTTP Method",
                         "identifiesControllerService": false,
                         "sensitive": false,
                         "dynamic": false
                     },
-                    "HTTP Method": {
-                        "name": "HTTP Method",
-                        "displayName": "HTTP Method",
+                    "HTTP URL": {
+                        "name": "HTTP URL",
+                        "displayName": "HTTP URL",
                         "identifiesControllerService": false,
                         "sensitive": false,
                         "dynamic": false

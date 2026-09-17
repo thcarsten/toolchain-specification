@@ -1,5 +1,6 @@
 @base <file:///workspace/pipeline/> .
 @prefix : <http://example.org/example/> .
+@prefix ldio: <http://example.org/example/ldio/> .
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix tcs: <https://w3id.org/toolchain#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
@@ -58,20 +59,24 @@
 
 :TransactionConfigShape tcs:passed true .
 
+ldio:ConsoleOutConfigShape tcs:passed true .
+
+ldio:RdfAdapterConfigShape tcs:passed true .
+
 :throughputresult_0 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_bridge_0 ;
+    tcs:forChannel :channel_18 ;
     tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
 :throughputresult_1 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_75 ;
+    tcs:forChannel :channel_19 ;
     tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
 
 :throughputresult_2 a tcs:ThroughputMatchResult ;
-    tcs:forChannel :channel_62 ;
+    tcs:forChannel :channel_bridge_0 ;
     tcs:inputShape [ ] ;
     tcs:matches "unknown" ;
     tcs:outputShape [ ] .
@@ -88,6 +93,9 @@ tcs:AcyclicGraphShape sh:message "Checks that no step transitively reads from a 
 tcs:BoundaryChannelTypeShape sh:message "Checks that a boundary component declares at most one tcs:channelType." ;
     tcs:passed true .
 
+tcs:BridgeEndpointReachableShape sh:message "Checks that every cross-container bridge endpoint names a compose service the build declares." ;
+    tcs:passed true .
+
 tcs:CatalogMissingBridgeShape sh:message "Checks that every cross-container channel has a bridge step on both sides." ;
     tcs:passed true .
 
@@ -95,6 +103,9 @@ tcs:CatalogShape sh:message "Checks that every dcat:resource of a Catalog is a t
     tcs:passed true .
 
 tcs:ConfigShape sh:message "Checks that a Config carries exactly one of tcs:embedded/tcs:literal, and that a tcs:literal body also declares dct:format." ;
+    tcs:passed true .
+
+tcs:ConnectionCardinalityShape sh:message "TEMPORARY: a step may participate in at most one incoming and one outgoing tcs:Connection. Branching is not yet supported — use tcs:readsFrom / tcs:writesTo directly. Remove this shape when branching lands." ;
     tcs:passed true .
 
 tcs:DockerContainerShape sh:message "Checks that a DockerContainer instantiates at least one PipelineComponent and that tcs:runs points at an InstancePipelineComponent." ;
@@ -170,10 +181,6 @@ tcs:SwStepEnvValueShape sh:message "Checks that semantic.works step config value
 
 tcs:UnsupportedChannelTopologyShape sh:message "Checks that cross-container channel topology is a MVP-supported (1-writer, 1-or-2-container) shape." ;
     tcs:passed true .
-
-[] tcs:passed true .
-
-[] tcs:passed true .
 
 [] a sh:ValidationReport ;
     sh:conforms true .

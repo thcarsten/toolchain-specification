@@ -26,6 +26,10 @@ defmodule Dispatcher do
     # send_resp( conn, 404, "sparql route found." )
   end
 
+  match "/ingest", @any do
+    Proxy.forward conn, [], "http://rdf-ingest/ingest"
+  end
+
   match "/*_", %{ layer: :not_found } do
     send_resp( conn, 404, "Route not found.  See config/dispatcher.ex" )
   end
