@@ -92,28 +92,53 @@ class ValidationReportCompiler(Compiler):
         self.generate_validation_report()
         return self.output_reader.graph
 
+    #: Config-shape role → the path from a step to the config body that
+    #: role governs. The split is the whole point: a user-facing shape
+    #: judges what the author wrote (``p-plan:hasInputVar``), a
+    #: compiler-facing shape judges what the compilers will read
+    #: (``tcs:compilerConfig``). Targeting both at the authored config
+    #: would let a compiler-facing shape pass on a body no compiler ever
+    #: sees. ``ConfigTranslator`` guarantees ``tcs:compilerConfig``
+    #: resolves for every configured step — aliasing the authored node
+    #: where a component declares only one contract — so neither path
+    #: needs a conditional here.
+    CONFIG_SHAPE_ROLES: dict[str, str] = {
+        "tcs:userFacingConfigShape": "p-plan:hasInputVar",
+        "tcs:compilerFacingConfigShape": "tcs:compilerConfig",
+    }
+
     def normalize_config_shapes(self) -> None:
-        """Give every compilerFacingConfigShape a ``sh:target`` so a normal SHACL
+        """Give every config shape a ``sh:target`` so a normal SHACL
         validator can evaluate it.
 
         For each ``tcs:PipelineComponent`` with a ``dcat:qualifiedRelation``
-        / ``dcat:hadRole tcs:compilerFacingConfigShape`` / ``dct:relation`` attachment,
+        whose ``dcat:hadRole`` is one of :attr:`CONFIG_SHAPE_ROLES`,
         adds a SHACL-AF ``sh:SPARQLTarget`` selecting ``?this`` = the
         ``tcs:embedded`` config body of any step that specializes that
-        component - exactly what the shape's own ``sh:property``
-        constraints are already written to assume (see the
-        ``compilerFacingConfigShape`` example in ``test suite/README.md``).
+        component, reached via the predicate that role owns - exactly
+        what the shape's own ``sh:property`` constraints are already
+        written to assume (see the ``compilerFacingConfigShape`` example
+        in ``test suite/README.md``).
+
+        This is the *only* place that knows where a config lives. The
+        catalogs used to hand-write the same target in 19 places — 9 in
+        ``catalog-nifi.ttl``, 9 generated into ``catalog-rdfc.ttl``, 1 in
+        ``catalog-rdfc-manual.ttl`` — which the guard below then skipped.
+        They are gone; a catalog that spells its own target still wins,
+        but nothing in the shipped catalogs does.
 
         Shapes that already carry a ``sh:target`` (e.g. a re-run, or an
         author-supplied one) are left untouched.
         """
         pairs = self.output_reader.select(
-            "?component ?shape",
+            "?component ?shape ?role",
             """
             ?component dcat:qualifiedRelation ?rel .
-            ?rel dcat:hadRole tcs:compilerFacingConfigShape ;
+            ?rel dcat:hadRole ?role ;
                  dct:relation ?shape .
-            """,
+            VALUES ?role { %s }
+            """
+            % " ".join(self.CONFIG_SHAPE_ROLES),
         )
 
         next_index = 0
@@ -135,10 +160,11 @@ class ValidationReportCompiler(Compiler):
                 target_id = f":configshapetarget_{next_index}"
                 next_index += 1
 
+            config_path = self.CONFIG_SHAPE_ROLES[row["role"]]
             select_query = (
                 "SELECT ?this WHERE { "
                 f"?instance prov:specializationOf {component_id} ; "
-                "p-plan:hasInputVar/tcs:embedded ?this . }"
+                f"{config_path}/tcs:embedded ?this . }}"
             )
             new_triples = self.output_reader.construct(
                 f"""

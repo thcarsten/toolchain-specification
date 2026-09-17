@@ -12,10 +12,6 @@
 
 :HttpFetchOptionsShape tcs:passed true .
 
-:HttpFetchShape tcs:passed true .
-
-:HttpOutShape tcs:passed true .
-
 :HttpServerOptionsShape tcs:passed true .
 
 :HttpServerShape tcs:passed true .
@@ -26,27 +22,7 @@
 
 :LogProcessorJsShape tcs:passed true .
 
-:LogProcessorPyShape tcs:passed true .
-
 :MetadataConfigShape tcs:passed true .
-
-:NifiAzureStorageCredentialsConfigShape tcs:passed true .
-
-:NifiCreateVersionObjectConfigShape tcs:passed true .
-
-:NifiExecuteGroovyScriptConfigShape tcs:passed true .
-
-:NifiFetchAzureBlobStorageConfigShape tcs:passed true .
-
-:NifiGenerateFlowFileConfigShape tcs:passed true .
-
-:NifiInvokeHTTPConfigShape tcs:passed true .
-
-:NifiListenHTTPConfigShape tcs:passed true .
-
-:NifiRemoteDeploymentConfigShape tcs:passed true .
-
-:NifiSplitTextConfigShape tcs:passed true .
 
 :PerformanceConfigShape tcs:passed true .
 

@@ -231,24 +231,6 @@ proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
 # rdfc_catalog_harvest/shapes.py).
 :JsonLdToNQuadsShape
     a sh:NodeShape ;
-    # Full IRIs rather than `sh:prefixes tcs:prefixes`, which the
-    # generated shapes use: that registry is declared in
-    # catalog-core.ttl, and this file is parsed on its own by
-    # test_shacl_path_shape.py (":ShaclPathShape as actually declared in
-    # the catalog"). A prefixed target here makes that parse fail with
-    # "Unknown namespace prefix", so the one shape in this file with a
-    # SPARQL target pays a little verbosity to keep the file standalone.
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step <http://www.w3.org/ns/prov#specializationOf>
-                          <http://dishacled.example.org/processors#JsonLdToNQuads> ;
-                      <http://purl.org/net/p-plan#hasInputVar>/<https://w3id.org/toolchain#embedded>
-                          ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path rdfc:reader ;
         sh:name "reader" ;

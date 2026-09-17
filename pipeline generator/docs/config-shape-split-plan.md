@@ -315,6 +315,28 @@ This also means the NiFi IRI normalisation in 1a is load-bearing rather than
 cosmetic: once NiFi's targets are gone, a NiFi shape that still spells its role
 as a string literal would be targeted by nothing and validate nothing.
 
+**Done 2026-09-17.** 19 blocks removed exactly as inventoried, and the
+regenerated `catalog-rdfc.ttl` matched the nine I had already stripped by hand
+— the harvester and the hand-written NiFi blocks were emitting the same target
+verbatim. Three things the inventory did not anticipate:
+
+- `catalog-rdfc-manual.ttl` carried a seven-line comment explaining why *its*
+  target spelled full IRIs rather than `sh:prefixes tcs:prefixes` (the file is
+  parsed standalone by `test_shacl_path_shape.py`, where a prefixed target
+  fails with "Unknown namespace prefix"). The comment went with the block; the
+  constraint it described is gone, since the minted target is only ever added
+  to a graph that has `tcs:prefixes` loaded.
+- `test_shapes.py::test_component_shape_carries_sparql_target` asserted the
+  harvester emits one. Inverted rather than deleted — a target *reappearing*
+  there would win over the minted one, silently pinning every RDFC shape back
+  to the authoring contract, which is precisely the failure this slice exists
+  to prevent.
+- No catalog declares a `tcs:userFacingConfigShape` yet, so the user-facing
+  branch of `normalize_config_shapes` is exercised only by
+  `test_normalize_config_shapes.py` until slice 2 lands. That is also why the
+  reference builds come out byte-identical: every shipped shape is
+  compiler-facing, and `tcs:compilerConfig` aliases the authored node.
+
 **1f. Downstream config readers.** Every compiler that consumes a step config
 switches from `p-plan:hasInputVar` to `tcs:compilerConfig`. The `FILTER NOT
 EXISTS { ?step p-plan:hasInputVar ?c }` *minting* guards in the boundary

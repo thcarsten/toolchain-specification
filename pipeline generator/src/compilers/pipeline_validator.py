@@ -29,6 +29,7 @@ from pathlib import Path
 from .compilation_runner import CompilationConfig, CompilationRunner
 from .core.bridge_transport_compiler import BridgeTransportCompiler
 from .core.config_translator import ConfigTranslator
+from .core.container_service_name_compiler import ContainerServiceNameCompiler
 from .core.graph_reducer import GraphReducer
 from .core.pipeline_assembler import PipelineAssembler
 from .core.pipeline_enricher import PipelineEnricher
@@ -65,6 +66,7 @@ DEFAULT_PIPELINE_FILES: tuple[str, ...] = (
     "pipelines/pipeline_definition_nifi_ldio.ttl",
     "pipelines/pipeline_definition_nifi.ttl",
     "pipelines/pipeline_definition_nifi.deployment.ttl",
+    "pipelines/semantics-demo-pipeline.ttl",
 )
 
 #: Inference rule YAMLs applied on top of the loaded catalog.
@@ -104,8 +106,14 @@ PipelineValidatorConfig = CompilationConfig(
         # After the per-boundary config compilers above, which mint the
         # authored configs it translates from.
         ConfigTranslator,
-        # Fires only in the finalize phase, gated by its own
+        # Fire only in the finalize phase, gated by their own
         # ``applies_to`` on ``tcs:runPhase tcs:FinalizePhase``.
+        # Projects tcs:serviceName for tcs:BridgeEndpointReachableShape;
+        # must precede ValidationReportCompiler, which consumes it in
+        # the same finalize pass. Without it the shape sees no service
+        # name at all and reports every cross-container endpoint as
+        # unreachable.
+        ContainerServiceNameCompiler,
         ValidationReportCompiler,
     ],
 )

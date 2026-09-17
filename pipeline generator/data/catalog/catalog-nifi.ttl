@@ -36,16 +36,6 @@ nifi:GenerateFlowFile
 
 :NifiGenerateFlowFileConfigShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf nifi:GenerateFlowFile ;
-                    p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path nifi:customText ;
         sh:name "Custom Text" ;
@@ -72,16 +62,6 @@ nifi:FetchAzureBlobStorage_v12
 
 :NifiFetchAzureBlobStorageConfigShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf nifi:FetchAzureBlobStorage_v12 ;
-                    p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path nifi:containerName ;
         sh:name "Container Name" ;
@@ -147,16 +127,6 @@ nifi:SplitText
 
 :NifiSplitTextConfigShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf nifi:SplitText ;
-                    p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path nifi:lineSplitCount ;
         sh:name "Line Split Count" ;
@@ -213,16 +183,6 @@ nifi:ExecuteGroovyScript
 
 :NifiExecuteGroovyScriptConfigShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf nifi:ExecuteGroovyScript ;
-                    p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path nifi:scriptBody ;
         sh:name "Script Body" ;
@@ -265,16 +225,6 @@ nifi:CreateVersionObjectProcessor
 
 :NifiCreateVersionObjectConfigShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf nifi:CreateVersionObjectProcessor ;
-                    p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path nifi:dateObservedValueRdfProperty ;
         sh:name "RDF property to find the timestamp value" ;
@@ -352,17 +302,6 @@ nifi:AzureStorageCredentialsControllerService_v12
 
 :NifiAzureStorageCredentialsConfigShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?service
-                    prov:specializationOf nifi:AzureStorageCredentialsControllerService_v12 ;
-                    p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path nifi:credentialsType ;
         sh:name "Credentials Type" ;
@@ -430,16 +369,6 @@ nifi:ListenHTTP
 
 :NifiListenHTTPConfigShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf nifi:ListenHTTP ;
-                    p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path nifi:listeningPort ;
         sh:name "Listening Port" ;
@@ -481,16 +410,6 @@ nifi:InvokeHTTP
 :NifiInvokeHTTPConfigShape
     a sh:NodeShape ;
 
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf nifi:InvokeHTTP ;
-                    p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
 
     sh:property [
         sh:path nifi:httpMethod ;
@@ -535,16 +454,6 @@ nifi:Orchestrator
 :NifiRemoteDeploymentConfigShape
     a sh:NodeShape ;
     rdfs:label "Existing NiFi deployment configuration" ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?pipeline nifi:deploymentMode "remote" ;
-                    nifi:deploymentConfig/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path nifi:dshUsername ;
         sh:name "DSH username" ;

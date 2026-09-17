@@ -283,29 +283,6 @@ def _translate_property(
     return pairs, nested_class
 
 
-def _sparql_target(component: URIRef) -> list[tuple[str, str]]:
-    """Targeting clause selecting a component's embedded step config.
-
-    ``sh:targetObjectsOf`` is not expressive enough here: the focus node
-    is two hops from the step (``p-plan:hasInputVar/tcs:embedded``) and
-    must be reached only for steps specialising *this* component.
-    """
-    query = (
-        "\n"
-        f"{INDENT * 3}SELECT ?this WHERE {{\n"
-        f"{INDENT * 4}?step prov:specializationOf {compact(component)} ;\n"
-        f"{INDENT * 5}  p-plan:hasInputVar/tcs:embedded ?this .\n"
-        f"{INDENT * 3}}}\n"
-        f"{INDENT * 2}"
-    )
-    inner = [
-        ("a", "sh:SPARQLTarget"),
-        ("sh:prefixes", "tcs:prefixes"),
-        ("sh:select", f'"""{query}"""'),
-    ]
-    return [("sh:target", inline_bnode(inner, INDENT))]
-
-
 def translate(
     graph: Graph,
     component: URIRef,
@@ -381,10 +358,12 @@ def translate(
     return _build(
         root,
         shape_iri(component),
-        _sparql_target(component),
+        [],
         f"Config shape for {compact(component)}, generated from its upstream "
         "SHACL shape. Referenced from the component via dcat:qualifiedRelation "
-        "with role tcs:compilerFacingConfigShape, and additionally carries a SPARQL target so "
-        "pySHACL validates the embedded step config directly.",
+        "with role tcs:compilerFacingConfigShape, which is what gives it its "
+        "sh:target: ValidationReportCompiler.normalize_config_shapes mints one "
+        "per role at validation time, so the catalog does not spell out where a "
+        "config lives.",
         set(),
     )

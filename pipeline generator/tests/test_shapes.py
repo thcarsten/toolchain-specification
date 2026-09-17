@@ -184,20 +184,20 @@ def test_real_datatypes_pass_through_untouched():
     assert ("sh:maxCount", "1") in pairs
 
 
-def test_component_shape_carries_sparql_target():
-    # sh:targetObjectsOf is not expressive enough: the focus node is two
-    # hops from the step and must be scoped to this component.
+def test_component_shape_carries_no_target():
+    # The harvester used to emit an sh:SPARQLTarget selecting the step
+    # config two hops down. It no longer does: a config shape's target
+    # depends on the role it is attached under, which the harvester does
+    # not know, and ValidationReportCompiler.normalize_config_shapes
+    # mints one per role at validation time. A target here would win over
+    # that (the compiler leaves an author-supplied target alone) and pin
+    # every RDFC shape to the authoring contract.
     shape = _translate("""
     rdfc:Demo rdfc:jsImplementationOf rdfc:Processor .
     [] a sh:NodeShape ; sh:targetClass rdfc:Demo ;
        sh:property [ sh:path rdfc:x ; sh:name "x" ; sh:datatype xsd:string ] .
     """)
-    assert len(shape.target) == 1
-    predicate, rendered = shape.target[0]
-    assert predicate == "sh:target"
-    assert "sh:SPARQLTarget" in rendered
-    assert "prov:specializationOf rdfc:Demo" in rendered
-    assert "p-plan:hasInputVar/tcs:embedded ?this" in rendered
+    assert shape.target == []
 
 
 def test_processor_without_a_shape_returns_none():

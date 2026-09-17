@@ -89,6 +89,7 @@ DEFAULT_PIPELINE_FILES: tuple[str, ...] = (
     "pipelines/pipeline_definition_nifi_ldio.ttl",
     "pipelines/pipeline_definition_nifi.ttl",
     "pipelines/pipeline_definition_nifi.deployment.ttl",
+    "pipelines/semantics-demo-pipeline.ttl",
 )
 
 #: Inference rule YAMLs applied on top of the loaded catalog.

@@ -282,21 +282,12 @@ tm:ThresholdMonitorJs
 # Config shape for rdfc:HttpFetch, generated from its upstream
 # SHACL shape. Referenced from the component via
 # dcat:qualifiedRelation with role
-# tcs:compilerFacingConfigShape, and additionally carries a
-# SPARQL target so pySHACL validates the embedded step config
-# directly.
+# tcs:compilerFacingConfigShape, which is what gives it its
+# sh:target: ValidationReportCompiler.normalize_config_shapes
+# mints one per role at validation time, so the catalog does not
+# spell out where a config lives.
 :HttpFetchShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf rdfc:HttpFetch ;
-                      p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path rdfc:options ;
         sh:name "options" ;
@@ -409,21 +400,12 @@ tm:ThresholdMonitorJs
 # Config shape for rdfc:HttpOut, generated from its upstream
 # SHACL shape. Referenced from the component via
 # dcat:qualifiedRelation with role
-# tcs:compilerFacingConfigShape, and additionally carries a
-# SPARQL target so pySHACL validates the embedded step config
-# directly.
+# tcs:compilerFacingConfigShape, which is what gives it its
+# sh:target: ValidationReportCompiler.normalize_config_shapes
+# mints one per role at validation time, so the catalog does not
+# spell out where a config lives.
 :HttpOutShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf rdfc:HttpOut ;
-                      p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path rdfc:content_type ;
         sh:name "content_type" ;
@@ -458,21 +440,12 @@ tm:ThresholdMonitorJs
 # Config shape for rdfc:HttpServer, generated from its upstream
 # SHACL shape. Referenced from the component via
 # dcat:qualifiedRelation with role
-# tcs:compilerFacingConfigShape, and additionally carries a
-# SPARQL target so pySHACL validates the embedded step config
-# directly.
+# tcs:compilerFacingConfigShape, which is what gives it its
+# sh:target: ValidationReportCompiler.normalize_config_shapes
+# mints one per role at validation time, so the catalog does not
+# spell out where a config lives.
 :HttpServerShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf rdfc:HttpServer ;
-                      p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path rdfc:options ;
         sh:name "options" ;
@@ -535,21 +508,12 @@ tm:ThresholdMonitorJs
 # Config shape for rdfc:LogProcessorJs, generated from its
 # upstream SHACL shape. Referenced from the component via
 # dcat:qualifiedRelation with role
-# tcs:compilerFacingConfigShape, and additionally carries a
-# SPARQL target so pySHACL validates the embedded step config
-# directly.
+# tcs:compilerFacingConfigShape, which is what gives it its
+# sh:target: ValidationReportCompiler.normalize_config_shapes
+# mints one per role at validation time, so the catalog does not
+# spell out where a config lives.
 :LogProcessorJsShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf rdfc:LogProcessorJs ;
-                      p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path rdfc:label ;
         sh:name "label" ;
@@ -598,21 +562,12 @@ tm:ThresholdMonitorJs
 # Config shape for rdfc:LogProcessorPy, generated from its
 # upstream SHACL shape. Referenced from the component via
 # dcat:qualifiedRelation with role
-# tcs:compilerFacingConfigShape, and additionally carries a
-# SPARQL target so pySHACL validates the embedded step config
-# directly.
+# tcs:compilerFacingConfigShape, which is what gives it its
+# sh:target: ValidationReportCompiler.normalize_config_shapes
+# mints one per role at validation time, so the catalog does not
+# spell out where a config lives.
 :LogProcessorPyShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf rdfc:LogProcessorPy ;
-                      p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path rdfc:label ;
         sh:name "label" ;
@@ -654,21 +609,12 @@ tm:ThresholdMonitorJs
 # Config shape for rdfc:SPARQLIngest, generated from its
 # upstream SHACL shape. Referenced from the component via
 # dcat:qualifiedRelation with role
-# tcs:compilerFacingConfigShape, and additionally carries a
-# SPARQL target so pySHACL validates the embedded step config
-# directly.
+# tcs:compilerFacingConfigShape, which is what gives it its
+# sh:target: ValidationReportCompiler.normalize_config_shapes
+# mints one per role at validation time, so the catalog does not
+# spell out where a config lives.
 :SPARQLIngestShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf rdfc:SPARQLIngest ;
-                      p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path rdfc:ingestConfig ;
         sh:name "config" ;
@@ -863,21 +809,12 @@ tm:ThresholdMonitorJs
 # Config shape for rdfc:Sdsify, generated from its upstream
 # SHACL shape. Referenced from the component via
 # dcat:qualifiedRelation with role
-# tcs:compilerFacingConfigShape, and additionally carries a
-# SPARQL target so pySHACL validates the embedded step config
-# directly.
+# tcs:compilerFacingConfigShape, which is what gives it its
+# sh:target: ValidationReportCompiler.normalize_config_shapes
+# mints one per role at validation time, so the catalog does not
+# spell out where a config lives.
 :SdsifyShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf rdfc:Sdsify ;
-                      p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path rdfc:input ;
         sh:name "input" ;
@@ -983,21 +920,12 @@ tm:ThresholdMonitorJs
 # Config shape for rdfc:SkolemizationProcessor, generated from
 # its upstream SHACL shape. Referenced from the component via
 # dcat:qualifiedRelation with role
-# tcs:compilerFacingConfigShape, and additionally carries a
-# SPARQL target so pySHACL validates the embedded step config
-# directly.
+# tcs:compilerFacingConfigShape, which is what gives it its
+# sh:target: ValidationReportCompiler.normalize_config_shapes
+# mints one per role at validation time, so the catalog does not
+# spell out where a config lives.
 :SkolemizationProcessorShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf rdfc:SkolemizationProcessor ;
-                      p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path rdfc:incoming ;
         sh:name "incoming" ;
@@ -1024,21 +952,12 @@ tm:ThresholdMonitorJs
 # Config shape for tm:ThresholdMonitorJs, generated from its
 # upstream SHACL shape. Referenced from the component via
 # dcat:qualifiedRelation with role
-# tcs:compilerFacingConfigShape, and additionally carries a
-# SPARQL target so pySHACL validates the embedded step config
-# directly.
+# tcs:compilerFacingConfigShape, which is what gives it its
+# sh:target: ValidationReportCompiler.normalize_config_shapes
+# mints one per role at validation time, so the catalog does not
+# spell out where a config lives.
 :ThresholdMonitorJsShape
     a sh:NodeShape ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?step prov:specializationOf tm:ThresholdMonitorJs ;
-                      p-plan:hasInputVar/tcs:embedded ?this .
-            }
-        """
-    ] ;
     sh:property [
         sh:path rdfs:label ;
         sh:name "label" ;
