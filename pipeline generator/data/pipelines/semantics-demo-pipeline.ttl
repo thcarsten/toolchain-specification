@@ -34,16 +34,42 @@ demo_sd:ApiPoll a tcs:InstancePipelineComponent ;
             ldio:url "https://dishacled-api.azurewebsites.net/api/v1/source-a/current" ;
             ldio:cron "*/10 * * * * *"
         ]
-    ] ;
-    dcat:qualifiedRelation [
-        a dcat:Relationship ;
-        dcat:hadRole tcs:outputShape ;
-        dct:relation demo:SosaWaterLevelObservationShape
     ] .
 
 [
     a tcs:Connection ;
     tcs:from demo_sd:ApiPoll ;
+    tcs:to demo_sd:JsonLdParse
+] .
+
+# The poller hands on the raw HTTP body; without an adapter LDIO has no
+# RDF to forward and the segment produces nothing. `Ldio:JsonToLdAdapter`
+# rather than `Ldio:RdfAdapter` because the source-a API advertises
+# `Content-Type: application/json` for what are really JSON-LD bodies,
+# and RdfAdapter refuses that content type.
+demo_sd:JsonLdParse a tcs:InstancePipelineComponent ;
+    prov:specializationOf ldio:JsonToLdAdapter ;
+    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline ;
+    p-plan:hasInputVar [
+        a tcs:PipelineConfig ;
+        tcs:embedded [
+            ldio:force-content-type true ;
+            ldio:context """{
+              \"@context\": {
+                \"@vocab\": \"https://schema.org/\",
+                \"sosa\": \"http://www.w3.org/ns/sosa/\",
+                \"dcterms\": \"http://purl.org/dc/terms/\",
+                \"measuredAt\": \"sosa:resultTime\",
+                \"conformsTo\": \"dcterms:conformsTo\",
+                \"source\": \"https://schema.org/source\"
+              }
+            }"""
+        ]
+    ] .
+
+[
+    a tcs:Connection ;
+    tcs:from demo_sd:JsonLdParse ;
     tcs:to demo_sd:LogViolations
 ] .
 

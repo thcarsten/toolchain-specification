@@ -754,32 +754,40 @@ def mint_missing_containers(reader: GraphReader, pipeline_id: str) -> GraphReade
     next_index = 0
 
     for microservice_id in microservice_list:
-        if reader.ask(
+        existing = reader.select(
+            "?container",
             f"""
             ?build a tcs:PipelineBuild ; dct:hasPart ?container .
             ?container a tcs:DockerContainer ;
                        tcs:instantiates {microservice_id} .
-            """
-        ):
-            # Already carried by the build — minted on an earlier pass.
-            # Leave it, and don't re-attach its dependants.
-            continue
+            """,
+        )["container"].to_list()
 
-        container_id = f":container_{next_index}"
-        next_index += 1
-        while reader.check_exists(container_id):
+        if existing:
+            # Already carried by the build — minted on an earlier pass.
+            # Keep the container, but re-derive its dependants anyway: a
+            # bridge inserted after that pass attaches its boundary
+            # component to this very container without attaching what
+            # that component requires, so the dependant set here is the
+            # only thing that closes the gap. Re-attaching is free — the
+            # same triple twice is one triple.
+            container_id = existing[0]
+        else:
             container_id = f":container_{next_index}"
             next_index += 1
+            while reader.check_exists(container_id):
+                container_id = f":container_{next_index}"
+                next_index += 1
 
-        new_triples = reader.construct(
-            f"""
-            {container_id} a tcs:DockerContainer .
-            ?build_id dct:hasPart {container_id} .
-            {container_id} tcs:instantiates {microservice_id} .
-            """,
-            "?build_id a tcs:PipelineBuild",
-        ).graph
-        reader = reader.add(new_triples)
+            new_triples = reader.construct(
+                f"""
+                {container_id} a tcs:DockerContainer .
+                ?build_id dct:hasPart {container_id} .
+                {container_id} tcs:instantiates {microservice_id} .
+                """,
+                "?build_id a tcs:PipelineBuild",
+            ).graph
+            reader = reader.add(new_triples)
 
         for dependant in _lookup_dependants(microservice_id):
             new_dependant_triples = reader.construct(
