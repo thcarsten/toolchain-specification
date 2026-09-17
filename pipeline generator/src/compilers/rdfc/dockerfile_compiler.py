@@ -125,14 +125,46 @@ class RdfcDockerFileCompiler(Compiler):
         :meth:`_patch_paired_compose_build_path`, so a future
         ``tcs:DockerImageConfig`` attached to some other framework's
         component does not spuriously trigger this compiler.
+
+        A third condition, and the reason this compiler is not simply
+        first-come: the requirement closure has to have settled. The
+        dependency manifests this writes are a projection of
+        ``tcs:instantiates``, and a bridge inserted by
+        :class:`BridgeTransportCompiler` drags in components that were
+        in nobody's closure when :class:`PipelineAssembler` ran —
+        ``rdfc:PyRunner``, pulled in by the ``rdfc:HttpOut`` half of a
+        bridge, is the case that surfaced it. Running before
+        :class:`RequirementClosureCompiler` has repaired that, this
+        compiler consumes its single run on an incomplete closure and
+        emits a pyproject.toml without the Python runner in it — an
+        image whose orchestrator dies on ENOENT looking for the runner's
+        index.ttl. So wait for the same condition that compiler's own
+        trigger tests: no microservice of this pipeline still missing a
+        container.
         """
-        return not graph_reader.select(
+        ready = not graph_reader.select(
             "?container",
             """
                 ?container a tcs:DockerContainer .
                 ?container tcs:instantiates rdfc:Orchestrator .
                 rdfc:Orchestrator tcs:config ?image_config .
                 ?image_config a tcs:DockerImageConfig .
+            """,
+        ).empty
+        if not ready:
+            return False
+
+        return graph_reader.select(
+            "?component",
+            """
+                ?step prov:specializationOf ?used .
+                ?used dct:requires* ?component .
+                ?component tcs:config ?compose_config .
+                ?compose_config a tcs:DockerComposeConfig .
+                FILTER NOT EXISTS {
+                    ?container a tcs:DockerContainer ;
+                               tcs:instantiates ?component .
+                }
             """,
         ).empty
 
