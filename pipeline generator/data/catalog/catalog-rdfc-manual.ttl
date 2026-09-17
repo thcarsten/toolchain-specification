@@ -123,16 +123,23 @@ RUN wget https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.
 RUN pip install --no-cache-dir hatch uv
 
 # Set working directory
-WORKDIR /workspace
-
-# Copy package.json and package-lock.json for npm caching
-COPY package.json ./pipeline/
-
-# Install all processors listed in package.json
-RUN cd pipeline && npm install
-
-# Set default working dir
 WORKDIR /workspace/pipeline
+
+# Dependency manifests. pyproject.toml carries the pip dependencies and
+# package.json the npm ones; local_processors/ holds any Python package
+# that is not on PyPI and is referenced from pyproject.toml by a
+# `file:///workspace/pipeline/local_processors/...` direct URL, so it has
+# to be inside the build context before pip runs.
+COPY package.json package-lock.json* ./
+COPY pyproject.toml ./
+COPY local_processors ./local_processors
+
+# Install both sides. The pip install is what puts the Python runner's
+# index.ttl on disk at the path the generated pipeline.ttl imports --
+# without it the orchestrator dies on ENOENT before starting a single
+# processor.
+RUN pip install --no-cache-dir .
+RUN npm install
 
 # Keep container interactive
 CMD ["/bin/bash"]
