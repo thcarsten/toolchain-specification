@@ -22,15 +22,8 @@
 @prefix ex:      <https://example.org/> .
 
 demo_sd:SemanticsDemoPipeline a tcs:PipelineDefinition ;
-    rdfs:label "DiSHACLed demonstrator pipeline (scenario a)" ;
-    rdfs:comment """
-        Annotated api -> 
-        polling -> 
-        threshold-monitor -> 
-        oslc:Error alerts in store '->' 
-        email write '->' 
-        delivery 
-        """ .
+    rdfs:label "SEMANTiCS demo pipeline" ;
+    rdfs:comment "Annotated API -> LDIO polling -> RDF-Connect console log -> semantic.works triple store" .
 
 demo_sd:ApiPoll a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpInPoller ;
@@ -51,60 +44,22 @@ demo_sd:ApiPoll a tcs:InstancePipelineComponent ;
 [
     a tcs:Connection ;
     tcs:from demo_sd:ApiPoll ;
-    tcs:to demo_sd:ThresholdMonitor
-] .
-
-
-# Reader side stays explicit — the upstream producer (SdsifyMeasurements)
-# branches, so isPrecededBy alone couldn't tell which output this reads.
-demo_sd:ThresholdMonitor a tcs:InstancePipelineComponent ;
-    prov:specializationOf tm:ThresholdMonitorJs ;
-    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline ;
-    p-plan:hasInputVar [
-        a tcs:PipelineConfig ;
-        tcs:embedded [
-            tm:path sosa:hasSimpleResult ;
-            tm:min "0.0"^^xsd:double ;
-            tm:max "300.0"^^xsd:double ;
-            # tm:stream demo_sd:measurementsStream ;
-            tm:creator demo_sd:thresholdMonitorAgent
-        ]
-    ] ;
-        dcat:qualifiedRelation [
-        a dcat:Relationship ;
-        dcat:hadRole tcs:inputShape ;
-        dct:relation demo:SosaWaterLevelObservationShape
-    ] .
-
-# The monitor's violations reach the alert service through the triple
-# store, not by a direct hand-off. `demo_sd:TriggerAlert` reacts to a
-# delta notification from the store; there is no channel between them,
-# and asserting one made the build unbridgeable -- nothing in the
-# catalog can accept an HTTP payload on the error-alert service's
-# behalf, because it has no ingest endpoint at all.
-#
-# Routed through `demo_sd:StoreViolations` instead, which does have one:
-# `sw:rdf-ingest-service` fronts the triple store, so the generator can
-# insert it as a boundary step (with an `rdfc:HttpOut` on the far side)
-# and the hop becomes expressible.
-
-[
-    a tcs:Connection ;
-    tcs:from demo_sd:ThresholdMonitor ;
     tcs:to demo_sd:LogViolations
 ] .
 
-# In series rather than as a branch off the monitor's output: a tap
-# would be a fan-out, which `SemanticModelMapper` still rejects. The
-# logger declares an optional `rdfc:writer`, so it can pass what it
-# reads straight on to the store and print it on the way.
+# In series rather than as a tap off the poller: a tap would be a
+# fan-out, which `SemanticModelMapper` still rejects. The logger
+# declares an optional `rdfc:writer`, so it passes what it reads
+# straight on to the store and prints it on the way -- which is the
+# point of having it here at all, since it is the only place in the
+# pipeline where data becomes visible without opening the store.
 demo_sd:LogViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:LogProcessorJs ;
     p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
-            rdfc:label "threshold-violations" ;
+            rdfc:label "observations" ;
             rdfc:level "info"
         ]
     ] .
@@ -115,28 +70,11 @@ demo_sd:LogViolations a tcs:InstancePipelineComponent ;
     tcs:to demo_sd:StoreViolations
 ] .
 
+# `sw:triple-store` is reachable as a sink because `sw:rdf-ingest-service`
+# fronts it: the generator inserts that as a boundary step, with an
+# `rdfc:HttpOut` on the far side, and the cross-framework hop becomes
+# expressible. A semantic.works service with no ingest endpoint (the
+# error-alert service, for one) cannot terminate a channel at all.
 demo_sd:StoreViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:triple-store ;
-    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline .
-
-demo_sd:TriggerAlert a tcs:InstancePipelineComponent ;
-    prov:specializationOf sw:loket-error-alert-service ;
-    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline ;
-    p-plan:hasInputVar [
-        a tcs:PipelineConfig ;
-        tcs:embedded [
-            :EMAIL_FROM "mail@threshold-monitoring.com" ;
-            :EMAIL_TO "firefighters@antwerpen.be" ;
-            :ERROR_TEMPLATE "/mnt/templates/error.hbs"
-        ]
-    ] .
-
-# Likewise store-mediated, and for the same reason: `TriggerAlert`
-# writes `nmo:Email` triples and `DeliverEmail` polls the mail folder
-# they land in. Neither reads nor writes a channel, so both are left
-# without `tcs:readsFrom`/`tcs:writesTo` -- the same modelling the
-# demonstrator uses (see pipeline_definition.ttl, note 3).
-
-demo_sd:DeliverEmail a tcs:InstancePipelineComponent ;
-    prov:specializationOf sw:deliver-email-service ;
     p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline .
