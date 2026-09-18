@@ -39,46 +39,10 @@ demo_sd:ApiPoll a tcs:InstancePipelineComponent ;
 [
     a tcs:Connection ;
     tcs:from demo_sd:ApiPoll ;
-    tcs:to demo_sd:JsonLdParse
-] .
-
-# The poller hands on the raw HTTP body; without an adapter LDIO has no
-# RDF to forward and the segment produces nothing. `Ldio:JsonToLdAdapter`
-# rather than `Ldio:RdfAdapter` because the source-a API advertises
-# `Content-Type: application/json` for what are really JSON-LD bodies,
-# and RdfAdapter refuses that content type.
-demo_sd:JsonLdParse a tcs:InstancePipelineComponent ;
-    prov:specializationOf ldio:JsonToLdAdapter ;
-    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline ;
-    p-plan:hasInputVar [
-        a tcs:PipelineConfig ;
-        tcs:embedded [
-            ldio:force-content-type true ;
-            ldio:context """{
-              \"@context\": {
-                \"@vocab\": \"https://schema.org/\",
-                \"sosa\": \"http://www.w3.org/ns/sosa/\",
-                \"dcterms\": \"http://purl.org/dc/terms/\",
-                \"measuredAt\": \"sosa:resultTime\",
-                \"conformsTo\": \"dcterms:conformsTo\",
-                \"source\": \"https://schema.org/source\"
-              }
-            }"""
-        ]
-    ] .
-
-[
-    a tcs:Connection ;
-    tcs:from demo_sd:JsonLdParse ;
     tcs:to demo_sd:LogViolations
 ] .
 
-# In series rather than as a tap off the poller: a tap would be a
-# fan-out, which `SemanticModelMapper` still rejects. The logger
-# declares an optional `rdfc:writer`, so it passes what it reads
-# straight on to the store and prints it on the way -- which is the
-# point of having it here at all, since it is the only place in the
-# pipeline where data becomes visible without opening the store.
+
 demo_sd:LogViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:LogProcessorJs ;
     p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline ;
@@ -89,18 +53,3 @@ demo_sd:LogViolations a tcs:InstancePipelineComponent ;
             rdfc:level "info"
         ]
     ] .
-
-[
-    a tcs:Connection ;
-    tcs:from demo_sd:LogViolations ;
-    tcs:to demo_sd:StoreViolations
-] .
-
-# `sw:triple-store` is reachable as a sink because `sw:rdf-ingest-service`
-# fronts it: the generator inserts that as a boundary step, with an
-# `rdfc:HttpOut` on the far side, and the cross-framework hop becomes
-# expressible. A semantic.works service with no ingest endpoint (the
-# error-alert service, for one) cannot terminate a channel at all.
-demo_sd:StoreViolations a tcs:InstancePipelineComponent ;
-    prov:specializationOf sw:triple-store ;
-    p-plan:isStepOfPlan demo_sd:SemanticsDemoPipeline .
