@@ -9,17 +9,16 @@ description: 'Read or edit the toolchain (tcs:) ontology in the sibling "semanti
 
 The pipeline generator (`compilers` package) is driven entirely by the
 *toolchain* (`tcs:`) ontology defined in the sibling folder
-`../semantic model/` (same git repo, one level up from this project root).
-That folder is outside this project's own directory, so it is only
-reachable because `.claude/settings.json` grants standing access to it via
-`permissions.additionalDirectories`. Without this skill, it's easy to
+`semantic model/`, a sibling of `pipeline generator/` under this repo
+root. Both sit inside the project root, so reaching it needs no extra
+permission grant. Without this skill, it's easy to
 change compiler behavior (a new config subclass, a new shape role, a new
 compiler-generated triple pattern) without updating the ontology doc that
 describes it — the two then silently drift apart.
 
-## Layout of `../semantic model/`
+## Layout of `semantic model/`
 
-- [`README.md`](../semantic%20model/README.md) — the ontology reference:
+- [`README.md`](semantic%20model/README.md) — the ontology reference:
   core classes (`tcs:Catalog`, `tcs:PipelineDefinition`,
   `tcs:PipelineGenerator`, `tcs:PipelineBuild`), supporting classes
   (`tcs:PipelineComponent`, `tcs:InstancePipelineComponent`, `tcs:Config`
@@ -47,9 +46,8 @@ describes it — the two then silently drift apart.
 
 ## How to use
 
-Read and Edit both work directly on paths under `../semantic model/`
-(reads need no extra permission prompt; edits still follow the normal
-edit-confirmation flow). Cross-check terminology against the
+Read and Edit both work directly on paths under `semantic model/`
+(edits follow the normal edit-confirmation flow). Cross-check terminology against the
 `dishacled-context` skill's ontology cheat-sheet, which is a summary of
 this same README — if you edit the ontology doc, check whether that
 cheat-sheet also needs updating to stay consistent.

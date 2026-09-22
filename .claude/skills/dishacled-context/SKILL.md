@@ -1,6 +1,6 @@
 ---
 name: dishacled-context
-description: 'Deep-dive reference for the DiSHACLed project: toolchain/pipeline-generator internals (tcs: ontology, rdfine, compilers package, SHACL validation), the vocabulary cheat-sheet, and the roadmap/open-items list. Use when working on pipeline generator internals, semantic model / tcs: vocabulary questions, or planning what to work on next. Not needed for general orientation - see AGENTS.md for that.'
+description: 'Deep-dive reference for the DiSHACLed project: toolchain/pipeline-generator internals (tcs: ontology, rdfine, compilers package, SHACL validation), the vocabulary cheat-sheet, and the roadmap/open-items list. Use when working on pipeline generator internals, semantic model / tcs: vocabulary questions, or planning what to work on next. Not needed for general orientation - see the repo CLAUDE.md files for that.'
 ---
 
 # DiSHACLed deep-dive reference
@@ -30,12 +30,12 @@ Four **core classes**:
 `tcs:Compiler`, `spdx:File`, `sh:NodeShape`. Shapes are attached to their
 subject (component or compiler) via `dcat:qualifiedRelation` + `dcat:hadRole` —
 the role string encodes *when* validation should fire. Semantic-model reference:
-[`semantic model/README.md`](toolchain-specification/semantic%20model/README.md).
+[`semantic model/README.md`](semantic%20model/README.md).
 
 ### `rdfine` package
 
 Ergonomic wrapper over `rdflib`/`pyld`. Location:
-[`pipeline generator/src/rdfine/`](toolchain-specification/pipeline%20generator/src/rdfine/).
+[`pipeline generator/src/rdfine/`](pipeline%20generator/src/rdfine/).
 
 - **`GraphReader`** — immutable functional view over an `rdflib.Graph`.
   Methods: `filter`, `select`, `construct`, `ask`, `sparql`, `infer`,
@@ -54,12 +54,12 @@ Ergonomic wrapper over `rdflib`/`pyld`. Location:
 - **Utilities:** `load_yaml`, `drop_empty`, `parse_config`.
 
 Full reference:
-[`src/rdfine/README.md`](toolchain-specification/pipeline%20generator/src/rdfine/README.md).
+[`src/rdfine/README.md`](pipeline%20generator/src/rdfine/README.md).
 
 ### `compilers` package — the generator
 
 Location:
-[`pipeline generator/src/compilers/`](toolchain-specification/pipeline%20generator/src/compilers/).
+[`pipeline generator/src/compilers/`](pipeline%20generator/src/compilers/).
 Every concrete compiler subclasses `Compiler` (in `base.py`) and must:
 
 - Implement `compile(self) -> Graph` — reads from `self.graph_reader`, returns
@@ -127,12 +127,12 @@ the target directory.
 **Adding a new framework compiler** — drop a file in `compilers/`, subclass
 `Compiler`, implement `compile()`, override `applies_to()`, import the module
 from `compilers/__init__.py`. `PipelineGenerator` needs no changes. See §6.3
-of [`pipeline generator/README.md`](toolchain-specification/pipeline%20generator/README.md).
+of [`pipeline generator/README.md`](pipeline%20generator/README.md).
 
 ### SHACL validation — primitive done, test-suite runner planned
 
 `GraphReader.validate(**pyshacl_kwargs) -> GraphReader` is implemented in
-[`src/rdfine/graph_reader.py`](toolchain-specification/pipeline%20generator/src/rdfine/graph_reader.py):
+[`src/rdfine/graph_reader.py`](pipeline%20generator/src/rdfine/graph_reader.py):
 wraps `pyshacl.validate`, returns the SHACL report as a `GraphReader`
 (conformance is `?r sh:conforms ?bool` inside the returned graph, preserving
 rdfine's graph-in / graph-out contract). Data graph and shapes graph are the
@@ -140,7 +140,7 @@ same (`self.graph`) — shapes are expected to live next to the components
 they constrain. `pyshacl` is a hard dependency of `rdfine`.
 
 The **application profile** lives at
-[`data/catalog-application-profile-shapes.ttl`](toolchain-specification/pipeline%20generator/data/catalog-application-profile-shapes.ttl)
+[`data/catalog-application-profile-shapes.ttl`](pipeline%20generator/data/catalog/catalog-application-profile-shapes.ttl)
 (renamed from `tcs_shapes.ttl`), structured in two sections:
 
 1. **Generic profile** — vocabulary-level constraints on the `tcs:` model
@@ -162,7 +162,7 @@ The **application profile** lives at
 Component-scoped shapes (e.g. `:SparqlIngestShape`,
 `:SparqlIngestConfigShape`) live inline in the framework-specific catalog
 file next to the component they constrain (e.g.
-[`data/catalog-rdfc.ttl`](toolchain-specification/pipeline%20generator/data/catalog-rdfc.ttl)
+[`data/catalog-rdfc.ttl`](pipeline%20generator/data/catalog/catalog-rdfc.ttl)
 for RDF-Connect), attached via `dcat:qualifiedRelation` +
 `dcat:hadRole "configShape"`. Path-based targets are
 expressed as SHACL-AF `sh:SPARQLTarget` (Core `sh:targetSubjectsOf` cannot
@@ -260,13 +260,13 @@ Full plan with phases, verification steps, and open questions:
   Executed via `GraphReader.validate()` (pySHACL) for everything except
   input/output shapes. Application-profile shapes for the whole `tcs:`
   vocabulary live in
-  [`data/catalog-application-profile-shapes.ttl`](toolchain-specification/pipeline%20generator/data/catalog-application-profile-shapes.ttl);
+  [`data/catalog-application-profile-shapes.ttl`](pipeline%20generator/data/catalog/catalog-application-profile-shapes.ttl);
   component-scoped shapes live inline in the catalog next to the component.
 
 
 ## 8. Roadmap & open items
 
-> Curated public-facing view: [ROADMAP.md](ROADMAP.md). The list below is the
+> Curated public-facing view: [ROADMAP.md](../ROADMAP.md). The list below is the
 > working-notes version, updated per session.
 
 ### Demonstrator
@@ -371,10 +371,10 @@ Full plan with phases, verification steps, and open questions:
   as the other Tier-1/2 boilerplate.
 - [ ] **Review newly-added `passthroughShape` attachments** (2026-07-31).
   The trivial `tcs:passthroughShape` on `ldio:HttpOut` in
-  [`catalog-ldio.ttl`](toolchain-specification/pipeline%20generator/data/catalog-ldio.ttl)
+  [`catalog-ldio.ttl`](pipeline%20generator/data/catalog/catalog-ldio.ttl)
   and the `passthroughShape → demo:SosaWaterLevelObservationShape`
   override on `demo:LdioForward` in
-  [`pipeline_definition.ttl`](toolchain-specification/pipeline%20generator/data/pipeline_definition.ttl)
+  [`pipeline_definition.ttl`](pipeline%20generator/data/pipelines/pipeline_definition.ttl)
   are the first uses of the new role in the catalog / pipeline
   definition. User wants to double-check the semantics land as intended
   before rolling out to further passthrough components
@@ -383,17 +383,17 @@ Full plan with phases, verification steps, and open questions:
   `demo:JsonLdParse` should switch from `outputShape` to
   `passthroughShape` despite its read-side being JSON bytes.
 - [ ] **Add the LDIO service definition** (image, ports, volumes) to
-  [`pipeline generator/data/catalog-ldio.ttl`](toolchain-specification/pipeline%20generator/data/catalog-ldio.ttl)
+  [`pipeline generator/data/catalog-ldio.ttl`](pipeline%20generator/data/catalog/catalog-ldio.ttl)
   so the generator can emit an `ldio-workbench` stanza automatically.
   Requires the workbench + starter service pair or a refactor to LDIO
   Pattern A1 — see private note `/memories/dishacled-ldio-a1-refactor.md`.
 - [x] **`GraphReader.validate()` in rdfine.** Wraps `pyshacl.validate`,
   returns the SHACL report as a `GraphReader`
-  ([`src/rdfine/graph_reader.py`](toolchain-specification/pipeline%20generator/src/rdfine/graph_reader.py)).
+  ([`src/rdfine/graph_reader.py`](pipeline%20generator/src/rdfine/graph_reader.py)).
   Signature reduced to `validate(**pyshacl_kwargs) -> Self` — the graph is
   used as both data and shapes source. `pyshacl` is a hard `rdfine` dep.
 - [x] **Application-profile shapes** for the `tcs:` vocabulary landed at
-  [`data/catalog-application-profile-shapes.ttl`](toolchain-specification/pipeline%20generator/data/catalog-application-profile-shapes.ttl)
+  [`data/catalog-application-profile-shapes.ttl`](pipeline%20generator/data/catalog/catalog-application-profile-shapes.ttl)
   (renamed from `tcs_shapes.ttl`; generic profile + framework-specific
   sections for RDF-Connect, LDIO, semantic.works).
 - [ ] **Dangling catalog resources.** `rdfc:HttpFetch` and
@@ -417,9 +417,9 @@ Full plan with phases, verification steps, and open questions:
   *separate* semantic-model refactor — still open, see below.
 - [x] **SHACL validation test suite — `ValidationReportCompiler` fully
   implemented.**
-  ([`compilers/core/validation_report_compiler.py`](toolchain-specification/pipeline%20generator/src/compilers/core/validation_report_compiler.py))
+  ([`compilers/core/validation_report_compiler.py`](pipeline%20generator/src/compilers/core/validation_report_compiler.py))
   All 8 methods from the architecture in
-  [`test suite/README.md`](toolchain-specification/test%20suite/README.md)
+  [`test suite/README.md`](test%20suite/README.md)
   are implemented and tested end-to-end against the real demonstrator
   pipeline: `normalize_config_shapes`, `validate_normal_shapes`,
   `gather_throughput_shapes`, `normalize_passthrough_shapes`,
@@ -433,19 +433,19 @@ Full plan with phases, verification steps, and open questions:
   stub returning `None` until then.
 - [x] **Pytest regression suite for the generator itself** (distinct from
   the standalone pre-generator runner above) — 56 tests in
-  [`pipeline generator/tests/`](toolchain-specification/pipeline%20generator/tests/)
+  [`pipeline generator/tests/`](pipeline%20generator/tests/)
   covering compiler edge cases (see
-  [`tests/EDGE_CASES.md`](toolchain-specification/pipeline%20generator/tests/EDGE_CASES.md))
+  [`tests/EDGE_CASES.md`](pipeline%20generator/tests/EDGE_CASES.md))
   plus every `sh:NodeShape` in `catalog-application-profile-shapes.ttl`,
   and 101 tests in
-  [`src/rdfine/tests/`](toolchain-specification/pipeline%20generator/src/rdfine/tests/)
+  [`src/rdfine/tests/`](pipeline%20generator/src/rdfine/tests/)
   for `rdfine` in isolation — two independently-runnable pytest scopes
   (own `pytest.ini` / `pyproject.toml` `testpaths`).
 - [x] **Pipeline segments — entry/exit boundary markers + per-segment LDIO
   output.** Design fully specified 2026-08-19 in
-  [`pipeline generator/docs/pipeline-segments-plan.md`](toolchain-specification/pipeline%20generator/docs/pipeline-segments-plan.md)
+  [`pipeline generator/docs/pipeline-segments-plan.md`](pipeline%20generator/docs/pipeline-segments-plan.md)
   (companion decisions doc:
-  [`docs/pipeline-segments-decisions.md`](toolchain-specification/pipeline%20generator/docs/pipeline-segments-decisions.md)).
+  [`docs/pipeline-segments-decisions.md`](pipeline%20generator/docs/pipeline-segments-decisions.md)).
   All slices landed 2026-08-19: slice 1 (vocabulary foundation),
   slice 2 (`ValidationReport` + `DockerCompose` explicit finalize),
   slice 3 (`PipelineSeeder`/`GraphReducer` split +
@@ -509,7 +509,7 @@ Full plan with phases, verification steps, and open questions:
   producing container's step depends on the consuming container's step
   along a `tcs:Channel` (e.g. the demonstrator's `ldio-workbench →
   rdfc` edge). See
-  [`compilers/core/docker_compose_compiler.py`](toolchain-specification/pipeline%20generator/src/compilers/core/docker_compose_compiler.py)'s
+  [`compilers/core/docker_compose_compiler.py`](pipeline%20generator/src/compilers/core/docker_compose_compiler.py)'s
   `fold_in_depends_on`.
 - [ ] **`NifiCompiler`** — add support for [Apache Nifi 2](https://nifi.apache.org/)
   as a fourth target framework (Urban Sense use case).
@@ -520,7 +520,7 @@ Full plan with phases, verification steps, and open questions:
   fixpoint loop (between `PipelineSeeder` and `PipelineAssembler`), so no
   compiler, SHACL shape, or inference rule downstream needs to know the
   authoring layer exists. See
-  [`compilers/core/semantic_model_mapper.py`](toolchain-specification/pipeline%20generator/src/compilers/core/semantic_model_mapper.py)
+  [`compilers/core/semantic_model_mapper.py`](pipeline%20generator/src/compilers/core/semantic_model_mapper.py)
   and README §4.7.1. Two open sub-items:
   - [ ] Branching (fan-out/fan-in) over `tcs:Connection` — needs a
     channel-identity term of its own; deferred to its own design pass.
@@ -542,7 +542,7 @@ Full plan with phases, verification steps, and open questions:
   `CONTAINER_WORKDIR`'s trailing slash already makes the constant itself
   the base directory; latent since `e204b35`, only masked by rdflib
   clamping excess `..` at root. Fixed in
-  [`emitter.py`](toolchain-specification/pipeline%20generator/src/rdfc_catalog_harvest/emitter.py),
+  [`emitter.py`](pipeline%20generator/src/rdfc_catalog_harvest/emitter.py),
   regenerated `catalog-rdfc.ttl`, hand-fixed the three affected imports in
   `catalog-rdfc-manual.ttl`.
 
@@ -556,7 +556,8 @@ Full plan with phases, verification steps, and open questions:
 
 ## Current status (detail)
 
-Full implementation-level detail behind the condensed summary in AGENTS.md §3.
+Full implementation-level detail. The CLAUDE.md context files carry no
+status summary of their own — they point here.
 
 ## 3. Current status
 
@@ -564,10 +565,10 @@ Full implementation-level detail behind the condensed summary in AGENTS.md §3.
   Water-level readings flow from the source-a API through LDIO enrichment,
   RDF-Connect threshold monitoring, and into the semantic.works triple store,
   producing `oslc:Error` entities and composed `nmo:Email` triples.
-  See [README.md](README.md) for the run recipe and verification queries.
+  See [demonstrator/README.md](../demonstrator/README.md) for the run recipe and verification queries.
   LDIO workbench + `Ldio:JsonToLdAdapter` + SSN/SOSA-mapping SPARQL CONSTRUCT
-  in place ([`LDIO/`](LDIO/)). RDF-Connect pipeline targets
-  `sosa:Observation` / `sosa:hasSimpleResult` ([`RDFC/pipeline.ttl`](RDFC/pipeline.ttl)).
+  in place ([`LDIO/`](../demonstrator/LDIO/)). RDF-Connect pipeline targets
+  `sosa:Observation` / `sosa:hasSimpleResult` ([`RDFC/pipeline.ttl`](../demonstrator/RDFC/pipeline.ttl)).
 - ⚠️ `berichtencentrum-deliver-email-service` doesn't actually send SMTP —
   composed `nmo:Email` triples aren't linked to the mail folder the sender
   polls. Deployment gap in the semantic.works wiring, not a pipeline bug.
@@ -581,7 +582,7 @@ Full implementation-level detail behind the condensed summary in AGENTS.md §3.
   framework-specific configs, a self-describing build graph, and an
   ad-hoc RDF-Connect Dockerfile that only ships components a pipeline
   actually uses. End-to-end walkthrough in
-  [`pipeline generator/src/demo.ipynb`](toolchain-specification/pipeline%20generator/src/demo.ipynb).
+  [`pipeline generator/src/demo.ipynb`](pipeline%20generator/src/demo.ipynb).
 - ✅ **`tcs:Channel`** is the first-class connector between steps.
   Concrete step→channel wiring (`rdfc:reader` / `rdfc:writer` /
   `rdfc:memberStream` …) is the PipelineDefinition author's
@@ -592,26 +593,26 @@ Full implementation-level detail behind the condensed summary in AGENTS.md §3.
   only emits the `rdfc:Reader, rdfc:Writer` type boilerplate for
   channels the emitted `pipeline.ttl` actually references. The
   `tcs:Channel` type is inferred from `tcs:readsFrom` / `tcs:writesTo`
-  by [`data/inference_rules.yaml`](toolchain-specification/pipeline%20generator/data/inference_rules.yaml).
+  by [`data/inference_rules.yaml`](pipeline%20generator/data/inference_rules/inference_rules.yaml).
 - ✅ **Data folder** — the demonstrator pipeline definition is the sole
   pipeline in
-  [`data/pipeline_definition.ttl`](toolchain-specification/pipeline%20generator/data/pipeline_definition.ttl).
+  [`data/pipeline_definition.ttl`](pipeline%20generator/data/pipelines/pipeline_definition.ttl).
   The catalog lives in four self-contained files, meant to be loaded
   together into a single graph alongside `pipeline_definition.ttl` and
   the shapes file below:
-  [`data/catalog-core.ttl`](toolchain-specification/pipeline%20generator/data/catalog-core.ttl) —
+  [`data/catalog-core.ttl`](pipeline%20generator/data/catalog/catalog-core.ttl) —
   framework-agnostic bits (`:pip`/`:npm` package-manager stubs,
   `:DishacledCatalog`'s base declaration + full `dcat:resource` list, the
   two water-level datasets + mock JSON-LD API service descriptions, and
   the single canonical `tcs:prefixes` SPARQL-prefix registry used by every
   SHACL SPARQL-based constraint in the catalog);
-  [`data/catalog-ldio.ttl`](toolchain-specification/pipeline%20generator/data/catalog-ldio.ttl),
-  [`data/catalog-rdfc.ttl`](toolchain-specification/pipeline%20generator/data/catalog-rdfc.ttl) and
-  [`data/catalog-sw.ttl`](toolchain-specification/pipeline%20generator/data/catalog-sw.ttl) —
+  [`data/catalog-ldio.ttl`](pipeline%20generator/data/catalog/catalog-ldio.ttl),
+  [`data/catalog-rdfc.ttl`](pipeline%20generator/data/catalog/catalog-rdfc.ttl) and
+  [`data/catalog-sw.ttl`](pipeline%20generator/data/catalog/catalog-sw.ttl) —
   one file per framework, each self-contained with that framework's
   component definitions, configShapes and `tcs:Config` bodies.
 - ✅ **SHACL application profile** at
-  [`data/catalog-application-profile-shapes.ttl`](toolchain-specification/pipeline%20generator/data/catalog-application-profile-shapes.ttl).
+  [`data/catalog-application-profile-shapes.ttl`](pipeline%20generator/data/catalog/catalog-application-profile-shapes.ttl).
   Two sections: (1) generic profile for the `tcs:` vocabulary (class/property
   expectations, deployability, `≤ 1 tcs:DefaultConfig` per subtype), and (2)
   compiler-specific constraints for RDF-Connect (`owl:imports` on
@@ -623,15 +624,15 @@ Full implementation-level detail behind the condensed summary in AGENTS.md §3.
   `ValidationReportCompiler` (below). Uses SHACL-AF SPARQL targets and
   constraints where SHACL Core can't express the intent.
 - ✅ **`GraphReader.validate()`** implemented in `rdfine`
-  ([`src/rdfine/graph_reader.py`](toolchain-specification/pipeline%20generator/src/rdfine/graph_reader.py)).
+  ([`src/rdfine/graph_reader.py`](pipeline%20generator/src/rdfine/graph_reader.py)).
   Wraps `pyshacl.validate` and returns a `GraphReader` around the results
   graph, preserving the graph-in / graph-out contract. Uses `self.graph`
   as both data and shapes source; conformance is `?r sh:conforms true`
   inside the report. `pyshacl` is a hard `rdfine` dependency.
 - ✅ **`ValidationReportCompiler` fully implemented**
-  ([`compilers/core/validation_report_compiler.py`](toolchain-specification/pipeline%20generator/src/compilers/core/validation_report_compiler.py)).
+  ([`compilers/core/validation_report_compiler.py`](pipeline%20generator/src/compilers/core/validation_report_compiler.py)).
   All 8 methods from the architecture in
-  [`test suite/README.md`](toolchain-specification/test%20suite/README.md)
+  [`test suite/README.md`](test%20suite/README.md)
   are implemented and tested end-to-end against the real demonstrator
   pipeline, which compiles to `conforms: true` with zero violations. The
   attached report lists, per shape that actually had a `sh:target`
@@ -644,7 +645,7 @@ Full implementation-level detail behind the condensed summary in AGENTS.md §3.
   into once it exists — a documented, overridable stub returning `None`
   until then.
 - ✅ **Full demonstrator reproduction** via the generator. The pipeline
-  [`data/pipeline_definition.ttl`](toolchain-specification/pipeline%20generator/data/pipeline_definition.ttl)
+  [`data/pipeline_definition.ttl`](pipeline%20generator/data/pipelines/pipeline_definition.ttl)
   (`demo:DishacledPipeline`) plus the components in
   `data/catalog-{core,ldio,rdfc,sw}.ttl`
   compile down to a project folder that covers every component,
@@ -655,7 +656,7 @@ Full implementation-level detail behind the condensed summary in AGENTS.md §3.
   their `demonstrator/semantic-works/config/` counterparts. Remaining
   known drift: `ldio-workbench` version (deferred LDIO A1 refactor, §8).
   Comparison cells live at the end of
-  [`src/demo.ipynb`](toolchain-specification/pipeline%20generator/src/demo.ipynb).
+  [`src/demo.ipynb`](pipeline%20generator/src/demo.ipynb).
 - 🚧 The generator's catalog does **not yet** contain the LDIO service definition
   used by the demonstrator (image, ports, volumes for `ldio-workbench`). Filed
   under §8.
@@ -694,7 +695,7 @@ Full implementation-level detail behind the condensed summary in AGENTS.md §3.
   `SegmentTagger` + `PipelineSeeder`/`GraphReducer` split, four
   per-boundary config compilers, LDIO segment splitting, shape rescopes.
   See
-  [`pipeline generator/docs/pipeline-segments-plan.md`](toolchain-specification/pipeline%20generator/docs/pipeline-segments-plan.md)
+  [`pipeline generator/docs/pipeline-segments-plan.md`](pipeline%20generator/docs/pipeline-segments-plan.md)
   and §8.
 - ✅ **`PipelineAssembler`/`DockerComposeCompiler` are self-scoping.**
   Neither compiler depends any more on `PipelineExtractor` having
@@ -713,12 +714,14 @@ Full implementation-level detail behind the condensed summary in AGENTS.md §3.
   a wider-catalog compile step would have broken.
 
 Full history of how the project got here (bug fixes, superseded designs,
-per-session detail): [`SESSION-LOG.md`](../../../../SESSION-LOG.md) §2.
+per-session detail): [`SESSION-LOG.md`](../SESSION-LOG.md) §2.
 
 
 ## Working with Copilot — deep procedures
 
-Day-to-day procedures behind the pointer in AGENTS.md §6.
+Day-to-day procedures behind the "Working on this repo" sections of
+[`CLAUDE.md`](CLAUDE.md) and
+[`pipeline generator/CLAUDE.md`](pipeline%20generator/CLAUDE.md).
 
 ### During the session — demonstrator side
 
@@ -728,7 +731,7 @@ Day-to-day procedures behind the pointer in AGENTS.md §6.
 - **Verify each hop** when changing the schema or thresholds — a broken
   `typeFilter` will silently drop everything downstream (no error, just no
   output). See the end-to-end verification recipe in
-  [demonstrator/README.md](demonstrator/README.md#verifying-end-to-end).
+  [demonstrator/README.md](../demonstrator/README.md#verifying-end-to-end).
 - **When editing `RDFC/pipeline.ttl`**, remember the RDFC docker image is
   built from context; a plain `docker compose restart` won't pick up TTL
   changes. Use `docker compose up -d --build --force-recreate rdfc`.
@@ -766,7 +769,7 @@ Day-to-day procedures behind the pointer in AGENTS.md §6.
   (including framework-specific predicates such as `ldio:type` /
   `rdf:label` for LDIO, `owl:imports` for RDFC), then add compiler(s) as above.
   See §6.3 of
-  [`pipeline generator/README.md`](toolchain-specification/pipeline%20generator/README.md).
+  [`pipeline generator/README.md`](pipeline%20generator/README.md).
 - **Debugging.** Every compile stage is an `rdflib.Graph`. Serialize it with
   `.serialize(format="turtle")`, or wrap it in `GraphReader` and use
   `.filter()` / `.select()` / `.df` to inspect. After `.compile()` returns,

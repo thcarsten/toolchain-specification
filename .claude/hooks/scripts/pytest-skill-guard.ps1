@@ -6,7 +6,26 @@ if ($input_json.tool_name -ne 'Bash' -and $input_json.tool_name -ne 'PowerShell'
 }
 
 $cmd = $input_json.tool_input.command
-if ($null -eq $cmd -or $cmd -notmatch 'pytest') {
+if ($null -eq $cmd) {
+    exit 0
+}
+
+# Only an actual invocation counts. Merely naming pytest -- reading this
+# script by its own filename, grepping for the word, editing a skill that
+# documents it -- used to trip the guard and block read-only work.
+#
+# A command segment invokes pytest if it runs `pytest` as its first token
+# (optionally via a path, optionally .exe), or passes `-m pytest` to an
+# interpreter.
+$segments = [regex]::Split($cmd, '(?:\|\||&&|[;&|\r\n])')
+$invokes = $false
+foreach ($segment in $segments) {
+    $segment = $segment.Trim()
+    if ($segment -match '(?:^|\s)-m\s+["'']?pytest\b') { $invokes = $true; break }
+    if ($segment -match '^["'']?(?:[^"''\s]*[\\/])?pytest(?:\.exe)?["'']?(?:\s|$)') { $invokes = $true; break }
+}
+
+if (-not $invokes) {
     exit 0
 }
 
