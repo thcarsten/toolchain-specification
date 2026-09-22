@@ -35,8 +35,7 @@ test_output.txt
 pytest_results.txt
 
 # Claude Code
-pipeline generator/.claude/settings.local.json
-pipeline generator/CLAUDE.md
+.claude/settings.local.json
 
 # Generated output: only the dishacled-full reference build is tracked.
 **/out/*

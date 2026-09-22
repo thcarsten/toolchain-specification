@@ -1,9 +1,4 @@
 {
-  "permissions": {
-    "additionalDirectories": [
-      "../semantic model"
-    ]
-  },
   "hooks": {
     "PreToolUse": [
       {
