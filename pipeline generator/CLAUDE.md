@@ -1,16 +1,20 @@
 # Pipeline generator — project context
 
-> **How to use this file.** Read it at the start of every session in this
-> repo folder. It is scoped to the **pipeline generator** codebase only —
-> for the DiSHACLed project as a whole (the hand-built demonstrator, the
-> semantic model, the survey, the planned test suite), see the workspace
-> root `AGENTS.md`.
+> **How to use this file.** It is scoped to the **pipeline generator**
+> codebase only, and is loaded on demand — when a session opened at the repo
+> root touches files in this folder — rather than at session start.
+>
+> The always-on entry point is one level up:
+> [`../CLAUDE.md`](../CLAUDE.md) covers the repo as a whole (this folder plus
+> the semantic model, the test suite and the survey). Above that,
+> [`../../CLAUDE.md`](../../CLAUDE.md) at the workspace root covers this repo
+> and the hand-built `demonstrator/` together.
 >
 > Deep internals (ontology cheat-sheet, per-module compiler reference,
 > vocabulary, roadmap) live in the `dishacled-context` skill
-> (`.claude/skills/dishacled-context/SKILL.md`) — loaded on demand, not on
+> (`../.claude/skills/dishacled-context/SKILL.md`) — loaded on demand, not on
 > every session start. Companion **private notes** live in the user-scope
-> memory at `/memories/dishacled-project.md`.
+> memory for this project.
 
 ---
 
@@ -90,9 +94,10 @@ Detailed, dated status, roadmap and open items: `dishacled-context` skill,
 
 ### Starting a session
 
-1. Open the workspace root so both `demonstrator/` and
-   `toolchain-specification/` are visible if you need cross-repo context;
-   otherwise this folder alone is enough for generator-only work.
+1. Open the repo root (`toolchain-specification/`) — that is where the
+   Claude Code config, the skills and the test-guard hook live, so opening
+   it is what makes them available. Open the workspace root one level above
+   only when you need `demonstrator/` visible at the same time.
 2. State the concrete goal (new compiler, catalog/SHACL authoring, bugfix,
    test-suite integration, refactor).
 3. For deep internals (ontology, per-compiler contracts, vocabulary), load
