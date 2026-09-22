@@ -1,6 +1,6 @@
 # Pipeline segments & cross-container bridges — decisions, alternatives, open questions
 
-Companion to [`pipeline-segments-plan.md`](pipeline-segments-plan.md), which
+Companion to [`pipeline-segments-plan.md`](../../plan/pipeline-segments-plan.md), which
 describes the design itself. This document holds everything that is *not*
 a description of the design: what was considered and rejected, what's
 still undecided, and the session-by-session timeline. Kept separate so

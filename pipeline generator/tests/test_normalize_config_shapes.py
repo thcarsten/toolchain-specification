@@ -1,6 +1,6 @@
 """Tests for ValidationReportCompiler.normalize_config_shapes().
 
-Slice 1e of docs/config-shape-split-plan.md: the catalogs used to
+Slice 1e of plan/config-shape-split-plan.md: the catalogs used to
 hand-write the `sh:target` that says where a step config lives — 9
 blocks in catalog-nifi.ttl, 9 generated into catalog-rdfc.ttl, 1 in
 catalog-rdfc-manual.ttl — every one of them pointing at

@@ -22,10 +22,10 @@ Those two are not the same document, and the repo already shows the strain:
   it, but an author should not have to hand-write `rdfc:reader`/`rdfc:writer` —
   the generator knows the wiring from `tcs:readsFrom`/`tcs:writesTo`. The
   harvester therefore *demotes* that cardinality to `tcs:upstreamMinCount`
-  (rewrite 5 in [`shapes.py`](../src/rdfc_catalog_harvest/shapes.py)) and two
+  (rewrite 5 in [`shapes.py`](../pipeline%20generator/src/rdfc_catalog_harvest/shapes.py)) and two
   bespoke application-profile shapes
   (`tcs:RdfcMandatoryReaderWiringShape` / `…WriterWiringShape`,
-  [`catalog-application-profile-shapes.ttl:1404-1465`](../data/catalog/catalog-application-profile-shapes.ttl))
+  [`catalog-application-profile-shapes.ttl:1404-1465`](../pipeline%20generator/data/catalog/catalog-application-profile-shapes.ttl))
   re-ask the question against `tcs:readsFrom` instead. That is a workaround for
   a missing distinction.
 - **semantic.works.** Several aspects are fixed per component and should never
@@ -81,7 +81,7 @@ rdfc:HttpFetch
 ```
 
 New `tcs:` terms (coordinate via the `semantic-model-sync` skill — the
-[`semantic model/README.md`](../../semantic%20model/README.md) is prose and
+[`semantic model/README.md`](../semantic%20model/README.md) is prose and
 carries no term list, so this is a README/diagram note, not an ontology-file
 edit):
 
@@ -105,7 +105,7 @@ guards all over the compilers would break if both hung off `hasInputVar`.
 `?step` and `?component` into the query before running it. `?target` must be a
 named IRI, not a blank node, so the CONSTRUCT template stays safe across
 multi-row WHERE results — the same constraint documented at
-[`validation_report_compiler.py:127-131`](../src/compilers/core/validation_report_compiler.py).
+[`validation_report_compiler.py:127-131`](../pipeline%20generator/src/compilers/core/validation_report_compiler.py).
 
 **Corrected while implementing (2026-09-16).** Two things in this section
 did not survive contact with the code.
@@ -207,17 +207,17 @@ exists, and the authored side never leaves `p-plan:hasInputVar`.
 Puts the architecture in place with no behaviour change.
 
 **1a. Rename the role.** 40 attachments: 20 in
-[`catalog-ldio.ttl`](../data/catalog/catalog-ldio.ttl), 9 generated into
-[`catalog-rdfc.ttl`](../data/catalog/catalog-rdfc.ttl), 9 in
-[`catalog-nifi.ttl`](../data/catalog/catalog-nifi.ttl), 1 in
+[`catalog-ldio.ttl`](../pipeline%20generator/data/catalog/catalog-ldio.ttl), 9 generated into
+[`catalog-rdfc.ttl`](../pipeline%20generator/data/catalog/catalog-rdfc.ttl), 9 in
+[`catalog-nifi.ttl`](../pipeline%20generator/data/catalog/catalog-nifi.ttl), 1 in
 `catalog-rdfc-manual.ttl`, 1 in `tests/fixtures/catalog-rdfc-handwritten.ttl`.
 **[D] Hard rename, no compatibility alias.**
 
 Do **not** hand-edit `catalog-rdfc.ttl` — it is generated. Change
-[`emitter.py:154`](../src/rdfc_catalog_harvest/emitter.py) and regenerate.
+[`emitter.py:154`](../pipeline%20generator/src/rdfc_catalog_harvest/emitter.py) and regenerate.
 
 While here, fix the **string-vs-IRI split**: `catalog-nifi.ttl` and
-[`nifi/config_compiler.py:223,742`](../src/compilers/nifi/config_compiler.py)
+[`nifi/config_compiler.py:223,742`](../pipeline%20generator/src/compilers/nifi/config_compiler.py)
 use the plain literal `"configShape"` where everything else uses the IRI. The
 consequence today is that `ValidationReportCompiler.normalize_config_shapes`
 never sees a NiFi shape at all. Normalise NiFi onto the IRI form as part of the
@@ -253,7 +253,7 @@ compile():
 
 The identity path should **reuse** the CBD traversal
 `extract_config` already performs
-([`utils.py:169-192`](../src/compilers/utils.py)) —
+([`utils.py:169-192`](../pipeline%20generator/src/compilers/utils.py)) —
 `traverse(config_id, stop_at_named_nodes=True, exclude="dcat:qualifiedRelation")`
 — rather than a naive `CONSTRUCT {?s ?p ?o}`, which would drag in the whole
 graph. That exclusion exists precisely to stop shape bookkeeping leaking into
@@ -267,8 +267,8 @@ an extracted config, and applies identically here.
 
 **1d. Placement in the run.** Insert into `PipelineGeneratorConfig` and
 `PipelineValidatorConfig`
-([`pipeline_generator.py:107`](../src/compilers/pipeline_generator.py),
-[`pipeline_validator.py`](../src/compilers/pipeline_validator.py)) *after* the
+([`pipeline_generator.py:107`](../pipeline%20generator/src/compilers/pipeline_generator.py),
+[`pipeline_validator.py`](../pipeline%20generator/src/compilers/pipeline_validator.py)) *after* the
 per-boundary config compilers — which mint `p-plan:hasInputVar` configs for
 inserted bridge steps and must be allowed to finish first — and *before* the
 file-emitting compilers.
@@ -287,7 +287,7 @@ Every existing configShape targets `?step … p-plan:hasInputVar/tcs:embedded
 `normalize_config_shapes` exists precisely to mint this target, and the
 catalog-side copies are an oversight — their authors did not know it was
 automatic. The idempotence guard at
-[`validation_report_compiler.py:124`](../src/compilers/core/validation_report_compiler.py)
+[`validation_report_compiler.py:124`](../pipeline%20generator/src/compilers/core/validation_report_compiler.py)
 then skips every RDFC and NiFi shape, which is why that method is effectively
 LDIO-only today.
 
@@ -297,7 +297,7 @@ place that knows where a config lives:
 
 - 9 hand-written `sh:select`s in `catalog-nifi.ttl`
 - 9 generated into `catalog-rdfc.ttl` — delete `_sparql_target`
-  ([`shapes.py:286-306`](../src/rdfc_catalog_harvest/shapes.py)) and its call
+  ([`shapes.py:286-306`](../pipeline%20generator/src/rdfc_catalog_harvest/shapes.py)) and its call
   site, then regenerate
 - 1 in `catalog-rdfc-manual.ttl`
 
@@ -384,7 +384,7 @@ architectural one: after it, no compiler reads the authoring contract.
 
 **Honest framing: this slice buys clarity, not capability.** The behaviour it
 describes already exists, in Python, at
-[`rdfc/config_compiler.py:207-350`](../src/compilers/rdfc/config_compiler.py).
+[`rdfc/config_compiler.py:207-350`](../pipeline%20generator/src/compilers/rdfc/config_compiler.py).
 `describe_channel_wiring` → `_inject_wiring_key` → `_lookup_channel_predicate`
 already injects a step's single `tcs:readsFrom`/`tcs:writesTo` channel under
 the component's declared reader/writer path, reading the direction from
@@ -431,7 +431,7 @@ The author annotates the connection with which framework predicate it is:
 ```
 
 Required changes in
-[`semantic_model_mapper.py`](../src/compilers/core/semantic_model_mapper.py):
+[`semantic_model_mapper.py`](../pipeline%20generator/src/compilers/core/semantic_model_mapper.py):
 
 1. **Relax the fan-out/fan-in rejection** in `resolve_connection_channels`
    (`:182-234`), which currently rejects branching outright via a `Counter`.
@@ -517,7 +517,7 @@ as a functional gain.
   `prov:specializationOf` values and belonging to two plans —
   `DEFAULT_PIPELINE_FILES` is documented as safe to load wholesale precisely
   because "definitions use disjoint pipeline-id IRIs"
-  ([`pipeline_generator.py:81`](../src/compilers/pipeline_generator.py)).
+  ([`pipeline_generator.py:81`](../pipeline%20generator/src/compilers/pipeline_generator.py)).
   Resolved by moving the file's own entities to `demo_sd:`
   (`http://example.org/example/semantics-demo/`) with the plan as
   `demo_sd:SemanticsDemoPipeline`, keeping the borrowed
@@ -548,7 +548,7 @@ as a functional gain.
   `ValidationReportCompiler` runs in the finalize phase.
 
 **Checked and dismissed.** `_unblank_synthetic_shape_ids`
-([`validation_report_compiler.py:599`](../src/compilers/core/validation_report_compiler.py))
+([`validation_report_compiler.py:599`](../pipeline%20generator/src/compilers/core/validation_report_compiler.py))
 re-blanks `:nodeshape_N` / `:emptyshape_N` but not `:configshapetarget_N` or
 `:{role}rel_N`. This is cosmetic and currently inert: those nodes are targets
 and relationship wrappers, not shapes, and pySHACL results cite the shape via
@@ -573,7 +573,7 @@ permission, per the `run-pipeline-generator-tests` skill.
    into two folders and `diff -r` them. This is the strongest available check
    and should be a hard gate: any byte difference in slice 1 is a bug.
    The byte-identical semantic.works Tier-1/2 comparison cells at the end of
-   [`src/demo.ipynb`](../src/demo.ipynb) cover the same ground.
+   [`src/demo.ipynb`](../pipeline%20generator/src/demo.ipynb) cover the same ground.
    **This gate is only meaningful because of the determinism work in §8** —
    before it, the same input produced different bytes on every run and the
    diff was pure noise. Run each side in a *fresh process*: within one

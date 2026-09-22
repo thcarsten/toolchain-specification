@@ -37,9 +37,11 @@ pytest_results.txt
 # Claude Code
 .claude/settings.local.json
 
-# Generated output: only the dishacled-full reference build is tracked.
-**/out/*
-!**/out/dishacled-full/
+# Generator output. Everything materialized into an `out/` folder is
+# scratch, safe to delete at any time. The one tracked, reviewable build
+# lives in `pipeline generator/reference/` and is refreshed by promoting
+# a run on purpose -- see the generator README.
+**/out/
 
 # Notes not meant for external sharing
 token-usage-postmortem-2026-09-01.md

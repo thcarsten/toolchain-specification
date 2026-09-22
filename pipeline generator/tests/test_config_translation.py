@@ -5,7 +5,7 @@ A component that declares no `tcs:userFacingConfigShape` has one config
 contract, not two, so its authored `p-plan:hasInputVar` config already is
 the compiler-facing config and nothing is derived. `lookup_step_config`
 is what makes that invisible to consumers. See
-docs/config-shape-split-plan.md.
+plan/config-shape-split-plan.md.
 """
 
 import pytest

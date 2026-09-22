@@ -443,7 +443,7 @@ Full plan with phases, verification steps, and open questions:
   (own `pytest.ini` / `pyproject.toml` `testpaths`).
 - [x] **Pipeline segments — entry/exit boundary markers + per-segment LDIO
   output.** Design fully specified 2026-08-19 in
-  [`pipeline generator/docs/pipeline-segments-plan.md`](pipeline%20generator/docs/pipeline-segments-plan.md)
+  [`plan/pipeline-segments-plan.md`](plan/pipeline-segments-plan.md)
   (companion decisions doc:
   [`docs/pipeline-segments-decisions.md`](pipeline%20generator/docs/pipeline-segments-decisions.md)).
   All slices landed 2026-08-19: slice 1 (vocabulary foundation),
@@ -695,7 +695,7 @@ status summary of their own — they point here.
   `SegmentTagger` + `PipelineSeeder`/`GraphReducer` split, four
   per-boundary config compilers, LDIO segment splitting, shape rescopes.
   See
-  [`pipeline generator/docs/pipeline-segments-plan.md`](pipeline%20generator/docs/pipeline-segments-plan.md)
+  [`plan/pipeline-segments-plan.md`](plan/pipeline-segments-plan.md)
   and §8.
 - ✅ **`PipelineAssembler`/`DockerComposeCompiler` are self-scoping.**
   Neither compiler depends any more on `PipelineExtractor` having

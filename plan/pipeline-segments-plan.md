@@ -1,6 +1,6 @@
 # Pipeline segments & cross-container bridges
 
-See [`pipeline-segments-decisions.md`](pipeline-segments-decisions.md) for
+See [`pipeline-segments-decisions.md`](../pipeline%20generator/docs/pipeline-segments-decisions.md) for
 rejected alternatives, open questions, and the session timeline.
 
 ## Motivation
@@ -15,7 +15,7 @@ Three consequences the current design doesn't handle:
   must keep them separate.
 - Reusing a catalog component more than once must be safe for every
   framework, not just the multi-tenant ones. See
-  [`pipeline generator/README.md`](../README.md#63-how-to-onboard-new-frameworks)'s
+  [`pipeline generator/README.md`](../pipeline%20generator/README.md#63-how-to-onboard-new-frameworks)'s
   container/multi-tenancy contract.
 - Every cross-container hop needs a bridge component pair (Exit + Entry,
   e.g. `ldio:HttpOut` → `rdfc:HttpServer`) with matching transport
@@ -303,7 +303,7 @@ Called last, explicitly. Also no longer registry-triggered.
 
 ## Inference rules
 
-[`data/inference_rules.yaml`](../data/inference_rules.yaml) already
+[`data/inference_rules.yaml`](../pipeline%20generator/data/inference_rules.yaml) already
 types every channel (from any use of `tcs:readsFrom`/`tcs:writesTo`)
 and every step (from `p-plan:isStepOfPlan`). The new vocabulary needs
 two additional entailments so pre-compile SHACL shapes see the same

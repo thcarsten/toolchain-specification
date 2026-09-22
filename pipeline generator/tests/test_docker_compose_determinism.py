@@ -7,7 +7,7 @@ name collision, and (since the YAML dumper preserves insertion order)
 the order services appear in the file — so the same build graph produced
 a different, if equivalent, `docker-compose.yml` on each run.
 
-That made the committed `out/` artifact unreviewable: every regeneration
+That made the committed reference build unreviewable: every regeneration
 showed dozens of moved lines with no change in meaning.
 """
 
@@ -38,8 +38,12 @@ def test_repeated_compilation_is_byte_identical():
 
 
 def test_committed_output_matches_a_fresh_run(repo_root: Path):
-    """Guards the checked-in artifact against silent drift."""
-    committed = (repo_root / "out/dishacled-full/docker-compose.yml").read_text(
+    """Guards the checked-in reference build against silent drift.
+
+    `out/` is scratch and ignored; `reference/dishacled-full/` is the
+    tracked build, refreshed by promoting a run (see README).
+    """
+    committed = (repo_root / "reference/dishacled-full/docker-compose.yml").read_text(
         encoding="utf-8"
     )
     assert committed == _compose()
