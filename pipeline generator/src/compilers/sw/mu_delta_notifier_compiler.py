@@ -4,7 +4,7 @@ Currently ships the demonstrator's `rules.js` verbatim (which includes
 both the boilerplate mu-cl-resources fan-out rule *and* the
 `rdf:type oslc:Error → error-alert` cross-framework rule). Longer-term,
 the second rule should be derived from the pipeline definition once
-`tcs:Channel` supports cross-framework transports; see AGENTS.md §8.
+`tcs:Connection` supports cross-framework transports; see AGENTS.md §8.
 """
 
 from rdflib import Graph

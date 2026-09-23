@@ -321,7 +321,7 @@ A useful side effect: because provenance is attached *while the loop is running*
 | `PipelineSeeder` | a `tcs:CompilationRequest` node is present in the graph (the runner posts one up front) | the catalog + the request's `tcs:targetPipeline` | `<pipeline>_build a tcs:PipelineBuild ; prov:hadPlan <pipeline>`; blank-node subjects renamed to stable IRIs |
 | `SemanticModelMapper` | a `tcs:PipelineBuild` node exists and at least one `tcs:Connection` is present in the graph | this pipeline's plan-scoped `tcs:Connection` nodes | `tcs:readsFrom`/`tcs:writesTo`/`tcs:Channel` wiring for each mapped Connection; consumes (removes) the `tcs:Connection`/`tcs:from`/`tcs:to` triples it maps. See [§4.7.1](#471-tcsconnection-the-authoring-layer). |
 | `PipelineAssembler` | the seeded plan (`<build> prov:hadPlan ?pipeline`), cross-checked against the original request's `tcs:targetPipeline`, has at least one step (`p-plan:isStepOfPlan`) | the seeded pipeline + catalog | `tcs:DockerContainer`, `dct:hasPart`, `tcs:instantiates`, `tcs:runs` |
-| `PipelineEnricher` | a `tcs:PipelineBuild` node is present (fires right after the seeder's bootstrap, regardless of whether any steps exist yet) | steps and channels | synthesized, typed `tcs:Channel`s from `p-plan:isPrecededBy`, and a `tcs:PipelineConfig` slot on every step that lacks one |
+| `PipelineEnricher` | a `tcs:PipelineBuild` node is present (fires right after the seeder's bootstrap, regardless of whether any steps exist yet) | steps | a `tcs:PipelineConfig` slot on every step that lacks one |
 | `BridgeTransportCompiler` | `<build> dct:creator tcs:PipelineEnricher` present, and some `tcs:Channel` crosses container boundaries | cross-container channels + the catalog of boundary components | inserted Entry/Exit boundary steps (where neither side is already a boundary). See [§4.8](#48-boundary-components-and-cross-container-bridges). |
 | `SegmentTagger` | `<build> dct:creator tcs:BridgeTransportCompiler` present | the final step → channel graph | `tcs:segment` on every `tcs:InstancePipelineComponent` |
 | `GraphReducer` | `<build> dct:creator tcs:PipelineAssembler` present, and no `tcs:Connection` remains unconsumed (belt-and-braces guard — `SemanticModelMapper` must finish before narrowing runs, since a standalone Connection node is unreachable from the build's forward traversal) | the full build graph | narrows the build down to just triples reachable from `<build>` and its shape subgraph |
@@ -349,7 +349,13 @@ A useful side effect: because provenance is attached *while the loop is running*
 
 #### 4.7.1. `tcs:Connection`: the authoring layer
 
-A pipeline author has two ways to state a dataflow edge between two `tcs:InstancePipelineComponent`s. The terse, original form names both channel-typed predicates directly:
+`tcs:Connection` is the primary way to state a dataflow edge between two `tcs:InstancePipelineComponent`s: a standalone node reifying the edge, extensible with metadata, without forcing the author to hand-name a channel IRI:
+
+```turtle
+[ a tcs:Connection ; tcs:from demo:SdsifyMeasurements ; tcs:to demo:ThresholdMonitor ] .
+```
+
+Every shipped pipeline in `data/pipelines/` is authored this way. The older, terser form — naming both channel-typed predicates directly — stays fully supported and may be freely mixed with `tcs:Connection` on the same pipeline:
 
 ```turtle
 demo:SdsifyMeasurements a tcs:InstancePipelineComponent ;
@@ -358,22 +364,23 @@ demo:ThresholdMonitor a tcs:InstancePipelineComponent ;
     tcs:readsFrom demo:sdsMeasurements .
 ```
 
-`tcs:Connection` reifies the same edge into a standalone node instead, as terse as `p-plan:isPrecededBy` but extensible with metadata, and without forcing the author to hand-name a channel IRI:
+Each `tcs:Connection` is a strict **1:1 edge** — exactly one `tcs:from`, exactly one `tcs:to` — enforced by `tcs:ConnectionCardinalityShape` (in [`catalog-application-profile-shapes.ttl`](data/catalog/catalog-application-profile-shapes.ttl)). Branching is **several Connections sharing an endpoint**, not one wider Connection: a producer with two distinct output ports is two Connections with the same `tcs:from`, each optionally carrying a `tcs:writerPath` naming which framework port it targets (an IRI for RDF-Connect, e.g. `rdfc:output`; a string for NiFi, e.g. `"splits"`). A Connection carrying no `tcs:writerPath` is the unambiguous case and needs none:
 
 ```turtle
-[ a tcs:Connection ; tcs:from demo:SdsifyMeasurements ; tcs:to demo:ThresholdMonitor ] .
+[] a tcs:Connection ; tcs:from demo:SdsifyMeasurements ; tcs:to demo:ThresholdMonitor ;
+   tcs:writerPath rdfc:output .
+[] a tcs:Connection ; tcs:from demo:SdsifyMeasurements ; tcs:to demo:LogMeasurementsMeta ;
+   tcs:writerPath rdfc:metadataOutput .
 ```
 
-`tcs:Connection` is strictly a **1:1 edge** for now — a step may be the `tcs:from`/`tcs:to` of at most one Connection, and `tcs:ConnectionCardinalityShape` (in [`catalog-application-profile-shapes.ttl`](data/catalog/catalog-application-profile-shapes.ttl), marked `TEMPORARY`) makes that explicit. Fan-out/fan-in need a channel-identity term of their own and are deferred to their own design pass; an author who needs branching keeps using `tcs:readsFrom`/`tcs:writesTo` directly, which stays fully supported and is the escape hatch.
-
-`SemanticModelMapper` is the **only** compiler that understands this authoring vocabulary. Two layers exist, and the rule is: **never query the left column outside `SemanticModelMapper` or the inference rules.**
+`SemanticModelMapper` is the **only** compiler that understands this authoring vocabulary. Two layers exist, and the rule is: **never query the left column outside `SemanticModelMapper`.**
 
 | Layer | Vocabulary |
 | --- | --- |
-| Authoring (terse, user-facing) | `tcs:Connection`, `tcs:from`, `tcs:to`, `p-plan:isPrecededBy` |
+| Authoring (terse, user-facing) | `tcs:Connection`, `tcs:from`, `tcs:to`, `tcs:writerPath` |
 | Internal (everything downstream reasons over) | `tcs:readsFrom`, `tcs:writesTo`, `tcs:Channel` |
 
-`SemanticModelMapper` runs between `PipelineSeeder` and `PipelineAssembler`, translating every `tcs:Connection` scoped to the pipeline being compiled into internal wiring and removing the Connection triples it consumed — so every SHACL shape, inference rule, and the other ~14 compilers that read `tcs:readsFrom`/`tcs:writesTo` never need to know the authoring layer exists. `p-plan:isPrecededBy` is handled the same way, one layer later, by `PipelineEnricher` (§4.7's table). Both forms may be freely mixed across one pipeline definition; no shipped pipeline in `data/pipelines/` uses `tcs:Connection` today.
+`SemanticModelMapper` runs between `PipelineSeeder` and `PipelineAssembler`, translating every `tcs:Connection` scoped to the pipeline being compiled into internal wiring and removing the Connection triples it consumed — so every SHACL shape, inference rule, and the other ~14 compilers that read `tcs:readsFrom`/`tcs:writesTo` never need to know the authoring layer exists. A Connection with no reusable existing wiring becomes its own channel — its own IRI, if it has one — which is what lets a framework config still name a channel directly (`rdfc:output demo:sdsMeasurements`) resolve against the Connection of the same name. `tcs:writerPath` itself is not yet consumed by any framework compiler; it is carried through for the framework-translation work that will read it.
 
 `PipelineValidator` is the supported pre-generation validation entry point for a `tcs:Connection`-authored pipeline — it runs `SemanticModelMapper` before `ValidationReportCompiler`. Calling `GraphReader.infer().validate()` directly on a source graph skips the mapper, so channel-coupled shapes see an unmapped Connection and pass vacuously; that path only ever saw the authoring layer.
 

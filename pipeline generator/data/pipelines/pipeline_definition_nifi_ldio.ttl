@@ -83,7 +83,6 @@ demo_nl:Emit a tcs:InstancePipelineComponent ;
 demo_nl:Parse a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:RdfAdapter ;
     p-plan:isStepOfPlan demo_nl:NifiLdioBridgePipeline ;
-    p-plan:isPrecededBy demo_nl:Emit ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded []
@@ -93,8 +92,15 @@ demo_nl:Parse a tcs:InstancePipelineComponent ;
 demo_nl:Log a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:ConsoleOut ;
     p-plan:isStepOfPlan demo_nl:NifiLdioBridgePipeline ;
-    p-plan:isPrecededBy demo_nl:Parse ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded []
     ] .
+
+
+#################################################################
+# Dataflow — tcs:Connection edges
+#################################################################
+
+[] a tcs:Connection ; tcs:from demo_nl:Emit ; tcs:to demo_nl:Parse .
+[] a tcs:Connection ; tcs:from demo_nl:Parse ; tcs:to demo_nl:Log .

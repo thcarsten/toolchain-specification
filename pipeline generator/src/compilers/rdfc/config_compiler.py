@@ -208,22 +208,23 @@ class RdfcConfigCompiler(Compiler):
     def describe_channel_wiring(self) -> None:
         """Fill in a step's reader/writer config key when it's unambiguous.
 
-        For each RDF-Connect step with exactly one ``tcs:readsFrom`` (or
-        ``tcs:writesTo``) channel, looks up its component's compiler-facing config shape
+        For each RDF-Connect step that is the ``tcs:to`` (or
+        ``tcs:from``) of exactly one ``tcs:Connection``, looks up its
+        component's compiler-facing config shape
         (the same ``dcat:qualifiedRelation`` / ``dcat:hadRole
         tcs:compilerFacingConfigShape`` attachment used by ``rdfc:SPARQLIngest``) for
         ``sh:property`` entries typed ``sh:class rdfc:Reader`` /
         ``rdfc:Writer``. If exactly one candidate ``sh:path`` exists,
-        injects ``<path> <channel>`` into the step's config.
+        injects ``<path> <connection>`` into the step's config.
         ``PipelineEnricher`` guarantees every step already has exactly
         one config to write into by this point, so this compiler never
         mints one itself.
 
         Deliberately conservative: 0 or >1 candidate paths (e.g.
-        ``rdfc:Sdsify``'s two writer paths), or 0 or >1 channels on the
-        step (a branching producer/consumer), leave the step untouched
-        so it must stay explicitly authored — this compiler never
-        guesses which branch a step means.
+        ``rdfc:Sdsify``'s two writer paths), or 0 or >1 Connections on
+        the step (a branching producer/consumer), leave the step
+        untouched so it must stay explicitly authored — this compiler
+        never guesses which branch a step means.
         """
         steps = self.output_reader.select(
             "?step ?component",
@@ -242,13 +243,13 @@ class RdfcConfigCompiler(Compiler):
             self._inject_wiring_key(
                 step_id,
                 component_id,
-                channel_pred="tcs:readsFrom",
+                connection_pred="tcs:to",
                 shape_class="rdfc:Reader",
             )
             self._inject_wiring_key(
                 step_id,
                 component_id,
-                channel_pred="tcs:writesTo",
+                connection_pred="tcs:from",
                 shape_class="rdfc:Writer",
             )
 
@@ -256,20 +257,21 @@ class RdfcConfigCompiler(Compiler):
         self,
         step_id: str,
         component_id: str,
-        channel_pred: str,
+        connection_pred: str,
         shape_class: str,
     ) -> None:
-        """Inject ``step_id``'s single ``channel_pred`` channel into its
-        config under the component's declared reader/writer path, if
-        unambiguous and not already set — see :meth:`describe_channel_wiring`.
+        """Inject the single ``tcs:Connection`` that has ``step_id`` as
+        its ``connection_pred`` into that step's config, under the
+        component's declared reader/writer path, if unambiguous and not
+        already set — see :meth:`describe_channel_wiring`.
         """
         channels = (
-            self.output_reader.filter(sub=step_id, pred=channel_pred)
-            .df["obj"]
+            self.output_reader.filter(pred=connection_pred, obj=step_id)
+            .df["sub"]
             .to_list()
         )
         if len(channels) != 1:
-            # No channel, or an ambiguous branch (>1) — stays explicit.
+            # No Connection, or an ambiguous branch (>1) — stays explicit.
             return
         channel_id = channels[0]
 
@@ -317,9 +319,10 @@ class RdfcConfigCompiler(Compiler):
         The direction is read from ``tcs:upstreamClass``, not from
         ``sh:class``. Generated config shapes collapse upstream's
         ``sh:class rdfc:Reader`` / ``rdfc:Writer`` to ``sh:class
-        tcs:Channel`` — the toolchain models a channel as one thing and
-        only ever asserts that type — and keep the end that was meant on
-        ``tcs:upstreamClass``. This is the point where that survives the
+        tcs:Connection`` — the toolchain models a channel edge as one
+        thing and only ever asserts that type — and keep the end that
+        was meant on ``tcs:upstreamClass``. This is the point where that
+        survives the
         round trip: the annotation is translated back into the
         framework-specific predicate RDF-Connect expects. Both halves
         are required, because ``tcs:upstreamClass`` alone also appears
@@ -339,7 +342,7 @@ class RdfcConfigCompiler(Compiler):
             ?rel dct:relation ?shape .
             ?shape sh:property ?prop .
             ?prop sh:path ?path ;
-                  sh:class tcs:Channel ;
+                  sh:class tcs:Connection ;
                   tcs:upstreamClass {shape_class} .
             """,
         )["path"].to_list()
@@ -358,7 +361,7 @@ class RdfcConfigCompiler(Compiler):
         Only the author knows which framework predicate their step
         expects — the compiler cannot guess it reliably.
 
-        Every ``tcs:Channel`` in the build graph is typed as both
+        Every ``tcs:Connection`` in the build graph is typed as both
         ``rdfc:Reader`` and ``rdfc:Writer`` so downstream SHACL
         shapes checking ``sh:class rdfc:Reader``/``rdfc:Writer`` on
         catalog compilerFacingConfigShapes pass on every channel the pipeline
@@ -370,7 +373,7 @@ class RdfcConfigCompiler(Compiler):
         """
         channel_types = self.output_reader.construct(
             "?channel a rdfc:Reader, rdfc:Writer .",
-            "?channel a tcs:Channel .",
+            "?channel a tcs:Connection .",
         ).graph
         self.output_reader = self.output_reader.add(channel_types)
 

@@ -12,23 +12,23 @@ class LdioHttpOutConfigCompiler(Compiler):
     :class:`BridgeTransportCompiler`.
 
     Reads the ``tcs:endpoint`` written onto the shared cross-container
-    channel by the paired Entry compiler on the downstream container,
+    Connection by the paired Entry compiler on the downstream container,
     then attaches ``p-plan:hasInputVar tcs:PipelineConfig`` with an
     ``tcs:embedded`` body carrying ``ldio:endpoint`` (mandatory per
     the catalog compiler-facing config shape) and an ``ldio:rdf-writer`` block whose
-    content-type is the channel's ``tcs:contentType`` when the Entry
+    content-type is the Connection's ``tcs:contentType`` when the Entry
     compiler advertised one, else :attr:`default_content_type`.
-    Honouring the channel matters when the downstream Entry is picky
+    Honouring the Connection matters when the downstream Entry is picky
     about serialisations — ``sw:rdf-ingest-service``, for one, selects
     its parser from the request's Content-Type header.
 
-    Fires only when the read channel already carries a
+    Fires only when the outgoing Connection already carries a
     ``tcs:endpoint`` — so a paired Entry compiler must have run
     first. Hand-authored ``ldio:HttpOut`` steps that already declare
     a ``p-plan:hasInputVar`` are left untouched.
     """
 
-    #: Fallback when the channel carries no ``tcs:contentType``.
+    #: Fallback when the Connection carries no ``tcs:contentType``.
     default_content_type: str = "application/ld+json"
 
     def __init__(self, graph: Graph) -> None:
@@ -41,9 +41,9 @@ class LdioHttpOutConfigCompiler(Compiler):
             "?step",
             """
             ?step a tcs:InstancePipelineComponent ;
-                  prov:specializationOf ldio:HttpOut ;
-                  tcs:writesTo ?channel .
-            ?channel tcs:endpoint ?endpoint .
+                  prov:specializationOf ldio:HttpOut .
+            ?channel tcs:from ?step ;
+                     tcs:endpoint ?endpoint .
             FILTER NOT EXISTS { ?step p-plan:hasInputVar ?c }
             """,
         ).empty
@@ -57,9 +57,9 @@ class LdioHttpOutConfigCompiler(Compiler):
             "?step ?endpoint ?content_type",
             """
             ?step a tcs:InstancePipelineComponent ;
-                  prov:specializationOf ldio:HttpOut ;
-                  tcs:writesTo ?channel .
-            ?channel tcs:endpoint ?endpoint .
+                  prov:specializationOf ldio:HttpOut .
+            ?channel tcs:from ?step ;
+                     tcs:endpoint ?endpoint .
             OPTIONAL { ?channel tcs:contentType ?content_type . }
             FILTER NOT EXISTS { ?step p-plan:hasInputVar ?c }
             """,

@@ -21,10 +21,13 @@ def test_reader_injected_when_unambiguous(catalog_graph):
         catalog_graph,
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
+        demo:Up a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
+            p-plan:isStepOfPlan demo:Test ;
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ ] ] .
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
             p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ ] ] ;
-            tcs:readsFrom demo:ch1 .
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ ] ] .
+        demo:ch1 a tcs:Connection ; tcs:from demo:Up ; tcs:to demo:A .
     """,
     )
     _, build = compile_pipeline(catalog_graph, "demo:Test")
@@ -42,8 +45,11 @@ def test_writer_injected_when_unambiguous(catalog_graph):
         demo:Test a tcs:PipelineDefinition .
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:HttpServer ;
             p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ rdfc:port 9000 ] ] ;
-            tcs:writesTo demo:ch2 .
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ rdfc:port 9000 ] ] .
+        demo:Down a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
+            p-plan:isStepOfPlan demo:Test ;
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ ] ] .
+        demo:ch2 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:Down .
     """,
     )
     _, build = compile_pipeline(catalog_graph, "demo:Test")
@@ -55,15 +61,26 @@ def test_ambiguous_writer_paths_left_unwired(catalog_graph):
     # rdfc:Sdsify's generated compilerFacingConfigShape declares two writer slots
     # (rdfc:output / rdfc:metadataOutput) — genuinely
     # ambiguous, so neither gets auto-injected even though there are
-    # exactly two tcs:writesTo channels to match them.
+    # exactly two outgoing Connections to match them.
     parse_extra(
         catalog_graph,
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
+        demo:Up a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
+            p-plan:isStepOfPlan demo:Test ;
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ ] ] .
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:Sdsify ;
             p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ ] ] ;
-            tcs:readsFrom demo:ch1 ; tcs:writesTo demo:ch2 , demo:ch3 .
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ ] ] .
+        demo:Down1 a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
+            p-plan:isStepOfPlan demo:Test ;
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ ] ] .
+        demo:Down2 a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
+            p-plan:isStepOfPlan demo:Test ;
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [ ] ] .
+        demo:ch1 a tcs:Connection ; tcs:from demo:Up ; tcs:to demo:A .
+        demo:ch2 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:Down1 .
+        demo:ch3 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:Down2 .
     """,
     )
     _, build = compile_pipeline(catalog_graph, "demo:Test")

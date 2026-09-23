@@ -2,17 +2,12 @@
 # Inference rules — framework-neutral
 #
 # Rules that hold for any pipeline regardless of the framework it
-# compiles to. Anything RDF-Connect-specific lives in
-# rdfc_inference_rules.yaml and has to be loaded as well:
-#
-#     GraphReader(graph).infer(".../inference_rules.yaml") \
-#                       .infer(".../rdfc_inference_rules.yaml")
-#
-# Loading only this file leaves `tcs:derivedReadsFrom` /
-# `tcs:derivedWritesTo` underived, which makes
-# `tcs:RdfcStepChannelWiringShape` pass vacuously rather than fail — so a
-# caller that forgets the second file loses the topology cross-check
-# without being told.
+# compiles to. This is the only inference file now: RDF-Connect's
+# `rdfc_inference_rules.yaml` (the `tcs:derivedReadsFrom`/
+# `derivedWritesTo` pair feeding the since-deleted
+# `tcs:RdfcStepChannelWiringShape`) went with `tcs:readsFrom` /
+# `tcs:writesTo` themselves — `tcs:Connection` is the only wiring
+# vocabulary now, nothing left to cross-check.
 #################################################################
 
 context:
@@ -38,20 +33,8 @@ rules:
     where: |
       ?sub p-plan:isStepOfPlan ?obj .
       ?obj a tcs:PipelineDefinition .
-  - 
-    construct: | 
-      ?sub a tcs:InstancePipelineComponent .
-      ?obj a tcs:Channel .
-    where: |
-      ?sub tcs:writesTo ?obj .
-  - 
-    construct: | 
-      ?sub a tcs:InstancePipelineComponent .
-      ?obj a tcs:Channel .
-    where: |
-      ?sub tcs:readsFrom ?obj .
-  - 
-    construct: | 
+  -
+    construct: |
       ?obj a tcs:Config .
     where: |
       ?sub p-plan:hasInputVar ?obj .
@@ -81,63 +64,24 @@ rules:
     where: |
       ?sub a tcs:DockerComposeConfig .
   -
-    # Mirrors PipelineEnricher.synthesize_channels' "neither side wired"
-    # case, so pre-compile SHACL shapes (LdioStepOrderingShape,
-    # AcyclicGraphShape, ...) see the same channel graph the compiler
-    # will build from p-plan:isPrecededBy. The "reuse one already-wired
-    # side" cases are handled by the two rules below; deliberately not
-    # replicated here is the compiler's ambiguity guard (>1 channel on
-    # either side leaves the edge untouched) — that case already has no
-    # channel to construct from, so these rules simply don't match it.
-    construct: |
-      ?successor tcs:readsFrom _:synthesizedChannel .
-      ?predecessor tcs:writesTo _:synthesizedChannel .
-    where: |
-      ?successor p-plan:isPrecededBy ?predecessor .
-      FILTER NOT EXISTS { ?successor tcs:readsFrom ?existingReader }
-      FILTER NOT EXISTS { ?predecessor tcs:writesTo ?existingWriter }
-  -
-    # Predecessor already has a single explicit tcs:writesTo — reuse it.
-    construct: |
-      ?successor tcs:readsFrom ?w .
-    where: |
-      ?successor p-plan:isPrecededBy ?predecessor .
-      ?predecessor tcs:writesTo ?w .
-      FILTER NOT EXISTS { ?successor tcs:readsFrom ?existingReader }
-      FILTER NOT EXISTS {
-        ?predecessor tcs:writesTo ?otherW .
-        FILTER (?otherW != ?w)
-      }
-  -
-    # Successor already has a single explicit tcs:readsFrom — reuse it.
-    construct: |
-      ?predecessor tcs:writesTo ?r .
-    where: |
-      ?successor p-plan:isPrecededBy ?predecessor .
-      ?successor tcs:readsFrom ?r .
-      FILTER NOT EXISTS { ?predecessor tcs:writesTo ?existingWriter }
-      FILTER NOT EXISTS {
-        ?successor tcs:readsFrom ?otherR .
-        FILTER (?otherR != ?r)
-      }
-  -
-    # Channel-type propagation: a channel written to by a step whose
-    # component is a tcs:EntryBoundaryComponent inherits that boundary's
-    # tcs:channelType. Lets pre-compile SHACL shapes see the channel type
-    # BridgeTransportCompiler will otherwise mint at compile time.
+    # Channel-type propagation: a Connection whose tcs:from is a step
+    # whose component is a tcs:EntryBoundaryComponent inherits that
+    # boundary's tcs:channelType. Lets pre-compile SHACL shapes see the
+    # channel type BridgeTransportCompiler will otherwise mint at
+    # compile time.
     construct: |
       ?ch a ?channelType .
     where: |
-      ?step tcs:writesTo ?ch ;
-            prov:specializationOf ?comp .
+      ?ch tcs:from ?step .
+      ?step prov:specializationOf ?comp .
       ?comp a tcs:EntryBoundaryComponent ;
             tcs:channelType ?channelType .
   -
-    # Symmetric case for tcs:ExitBoundaryComponent reading from a channel.
+    # Symmetric case for tcs:ExitBoundaryComponent on the tcs:to side.
     construct: |
       ?ch a ?channelType .
     where: |
-      ?step tcs:readsFrom ?ch ;
-            prov:specializationOf ?comp .
+      ?ch tcs:to ?step .
+      ?step prov:specializationOf ?comp .
       ?comp a tcs:ExitBoundaryComponent ;
             tcs:channelType ?channelType .

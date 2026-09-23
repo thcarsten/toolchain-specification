@@ -244,7 +244,7 @@ def generate(
         banner(
             "Component-scoped SHACL config shapes",
             "Translated from each package's own shape. Two systematic "
-            "rewrites are applied - Reader/Writer collapse to tcs:Channel, and "
+            "rewrites are applied - Reader/Writer collapse to tcs:Connection, and "
             "nested class constraints become sh:node references targeted by "
             "sh:targetObjectsOf. See catalog/shapes.py for why.",
         )

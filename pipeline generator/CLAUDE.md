@@ -46,7 +46,7 @@ Full introduction, installation, workflow, and architecture:
 | `src/compilers/` | The generator itself: `Compiler` ABC, `CompilationRunner` fixpoint driver, and per-framework compiler subpackages (`core/`, `ldio/`, `rdfc/`, `sw/`). See [README.md](README.md) §4 for the module table. |
 | `src/rdfc_catalog_harvest/` | Pre-compile step that generates the RDF-Connect section of the component catalog from the RDF-Connect packages' own published definitions (README §4.10). |
 | `data/` | `catalog/` (framework catalogs + SHACL shapes + committed `rdfc_harvest/` snapshot), `pipelines/` (pipeline definitions used by the demos), `inference_rules/` (RDFS/channel entailment rules loaded before compilation). |
-| `tests/` | Pytest regression suite for the generator (compiler edge cases — see [`tests/EDGE_CASES.md`](tests/EDGE_CASES.md)). `src/rdfine/tests/` is a second, independently-runnable pytest scope for `rdfine` alone. |
+| `tests/` | Pytest regression suite for the generator, including per-compiler edge cases (`test_edge_cases.py`). `src/rdfine/tests/` is a second, independently-runnable pytest scope for `rdfine` alone. |
 | `docs/` | [`architecture-deck.md`](docs/architecture-deck.md) slide deck, pipeline-segments design docs. |
 | `resources/rdfc-docker/` | Local RDF-Connect processor packages (e.g. `rdfc_http_out`) used by the harvested catalog. |
 | `src/demo.ipynb`, `src/demo_fietsstallingen.ipynb` | Demo notebooks driving the generator end-to-end. |

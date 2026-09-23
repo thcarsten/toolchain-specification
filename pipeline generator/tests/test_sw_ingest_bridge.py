@@ -55,8 +55,9 @@ demo_sw:Poll a tcs:InstancePipelineComponent ;
 LDIO_TO_SW_AUTO = PREFIXES + _POLLER + """
 demo_sw:Store a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:triple-store ;
-    p-plan:isStepOfPlan demo_sw:Test ;
-    p-plan:isPrecededBy demo_sw:Poll .
+    p-plan:isStepOfPlan demo_sw:Test .
+
+[ a tcs:Connection ; tcs:from demo_sw:Poll ; tcs:to demo_sw:Store ] .
 """
 
 # The same hop with both boundary steps named by hand. BridgeTransportCompiler
@@ -65,13 +66,14 @@ demo_sw:Store a tcs:InstancePipelineComponent ;
 LDIO_TO_SW_EXPLICIT = PREFIXES + _POLLER + """
 demo_sw:Out a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpOut ;
-    p-plan:isStepOfPlan demo_sw:Test ;
-    p-plan:isPrecededBy demo_sw:Poll .
+    p-plan:isStepOfPlan demo_sw:Test .
 
 demo_sw:Ingest a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:rdf-ingest-service ;
-    p-plan:isStepOfPlan demo_sw:Test ;
-    p-plan:isPrecededBy demo_sw:Out .
+    p-plan:isStepOfPlan demo_sw:Test .
+
+[ a tcs:Connection ; tcs:from demo_sw:Poll ; tcs:to demo_sw:Out ] .
+[ a tcs:Connection ; tcs:from demo_sw:Out ; tcs:to demo_sw:Ingest ] .
 """
 
 # rdf-ingest as the *writer* of the channel rather than its reader. The
@@ -85,8 +87,9 @@ demo_sw:Ingest a tcs:InstancePipelineComponent ;
 
 demo_sw:Store a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:triple-store ;
-    p-plan:isStepOfPlan demo_sw:Test ;
-    p-plan:isPrecededBy demo_sw:Ingest .
+    p-plan:isStepOfPlan demo_sw:Test .
+
+[ a tcs:Connection ; tcs:from demo_sw:Ingest ; tcs:to demo_sw:Store ] .
 """
 
 
@@ -108,13 +111,13 @@ def test_ldio_to_sw_inserts_ingest_entry_pair(catalog_graph):
 
     assert build.ask("""
         ?step a tcs:InstancePipelineComponent ;
-              prov:specializationOf sw:rdf-ingest-service ;
-              tcs:readsFrom ?channel .
+              prov:specializationOf sw:rdf-ingest-service .
+        ?channel a tcs:Connection ; tcs:to ?step .
     """)
     assert build.ask("""
         ?step a tcs:InstancePipelineComponent ;
-              prov:specializationOf ldio:HttpOut ;
-              tcs:writesTo ?channel .
+              prov:specializationOf ldio:HttpOut .
+        ?channel a tcs:Connection ; tcs:from ?step .
     """)
 
 
@@ -216,14 +219,17 @@ RDFC_EXIT = """
 @prefix : <http://example.org/example/> .
 
 :advertised a tcs:InstancePipelineComponent ;
-    prov:specializationOf rdfc:HttpOut ; tcs:writesTo :ch_advertised .
-:ch_advertised a tcs:Channel ;
+    prov:specializationOf rdfc:HttpOut .
+:downstream1 a tcs:InstancePipelineComponent .
+:ch_advertised a tcs:Connection ; tcs:from :advertised ; tcs:to :downstream1 ;
     tcs:endpoint "http://identifier/ingest" ;
     tcs:contentType "application/n-triples" .
 
 :silent a tcs:InstancePipelineComponent ;
-    prov:specializationOf rdfc:HttpOut ; tcs:writesTo :ch_silent .
-:ch_silent a tcs:Channel ; tcs:endpoint "http://elsewhere/in" .
+    prov:specializationOf rdfc:HttpOut .
+:downstream2 a tcs:InstancePipelineComponent .
+:ch_silent a tcs:Connection ; tcs:from :silent ; tcs:to :downstream2 ;
+    tcs:endpoint "http://elsewhere/in" .
 """
 
 

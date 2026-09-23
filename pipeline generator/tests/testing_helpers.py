@@ -8,7 +8,7 @@ conftest.py`` was added. Fixtures still live in conftest.py (pytest
 auto-discovers those regardless of import mode); only the plain
 functions live here.
 
-Two-pillar convention (see EDGE_CASES.md):
+Two-pillar convention:
 - Unsupported edge case -> assert it's caught explicitly, either by a
   SHACL shape (`assert_shacl_violation`) or a compiler-level guard
   (`assert_compile_raises`).
@@ -57,18 +57,15 @@ NOTEBOOK_FILES = [
     f"catalog/{SHAPES_FILE}",
 ]
 
-# Both rule files, in the order the notebook applies them. The
-# RDF-Connect rules were split out of the neutral set so their scope is
-# visible; the split has a quiet failure mode, which is why nothing
-# should reach for one file without the other. Load only the neutral
-# file and the graph comes out *almost* fully inferred — every type is
-# still derived, but tcs:derivedReadsFrom never appears and
-# tcs:RdfcStepChannelWiringShape passes with nothing to check.
+# The one remaining rule file. ``rdfc_inference_rules.yaml`` (the
+# tcs:derivedReadsFrom/derivedWritesTo pair feeding the since-deleted
+# tcs:RdfcStepChannelWiringShape) is gone along with tcs:readsFrom /
+# tcs:writesTo themselves — tcs:Connection is the only wiring vocabulary
+# now, nothing left to cross-check.
 # ``test_notebook_rule_list_matches_this_test`` checks this list against
 # both the notebook and the data directory.
 INFERENCE_RULES = [
     "inference_rules.yaml",
-    "rdfc_inference_rules.yaml",
 ]
 
 

@@ -70,7 +70,6 @@ demo_ln:Poll a tcs:InstancePipelineComponent ;
 demo_ln:Parse a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan demo_ln:LdioNifiBridgePipeline ;
-    p-plan:isPrecededBy demo_ln:Poll ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -87,5 +86,12 @@ demo_ln:Parse a tcs:InstancePipelineComponent ;
 
 demo_ln:Sink a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:Funnel ;
-    p-plan:isStepOfPlan demo_ln:LdioNifiBridgePipeline ;
-    p-plan:isPrecededBy demo_ln:Parse .
+    p-plan:isStepOfPlan demo_ln:LdioNifiBridgePipeline .
+
+
+#################################################################
+# Dataflow — tcs:Connection edges
+#################################################################
+
+[] a tcs:Connection ; tcs:from demo_ln:Poll ; tcs:to demo_ln:Parse .
+[] a tcs:Connection ; tcs:from demo_ln:Parse ; tcs:to demo_ln:Sink .

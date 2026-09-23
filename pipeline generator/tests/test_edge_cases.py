@@ -1,5 +1,5 @@
-"""One test per edge case in EDGE_CASES.md. Keep the mapping 1:1 so the
-checklist and the suite never drift apart."""
+"""One test per compiler/SHACL edge case (fan-out, cycles, step
+seriality/ordering, wiring ambiguity, ...)."""
 
 import pytest
 
@@ -37,16 +37,15 @@ def test_ldio_transformer_reuse_keeps_distinct_configs(catalog_graph):
         demo:Test a tcs:PipelineDefinition .
         demo:In a tcs:InstancePipelineComponent ; prov:specializationOf ldio:HttpInPoller ;
             p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "url: http://a" ; dct:format "text/yaml" ] ;
-            tcs:writesTo demo:ch1 .
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "url: http://a" ; dct:format "text/yaml" ] .
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
             p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "QUERY_A" ; dct:format "text/plain" ] ;
-            tcs:readsFrom demo:ch1 ; tcs:writesTo demo:ch2 .
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "QUERY_A" ; dct:format "text/plain" ] .
         demo:B a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
             p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "QUERY_B" ; dct:format "text/plain" ] ;
-            tcs:readsFrom demo:ch2 ; tcs:writesTo demo:ch3 .
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "QUERY_B" ; dct:format "text/plain" ] .
+        [ a tcs:Connection ; tcs:from demo:In ; tcs:to demo:A ] .
+        [ a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B ] .
     """,
     )
     from compilers import LdioConfigCompiler
@@ -105,11 +104,12 @@ def test_channel_self_loop_triggers_acyclic_shape(catalog_with_shapes):
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch1 ; tcs:writesTo demo:ch1 .
+            p-plan:isStepOfPlan demo:Test .
+        [ a tcs:Connection ; tcs:from demo:A ; tcs:to demo:A ] .
     """,
     )
     assert_shacl_violation(
-        catalog_with_shapes, message_contains="cycle in the channel graph"
+        catalog_with_shapes, message_contains="cycle in the dataflow graph"
     )
 
 
@@ -238,13 +238,15 @@ def test_multi_step_channel_cycle_triggers_acyclic_shape(catalog_with_shapes):
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch2 ; tcs:writesTo demo:ch1 .
+            p-plan:isStepOfPlan demo:Test .
         demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch1 ; tcs:writesTo demo:ch2 .
+            p-plan:isStepOfPlan demo:Test .
+        [ a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B ] .
+        [ a tcs:Connection ; tcs:from demo:B ; tcs:to demo:A ] .
     """,
     )
     assert_shacl_violation(
-        catalog_with_shapes, message_contains="cycle in the channel graph"
+        catalog_with_shapes, message_contains="cycle in the dataflow graph"
     )
 
 
@@ -385,16 +387,15 @@ def test_ldio_fanout_both_outputs_survive(catalog_graph):
         demo:Test a tcs:PipelineDefinition .
         demo:In a tcs:InstancePipelineComponent ; prov:specializationOf ldio:HttpInPoller ;
             p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "url: http://a" ; dct:format "text/yaml" ] ;
-            tcs:writesTo demo:ch1 .
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "url: http://a" ; dct:format "text/yaml" ] .
         demo:OutA a tcs:InstancePipelineComponent ; prov:specializationOf ldio:HttpOut ;
             p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "target: http://a" ; dct:format "text/yaml" ] ;
-            tcs:readsFrom demo:ch1 .
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "target: http://a" ; dct:format "text/yaml" ] .
         demo:OutB a tcs:InstancePipelineComponent ; prov:specializationOf ldio:HttpOut ;
             p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "target: http://b" ; dct:format "text/yaml" ] ;
-            tcs:readsFrom demo:ch1 .
+            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:literal "target: http://b" ; dct:format "text/yaml" ] .
+        [ a tcs:Connection ; tcs:from demo:In ; tcs:to demo:OutA ] .
+        [ a tcs:Connection ; tcs:from demo:In ; tcs:to demo:OutB ] .
     """,
     )
     from compilers import LdioConfigCompiler
@@ -811,7 +812,13 @@ def test_rdfc_mandatory_writer_wiring_present_conforms(catalog_with_shapes):
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
         demo:GoodSdsify a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:Sdsify ;
-            p-plan:isStepOfPlan demo:Test ; tcs:writesTo demo:ch1 , demo:ch2 .
+            p-plan:isStepOfPlan demo:Test .
+        demo:Down1 a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
+            p-plan:isStepOfPlan demo:Test .
+        demo:Down2 a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
+            p-plan:isStepOfPlan demo:Test .
+        [ a tcs:Connection ; tcs:from demo:GoodSdsify ; tcs:to demo:Down1 ; tcs:writerPath rdfc:output ] .
+        [ a tcs:Connection ; tcs:from demo:GoodSdsify ; tcs:to demo:Down2 ; tcs:writerPath rdfc:metadataOutput ] .
     """,
     )
     report = load_reader(catalog_with_shapes).validate(advanced=True, inference="rdfs")
@@ -871,12 +878,19 @@ def test_ldio_step_seriality_two_reads_triggers_shape(catalog_with_shapes):
         catalog_with_shapes,
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
+        demo:Up1 a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
+            p-plan:isStepOfPlan demo:Test .
+        demo:Up2 a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
+            p-plan:isStepOfPlan demo:Test .
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
-            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch1, demo:ch2 .
+            p-plan:isStepOfPlan demo:Test .
+        [ a tcs:Connection ; tcs:from demo:Up1 ; tcs:to demo:A ] .
+        [ a tcs:Connection ; tcs:from demo:Up2 ; tcs:to demo:A ] .
     """,
     )
     assert_shacl_violation(
-        catalog_with_shapes, message_contains="reads from more than one channel"
+        catalog_with_shapes,
+        message_contains="is the tcs:to of more than one tcs:Connection",
     )
 
 
@@ -886,11 +900,18 @@ def test_ldio_step_seriality_two_writes_triggers_shape(catalog_with_shapes):
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
-            p-plan:isStepOfPlan demo:Test ; tcs:writesTo demo:ch1, demo:ch2 .
+            p-plan:isStepOfPlan demo:Test .
+        demo:Down1 a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
+            p-plan:isStepOfPlan demo:Test .
+        demo:Down2 a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
+            p-plan:isStepOfPlan demo:Test .
+        [ a tcs:Connection ; tcs:from demo:A ; tcs:to demo:Down1 ] .
+        [ a tcs:Connection ; tcs:from demo:A ; tcs:to demo:Down2 ] .
     """,
     )
     assert_shacl_violation(
-        catalog_with_shapes, message_contains="writes to more than one channel"
+        catalog_with_shapes,
+        message_contains="is the tcs:from of more than one tcs:Connection",
     )
 
 
@@ -900,9 +921,10 @@ def test_ldio_step_ordering_output_not_terminal_triggers_shape(catalog_with_shap
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
         demo:Out a tcs:InstancePipelineComponent ; prov:specializationOf ldio:HttpOut ;
-            p-plan:isStepOfPlan demo:Test ; tcs:writesTo demo:ch1 .
+            p-plan:isStepOfPlan demo:Test .
         demo:Next a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
-            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch1 .
+            p-plan:isStepOfPlan demo:Test .
+        [ a tcs:Connection ; tcs:from demo:Out ; tcs:to demo:Next ] .
     """,
     )
     assert_shacl_violation(
@@ -916,9 +938,10 @@ def test_ldio_step_ordering_input_not_initial_triggers_shape(catalog_with_shapes
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
         demo:Prev a tcs:InstancePipelineComponent ; prov:specializationOf ldio:SparqlConstructTransformer ;
-            p-plan:isStepOfPlan demo:Test ; tcs:writesTo demo:ch2 .
+            p-plan:isStepOfPlan demo:Test .
         demo:In a tcs:InstancePipelineComponent ; prov:specializationOf ldio:HttpInPoller ;
-            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch2 .
+            p-plan:isStepOfPlan demo:Test .
+        [ a tcs:Connection ; tcs:from demo:Prev ; tcs:to demo:In ] .
     """,
     )
     assert_shacl_violation(

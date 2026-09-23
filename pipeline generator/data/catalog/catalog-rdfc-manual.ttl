@@ -229,9 +229,9 @@ proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
 
 # Written by hand in the same shape the generator emits, because
 # `RdfcConfigCompiler.describe_channel_wiring` reads it: it finds a
-# step's single reader/writer slot by looking for `sh:class tcs:Channel`
-# plus a `tcs:upstreamClass` direction, and injects the channel from
-# `tcs:readsFrom` / `tcs:writesTo` into the step's config. Without this
+# step's single reader/writer slot by looking for `sh:class tcs:Connection`
+# plus a `tcs:upstreamClass` direction, and injects the step's single
+# `tcs:Connection` into its config. Without this
 # shape `demo:JsonLdToRdf` compiles to an unwired processor. Note the
 # absence of `sh:minCount`: the wiring is the compiler's to supply, so
 # requiring it of the author would fail every pipeline (see rewrite 5 in
@@ -241,7 +241,7 @@ proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     sh:property [
         sh:path rdfc:reader ;
         sh:name "reader" ;
-        sh:class tcs:Channel ;
+        sh:class tcs:Connection ;
         tcs:upstreamClass rdfc:Reader ;
         tcs:upstreamMinCount 1 ;
         sh:maxCount 1
@@ -249,7 +249,7 @@ proc:JsonLdToNQuads a tcs:PipelineComponent, dcat:Resource, rdfc:Processor ;
     sh:property [
         sh:path rdfc:writer ;
         sh:name "writer" ;
-        sh:class tcs:Channel ;
+        sh:class tcs:Connection ;
         tcs:upstreamClass rdfc:Writer ;
         tcs:upstreamMinCount 1 ;
         sh:maxCount 1

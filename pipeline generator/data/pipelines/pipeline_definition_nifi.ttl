@@ -34,7 +34,6 @@
     p-plan:isStepOfPlan :DemonstratorPipeline ;
     nifi:scheduledState "RUNNING" ;
     nifi:schedulingPeriod "10 sec" ;
-    tcs:writesTo :nifi_channel_1 ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -52,8 +51,6 @@
     p-plan:isStepOfPlan :DemonstratorPipeline ;
     nifi:scheduledState "RUNNING" ;
     nifi:schedulingPeriod "0 sec" ;
-    tcs:readsFrom :nifi_channel_1 ;
-    tcs:writesTo :nifi_channel_azure ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -74,8 +71,6 @@
     p-plan:isStepOfPlan :DemonstratorPipeline ;
     nifi:scheduledState "RUNNING" ;
     nifi:schedulingPeriod "0 sec" ;
-    tcs:readsFrom :nifi_channel_azure ;
-    tcs:writesTo :nifi_channel_split, :nifi_channel_split_failure ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -99,8 +94,6 @@
     p-plan:isStepOfPlan :DemonstratorPipeline ;
     nifi:scheduledState "RUNNING" ;
     nifi:schedulingPeriod "0 sec" ;
-    tcs:readsFrom :nifi_channel_split ;
-    tcs:writesTo :nifi_channel_groovy_success, :nifi_channel_groovy_failure ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -299,8 +292,6 @@
     p-plan:isStepOfPlan :DemonstratorPipeline ;
     nifi:scheduledState "RUNNING" ;
     nifi:schedulingPeriod "0 sec" ;
-    tcs:readsFrom :nifi_channel_groovy_success ;
-    tcs:writesTo :nifi_channel_version_data, :nifi_channel_version_failure ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -328,8 +319,6 @@
     p-plan:isStepOfPlan :DemonstratorPipeline ;
     nifi:scheduledState "RUNNING" ;
     nifi:schedulingPeriod "0 sec" ;
-    tcs:readsFrom :nifi_channel_version_data ;
-    tcs:writesTo :ldes_response ;
     p-plan:hasInputVar [
       a tcs:PipelineConfig ;
       tcs:embedded [
@@ -346,9 +335,7 @@
 :httpfunnel
     a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:Funnel ;
-    p-plan:isStepOfPlan :DemonstratorPipeline ;
-    tcs:readsFrom
-        :ldes_response .
+    p-plan:isStepOfPlan :DemonstratorPipeline .
 
 :AzureStorageCredentials
     a tcs:InstancePipelineComponent ;
@@ -367,8 +354,44 @@
 :FailureFunnel
     a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:Funnel ;
-    p-plan:isStepOfPlan :DemonstratorPipeline ;
-    tcs:readsFrom
-        :nifi_channel_split_failure,
-        :nifi_channel_groovy_failure,
-        :nifi_channel_version_failure .
+    p-plan:isStepOfPlan :DemonstratorPipeline .
+
+
+#################################################################
+# Dataflow — tcs:Connection edges
+#
+# Every channel keeps its original IRI as the Connection's own name
+# ([D8]): nifi:route above still names channels by these IRIs, and
+# NifiConfigCompiler.plan_connections joins on that IRI to recover each
+# connection's selectedRelationship, so the wiring SemanticModelMapper
+# resolves from these Connections must land on the same names. Branch
+# points (SplitText, ExecuteGroovyScript, CreateVersionObjectProcessor)
+# additionally carry tcs:writerPath mirroring the nifi:route relationship
+# that already disambiguates them in config; the single-output steps
+# need no hint ([D3]).
+#################################################################
+
+:nifi_channel_1 a tcs:Connection ;
+    tcs:from :GenerateFlowFile ; tcs:to :FetchAzureBlobStorage_v12 .
+:nifi_channel_azure a tcs:Connection ;
+    tcs:from :FetchAzureBlobStorage_v12 ; tcs:to :SplitText .
+:nifi_channel_split a tcs:Connection ;
+    tcs:from :SplitText ; tcs:to :ExecuteGroovyScript ;
+    tcs:writerPath "splits" .
+:nifi_channel_split_failure a tcs:Connection ;
+    tcs:from :SplitText ; tcs:to :FailureFunnel ;
+    tcs:writerPath "failure" .
+:nifi_channel_groovy_success a tcs:Connection ;
+    tcs:from :ExecuteGroovyScript ; tcs:to :CreateVersionObjectProcessor ;
+    tcs:writerPath "success" .
+:nifi_channel_groovy_failure a tcs:Connection ;
+    tcs:from :ExecuteGroovyScript ; tcs:to :FailureFunnel ;
+    tcs:writerPath "failure" .
+:nifi_channel_version_data a tcs:Connection ;
+    tcs:from :CreateVersionObjectProcessor ; tcs:to :ldessink ;
+    tcs:writerPath "data" .
+:nifi_channel_version_failure a tcs:Connection ;
+    tcs:from :CreateVersionObjectProcessor ; tcs:to :FailureFunnel ;
+    tcs:writerPath "valueNotFound" .
+:ldes_response a tcs:Connection ;
+    tcs:from :ldessink ; tcs:to :httpfunnel .

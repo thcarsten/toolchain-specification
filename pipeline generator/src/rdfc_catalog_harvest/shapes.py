@@ -15,11 +15,10 @@ asserts.
 
 **1. Channels.** Upstream distinguishes the ends of a channel
 (``sh:class rdfc:Reader`` / ``rdfc:Writer``). The toolchain models a
-channel as one thing, ``tcs:Channel`` — the type
-``inference_rules.yaml`` derives from ``tcs:readsFrom`` /
-``tcs:writesTo``. Rewritten to ``sh:class tcs:Channel``; the read/write
-direction is preserved on a non-constraining ``tcs:upstreamClass`` so a
-future cross-framework channel model can recover it.
+channel edge as one thing, ``tcs:Connection``. Rewritten to
+``sh:class tcs:Connection``; the read/write direction is preserved on
+a non-constraining ``tcs:upstreamClass`` so a future cross-framework
+channel model can recover it.
 
 **2. Nested config objects.** Upstream says ``sh:class rdfc:IngestConfig``
 and separately defines ``sh:targetClass rdfc:IngestConfig``. But the
@@ -56,8 +55,8 @@ convention is not lost.
 **5. Required channel parameters.** Upstream marks a channel parameter
 ``sh:minCount 1``, and it is genuinely required — of the *running
 pipeline*. It is not required of the author: ``RdfcConfigCompiler``
-fills a step's ``rdfc:reader`` / ``rdfc:writer`` in from the
-framework-neutral ``tcs:readsFrom`` / ``tcs:writesTo``, so a
+fills a step's ``rdfc:reader`` / ``rdfc:writer`` in from the step's
+``tcs:Connection``, so a
 hand-written config omits it on purpose and upstream's cardinality
 would fail every pipeline in this repo. The ``sh:class`` constraint
 from rule 1 still applies to whatever the author *does* write — a
@@ -105,7 +104,7 @@ CHANNEL_CLASSES = {RDFC_READER, RDFC_WRITER}
 # sh:IRI` is the standard way to say what upstream meant.
 XSD_IRI = iri("xsd:iri")
 
-TCS_CHANNEL = compact(iri("tcs:Channel"))
+TCS_CHANNEL = compact(iri("tcs:Connection"))
 TCS_UPSTREAM_CLASS = compact(iri("tcs:upstreamClass"))
 TCS_UPSTREAM_DATATYPE = compact(iri("tcs:upstreamDatatype"))
 TCS_UPSTREAM_MIN_COUNT = compact(iri("tcs:upstreamMinCount"))
@@ -227,7 +226,7 @@ def _translate_property(
         for value in graph.objects(property_node, predicate):
             if predicate == SH_CLASS and isinstance(value, URIRef):
                 if value in CHANNEL_CLASSES:
-                    # Rewrite 1: collapse Reader/Writer to tcs:Channel,
+                    # Rewrite 1: collapse Reader/Writer to tcs:Connection,
                     # keeping the direction as a non-constraining hint.
                     is_channel = True
                     pairs.append((compact(SH_CLASS), TCS_CHANNEL))
@@ -260,8 +259,8 @@ def _translate_property(
             if predicate == SH_MIN_COUNT and is_channel:
                 # Rewrite 5: a required channel parameter is not required
                 # of the *author*. `RdfcConfigCompiler` fills a step's
-                # rdfc:reader / rdfc:writer in from tcs:readsFrom /
-                # tcs:writesTo, so the config these shapes validate is
+                # rdfc:reader / rdfc:writer in from the step's
+                # tcs:Connection, so the config these shapes validate is
                 # written without them on purpose and upstream's
                 # `sh:minCount 1` would fail every pipeline in the repo.
                 # The value constraint above still applies to whatever

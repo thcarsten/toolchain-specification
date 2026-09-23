@@ -168,7 +168,7 @@ def extract_config(reader: GraphReader, config_id: str) -> Union[dict, str]:
     """
     # Concise Bounded Description (https://www.w3.org/submissions/CBD/):
     # a config's embedded values can be IRIs of real resources (e.g. a
-    # step's tcs:readsFrom channel), and a plain traversal would keep
+    # step's tcs:Connection), and a plain traversal would keep
     # following *that* resource's own outgoing edges too — including
     # any SHACL role attachment (ValidationReportCompiler's
     # inputShape/outputShape/compilerFacingConfigShape relations) it happens to

@@ -7,10 +7,11 @@ from ..utils import lookup_seeded_pipeline_id
 
 
 class BridgeTransportCompiler(Compiler):
-    """Insert missing Entry/Exit boundary steps for cross-container channels.
+    """Insert missing Entry/Exit boundary steps for cross-container
+    Connections.
 
-    A ``tcs:Channel`` whose writer step and reader step(s) run on
-    different ``tcs:DockerContainer``s needs a bridge step on each
+    A ``tcs:Connection`` whose ``tcs:from`` step and ``tcs:to`` step run
+    on different ``tcs:DockerContainer``s needs a bridge step on each
     side, whose specialized component is typed
     :class:`tcs:ExitBoundaryComponent` (upstream) or
     :class:`tcs:EntryBoundaryComponent` (downstream). Whether such a
@@ -18,9 +19,9 @@ class BridgeTransportCompiler(Compiler):
     criterion — a user-declared boundary component is trusted at
     face value, regardless of transport implementation details.
 
-    For each cross-container channel this compiler finds:
+    For each cross-container Connection this compiler finds:
 
-    - If both sides already carry a boundary-typed step, the channel
+    - If both sides already carry a boundary-typed step, the Connection
       is left alone. This is how a pipeline author signals "the
       cross-container hop here is my responsibility" — the compiler
       makes no assumptions about how the user's Entry/Exit talk to
@@ -33,15 +34,19 @@ class BridgeTransportCompiler(Compiler):
       container. A missing step is inserted with
       ``prov:specializationOf`` the catalog component,
       ``p-plan:isStepOfPlan`` the current pipeline, and ``tcs:runs``
-      on the correct container. Channel wiring is rewritten so the
-      original cross-container channel is only read by the inserted
-      Entry and only written by the inserted Exit; fresh intra-
-      container companion channels connect the original writer to the
-      Exit and the Entry to the original reader(s).
-    - Topologies the MVP doesn't handle (writers in multiple
-      containers, readers spanning more than two containers total)
-      are skipped and left for
-      :class:`tcs:UnsupportedChannelTopologyShape` to flag.
+      on the correct container. The Connection is **split** into three:
+      the original Connection is repointed so its ``tcs:from`` becomes
+      the inserted Exit and its ``tcs:to`` the inserted Entry — this is
+      what keeps its own IRI resolvable wherever a framework config
+      still names it directly (see the channel-to-connection plan's
+      [D8]) — and two fresh intra-container Connections wire the
+      original ``tcs:from`` step to the Exit, and the Entry to the
+      original ``tcs:to`` step.
+    - A Connection is always 1:1, so there is no multi-writer/
+      multi-reader ambiguity left for this compiler to reject — unlike
+      the ``tcs:Channel`` model it replaces. Topology concerns now live
+      one level up, over *groups* of Connections sharing an endpoint —
+      see :class:`tcs:UnsupportedChannelTopologyShape`.
 
     ``tcs:channelType`` on a catalog boundary component is purely
     compiler-facing metadata used to pick a candidate when auto-
@@ -51,7 +56,7 @@ class BridgeTransportCompiler(Compiler):
     explicitly.
 
     Configuration of the inserted steps (transport metadata written
-    onto the channel — ``tcs:endpoint`` / ``tcs:port``, plus each
+    onto the Connection — ``tcs:endpoint`` / ``tcs:port``, plus each
     step's own config body) is the concern of the per-boundary
     config compilers, not this compiler.
     """
@@ -87,9 +92,9 @@ class BridgeTransportCompiler(Compiler):
         rows = self.output_reader.select(
             "?ch",
             """
-            ?ch a tcs:Channel .
-            ?writer tcs:writesTo ?ch .
-            ?reader tcs:readsFrom ?ch .
+            ?ch a tcs:Connection ;
+                tcs:from ?writer ;
+                tcs:to ?reader .
             ?cW tcs:runs ?writer .
             ?cR tcs:runs ?reader .
             FILTER (?cW != ?cR)
@@ -98,29 +103,18 @@ class BridgeTransportCompiler(Compiler):
         return sorted(rows["ch"].drop_duplicates().to_list())
 
     def _bridge_one_channel(self, channel: str) -> None:
-        writer_container = self._lookup_single_writer_container(channel)
-        if writer_container is None:
-            # Zero writers or writers in more than one container — the
-            # MVP can't decide which container "owns" the Exit side.
-            # Multi-writer fan-in is flagged by
-            # tcs:UnsupportedChannelTopologyShape.
-            return
+        writer, reader = self._lookup_endpoints(channel)
+        writer_container = self._lookup_container(writer)
+        reader_container = self._lookup_container(reader)
 
-        reader_containers = self._lookup_reader_containers(channel)
-        if len(reader_containers) != 1:
-            # Zero readers, or readers spanning more than one
-            # downstream container — likewise MVP-out-of-scope.
-            return
-        reader_container = next(iter(reader_containers))
-
-        exit_ok = self._has_exit_side(channel)
-        entry_ok = self._has_entry_side(channel)
+        exit_ok = self._has_exit_side(writer)
+        entry_ok = self._has_entry_side(reader)
         if exit_ok and entry_ok:
             return
         if exit_ok != entry_ok:
             present, missing = ("Exit", "Entry") if exit_ok else ("Entry", "Exit")
             raise ValueError(
-                f"Cross-container channel {channel} has an {present} "
+                f"Cross-container Connection {channel} has an {present} "
                 f"boundary step but no {missing} boundary step on the "
                 "other side. Either declare both sides of the bridge "
                 "explicitly or leave both undeclared so "
@@ -143,6 +137,7 @@ class BridgeTransportCompiler(Compiler):
         exit_step = self._mint_bridgestep_id()
         self._rewrite_writer_side(
             channel,
+            writer,
             upstream_channel,
             exit_step,
             exit_component,
@@ -154,6 +149,7 @@ class BridgeTransportCompiler(Compiler):
         entry_step = self._mint_bridgestep_id()
         self._rewrite_reader_side(
             channel,
+            reader,
             downstream_channel,
             entry_step,
             entry_component,
@@ -161,40 +157,30 @@ class BridgeTransportCompiler(Compiler):
             pipeline_id,
         )
 
-    def _has_exit_side(self, channel: str) -> bool:
+    def _lookup_endpoints(self, channel: str) -> tuple[str, str]:
+        row = self.output_reader.select(
+            "?writer ?reader",
+            f"{channel} tcs:from ?writer ; tcs:to ?reader .",
+        ).iloc[0]
+        return row["writer"], row["reader"]
+
+    def _has_exit_side(self, step: str) -> bool:
         return self.output_reader.ask(f"""
-            ?w tcs:writesTo {channel} ;
-               prov:specializationOf ?c .
+            {step} prov:specializationOf ?c .
             ?c a tcs:ExitBoundaryComponent .
             """)
 
-    def _has_entry_side(self, channel: str) -> bool:
+    def _has_entry_side(self, step: str) -> bool:
         return self.output_reader.ask(f"""
-            ?r tcs:readsFrom {channel} ;
-               prov:specializationOf ?c .
+            {step} prov:specializationOf ?c .
             ?c a tcs:EntryBoundaryComponent .
             """)
 
-    def _lookup_single_writer_container(self, channel: str) -> str | None:
-        rows = self.output_reader.select(
-            "?c",
-            f"""
-            ?w tcs:writesTo {channel} .
-            ?c tcs:runs ?w .
-            """,
-        )
-        containers = set(rows["c"].to_list())
-        return next(iter(containers)) if len(containers) == 1 else None
-
-    def _lookup_reader_containers(self, channel: str) -> set[str]:
-        rows = self.output_reader.select(
-            "?c",
-            f"""
-            ?r tcs:readsFrom {channel} .
-            ?c tcs:runs ?r .
-            """,
-        )
-        return set(rows["c"].to_list())
+    def _lookup_container(self, step: str) -> str:
+        row = self.output_reader.select(
+            "?c", f"?c tcs:runs {step} ."
+        ).iloc[0]
+        return row["c"]
 
     def _lookup_boundary_component(
         self, boundary_class: str, container: str
@@ -217,62 +203,68 @@ class BridgeTransportCompiler(Compiler):
     def _rewrite_writer_side(
         self,
         channel: str,
+        writer: str,
         upstream_channel: str,
         exit_step: str,
         exit_component: str,
         container: str,
         pipeline_id: str,
     ) -> None:
+        """Split ``channel`` on its writer side: a fresh intra-container
+        Connection carries ``writer -> exit_step``, and ``channel``
+        itself is repointed to start at ``exit_step`` instead — keeping
+        its own IRI as the cross-container hop, which is what lets a
+        framework config that still names it directly (e.g.
+        ``rdfc:output``) keep resolving. See the class docstring.
+        """
         new_triples = self.output_reader.construct(
             f"""
             {exit_step} a tcs:InstancePipelineComponent ;
                 prov:specializationOf {exit_component} ;
-                p-plan:isStepOfPlan {pipeline_id} ;
-                tcs:readsFrom {upstream_channel} ;
-                tcs:writesTo {channel} .
+                p-plan:isStepOfPlan {pipeline_id} .
             {container} tcs:runs {exit_step} ;
                 tcs:instantiates {exit_component} .
-            {upstream_channel} a tcs:Channel , {self.default_channel_type} .
-            ?w tcs:writesTo {upstream_channel} .
+            {upstream_channel} a tcs:Connection , {self.default_channel_type} ;
+                tcs:from {writer} ; tcs:to {exit_step} .
+            {channel} tcs:from {exit_step} .
             """,
-            f"?w tcs:writesTo {channel} . {container} tcs:runs ?w .",
+            "?s ?p ?o .",
         ).graph
         self.output_reader = self.output_reader.add(new_triples)
         remove_triples = self.output_reader.construct(
-            f"?w tcs:writesTo {channel} .",
-            f"?w tcs:writesTo {channel} . {container} tcs:runs ?w . "
-            f"FILTER (?w != {exit_step})",
+            f"{channel} tcs:from {writer} .", "?s ?p ?o ."
         ).graph
         self.output_reader = self.output_reader.remove(remove_triples)
 
     def _rewrite_reader_side(
         self,
         channel: str,
+        reader: str,
         downstream_channel: str,
         entry_step: str,
         entry_component: str,
         container: str,
         pipeline_id: str,
     ) -> None:
+        """Symmetric split on the reader side — see
+        :meth:`_rewrite_writer_side`.
+        """
         new_triples = self.output_reader.construct(
             f"""
             {entry_step} a tcs:InstancePipelineComponent ;
                 prov:specializationOf {entry_component} ;
-                p-plan:isStepOfPlan {pipeline_id} ;
-                tcs:readsFrom {channel} ;
-                tcs:writesTo {downstream_channel} .
+                p-plan:isStepOfPlan {pipeline_id} .
             {container} tcs:runs {entry_step} ;
                 tcs:instantiates {entry_component} .
-            {downstream_channel} a tcs:Channel , {self.default_channel_type} .
-            ?r tcs:readsFrom {downstream_channel} .
+            {downstream_channel} a tcs:Connection , {self.default_channel_type} ;
+                tcs:from {entry_step} ; tcs:to {reader} .
+            {channel} tcs:to {entry_step} .
             """,
-            f"?r tcs:readsFrom {channel} . {container} tcs:runs ?r .",
+            "?s ?p ?o .",
         ).graph
         self.output_reader = self.output_reader.add(new_triples)
         remove_triples = self.output_reader.construct(
-            f"?r tcs:readsFrom {channel} .",
-            f"?r tcs:readsFrom {channel} . {container} tcs:runs ?r . "
-            f"FILTER (?r != {entry_step})",
+            f"{channel} tcs:to {reader} .", "?s ?p ?o ."
         ).graph
         self.output_reader = self.output_reader.remove(remove_triples)
 

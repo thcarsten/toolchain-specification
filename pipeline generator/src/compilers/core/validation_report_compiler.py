@@ -66,6 +66,18 @@ class ValidationReportCompiler(Compiler):
         # Populated by validate_normal_shapes(); consumed by
         # generate_validation_report() at the end of the pipeline.
         self._shacl_report: GraphReader | None = None
+        # Empty until validate_throughput_shapes() has run, which it
+        # currently does not: the throughput half of compile() is
+        # commented out for the tcs:Channel -> tcs:Connection migration,
+        # since every one of its five discovery steps selects on
+        # tcs:readsFrom / tcs:writesTo. Defaulting here rather than
+        # guarding the consumer keeps generate_validation_report()
+        # unchanged — it iterates this and emits nothing — so the
+        # report still carries its SHACL half while the throughput half
+        # is redesigned. See plan/channel-to-connection-plan.md §6.
+        self.throughput_matches: pd.DataFrame = pd.DataFrame(
+            columns=["channel", "inputShape", "outputShape", "matches"]
+        )
 
     @classmethod
     def applies_to(cls, graph_reader: GraphReader) -> bool:
@@ -84,11 +96,11 @@ class ValidationReportCompiler(Compiler):
     def compile(self) -> Graph:
         self.normalize_config_shapes()
         self.validate_normal_shapes()
-        self.gather_throughput_shapes()
-        self.normalize_passthrough_shapes()
-        self.fill_missing_shapes()
-        self.list_shapes_to_match()
-        self.validate_throughput_shapes()
+        # self.gather_throughput_shapes()
+        # self.normalize_passthrough_shapes()
+        # self.fill_missing_shapes()
+        # self.list_shapes_to_match()
+        # self.validate_throughput_shapes()
         self.generate_validation_report()
         return self.output_reader.graph
 
@@ -137,8 +149,7 @@ class ValidationReportCompiler(Compiler):
             ?rel dcat:hadRole ?role ;
                  dct:relation ?shape .
             VALUES ?role { %s }
-            """
-            % " ".join(self.CONFIG_SHAPE_ROLES),
+            """ % " ".join(self.CONFIG_SHAPE_ROLES),
         )
 
         next_index = 0

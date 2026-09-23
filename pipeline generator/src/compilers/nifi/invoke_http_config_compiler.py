@@ -12,7 +12,7 @@ class NifiInvokeHttpConfigCompiler(Compiler):
     :class:`BridgeTransportCompiler`.
 
     Reads the ``tcs:endpoint`` written onto the shared cross-container
-    channel by the paired Entry compiler on the downstream container,
+    Connection by the paired Entry compiler on the downstream container,
     then attaches ``p-plan:hasInputVar tcs:PipelineConfig`` with an
     ``tcs:embedded`` body carrying ``nifi:httpMethod`` (defaults to
     ``POST``) and ``nifi:httpUrl``.
@@ -21,11 +21,11 @@ class NifiInvokeHttpConfigCompiler(Compiler):
     ``Retry``, ``No Retry``, ``Original``) are declared as
     ``nifi:autoTerminatedRelationship`` on the catalog component, and
     the bridge-inserted step has no in-container reader on its
-    outgoing channel, so ``NifiConfigCompiler`` emits no CONNECTION
+    outgoing Connection, so ``NifiConfigCompiler`` emits no CONNECTION
     for it and every relationship stays auto-terminated. No
     ``nifi:route`` is authored here for that reason.
 
-    Fires only when the write channel already carries a
+    Fires only when the outgoing Connection already carries a
     ``tcs:endpoint`` — so a paired Entry compiler must have run
     first. Hand-authored ``nifi:InvokeHTTP`` steps that already
     declare a ``p-plan:hasInputVar`` are left untouched.
@@ -43,9 +43,9 @@ class NifiInvokeHttpConfigCompiler(Compiler):
             "?step",
             """
             ?step a tcs:InstancePipelineComponent ;
-                  prov:specializationOf nifi:InvokeHTTP ;
-                  tcs:writesTo ?channel .
-            ?channel tcs:endpoint ?endpoint .
+                  prov:specializationOf nifi:InvokeHTTP .
+            ?channel tcs:from ?step ;
+                     tcs:endpoint ?endpoint .
             FILTER NOT EXISTS { ?step p-plan:hasInputVar ?c }
             """,
         ).empty
@@ -59,9 +59,9 @@ class NifiInvokeHttpConfigCompiler(Compiler):
             "?step ?endpoint ?content_type",
             """
             ?step a tcs:InstancePipelineComponent ;
-                  prov:specializationOf nifi:InvokeHTTP ;
-                  tcs:writesTo ?channel .
-            ?channel tcs:endpoint ?endpoint .
+                  prov:specializationOf nifi:InvokeHTTP .
+            ?channel tcs:from ?step ;
+                     tcs:endpoint ?endpoint .
             OPTIONAL { ?channel tcs:contentType ?content_type . }
             FILTER NOT EXISTS { ?step p-plan:hasInputVar ?c }
             """,

@@ -22,11 +22,11 @@ class RdfcHttpServerConfigCompiler(Compiler):
       ``rdfc:options`` block (POST, ``/<step-local-name>``, status
       202).
     - Writes the resulting HTTP endpoint back onto the shared
-      cross-container channel the step reads from via
+      cross-container Connection the step is the ``tcs:to`` of via
       ``tcs:endpoint`` and ``tcs:port``. The paired Exit compiler on
-      the upstream side reads those triples off the same channel
-      (which it writes to) and populates its own step's config with
-      them.
+      the upstream side reads those triples off the same Connection
+      (which it is the ``tcs:from`` of) and populates its own step's
+      config with them.
 
     Hand-authored ``rdfc:HttpServer`` steps that already declare a
     ``p-plan:hasInputVar`` are left untouched — the trigger skips
@@ -107,8 +107,8 @@ class RdfcHttpServerConfigCompiler(Compiler):
 
     def _lookup_shared_channel(self, step: str) -> str | None:
         channels = (
-            self.output_reader.filter(sub=step, pred="tcs:readsFrom")
-            .df["obj"]
+            self.output_reader.filter(obj=step, pred="tcs:to")
+            .df["sub"]
             .to_list()
         )
         return channels[0] if len(channels) == 1 else None
@@ -142,7 +142,7 @@ class RdfcHttpServerConfigCompiler(Compiler):
             {channel} tcs:endpoint "{endpoint}" ;
                       tcs:port {port} .
             """,
-            f"{channel} a tcs:Channel .",
+            f"{channel} a tcs:Connection .",
         ).graph
         self.output_reader = self.output_reader.add(new_triples)
 

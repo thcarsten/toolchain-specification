@@ -69,29 +69,27 @@
 # ⚠️ KNOWN BROKEN — do not deploy the output as-is
 # ------------------------------------------------
 # Compiling this pipeline emits an RDF-Connect `pipeline.ttl` whose
-# wiring is disconnected, and the validation report says so:
+# wiring is disconnected.
 #
-#   Step demo_ab:SdsifyViolations writes to demo_ab:sdsViolations
-#   according to its config, but does not declare tcs:writesTo […].
-#
-# `BridgeTransportCompiler` rewrites the framework-neutral annotations
-# when it inserts a bridge — the original writer is repointed at a fresh
-# intra-container channel, and the Exit step takes over writing the
-# cross-container one. What it does *not* rewrite is the
-# framework-specific config that also names the channel. So
-# `demo_ab:SdsifyViolations` keeps `rdfc:output demo_ab:sdsViolations`
-# while its `tcs:writesTo` now points at `:channel_bridge_0`, and the
-# emitted RDF-Connect pipeline ends up as:
+# `BridgeTransportCompiler` splits the cross-container `tcs:Connection`
+# when it inserts a bridge — the original writer is repointed onto a
+# fresh intra-container Connection, and the Exit step takes over as the
+# `tcs:from` of the original, now-cross-container one. What it does
+# *not* rewrite is the framework-specific config that also names that
+# Connection. So `demo_ab:SdsifyViolations` keeps `rdfc:output
+# demo_ab:sdsViolations` in its config, while `demo_ab:sdsViolations`
+# itself is now `:bridgestep_0`'s Connection, not
+# `demo_ab:SdsifyViolations`'s — and the emitted RDF-Connect pipeline
+# ends up as:
 #
 #   :bridgestep_0 a rdfc:HttpOut ;
-#       rdfc:reader :channel_bridge_0 ;     # nothing writes this
-#       rdfc:writer demo_ab:sdsViolations . # inverted: it should read this
+#       rdfc:reader :channel_bridge_0 ;      # nothing writes this
+#       rdfc:writer demo_ab:sdsViolations .  # inverted: it should read this
 #
 # The existing bridge tests miss this because their writer's output
-# channel is compiler-synthesized from `p-plan:isPrecededBy` and never
-# named in a config. Auto-bridging only works today on a channel no
-# framework config mentions by name; `rdfc:Sdsify` names its outputs
-# explicitly, which is what trips it.
+# Connection is a blank one, never named in a config. Auto-bridging only
+# works today on a Connection no framework config mentions by name;
+# `rdfc:Sdsify` names its outputs explicitly, which is what trips it.
 #
 # This file is kept as the reproducing case. See the roadmap item in the
 # dishacled-context skill for the fix.
@@ -140,7 +138,6 @@ demo_ab:ApiPoll a tcs:InstancePipelineComponent ;
 demo_ab:JsonLdParse a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
-    p-plan:isPrecededBy demo_ab:ApiPoll ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:outputShape ;
@@ -168,7 +165,6 @@ demo_ab:JsonLdParse a tcs:InstancePipelineComponent ;
 demo_ab:SsnSosaMap a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:SparqlConstructTransformer ;
     p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
-    p-plan:isPrecededBy demo_ab:JsonLdParse ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:inputShape ;
@@ -228,7 +224,6 @@ demo_ab:SsnSosaMap a tcs:InstancePipelineComponent ;
 demo_ab:LdioForward a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpOut ;
     p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
-    p-plan:isPrecededBy demo_ab:SsnSosaMap ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -259,7 +254,6 @@ demo_ab:sdsViolationsMeta a rdfc:Reader, rdfc:Writer .
 demo_ab:HttpIngest a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:HttpServer ;
     p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
-    p-plan:isPrecededBy demo_ab:LdioForward ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -281,7 +275,6 @@ demo_ab:HttpIngest a tcs:InstancePipelineComponent ;
 demo_ab:JsonLdToRdf a tcs:InstancePipelineComponent ;
     prov:specializationOf proc:JsonLdToNQuads ;
     p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
-    p-plan:isPrecededBy demo_ab:HttpIngest ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -292,7 +285,6 @@ demo_ab:JsonLdToRdf a tcs:InstancePipelineComponent ;
 demo_ab:SdsifyMeasurements a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:Sdsify ;
     p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
-    p-plan:isPrecededBy demo_ab:JsonLdToRdf ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:inputShape ;
@@ -309,8 +301,7 @@ demo_ab:SdsifyMeasurements a tcs:InstancePipelineComponent ;
             ] ;
             rdfc:typeFilter sosa:Observation
         ]
-    ] ;
-    tcs:writesTo demo_ab:sdsMeasurements , demo_ab:sdsMeasurementsMeta .
+    ] .
 
 
 demo_ab:ThresholdMonitor a tcs:InstancePipelineComponent ;
@@ -330,14 +321,12 @@ demo_ab:ThresholdMonitor a tcs:InstancePipelineComponent ;
             tm:stream demo_ab:measurementsStream ;
             tm:creator demo_ab:thresholdMonitorAgent
         ]
-    ] ;
-    tcs:readsFrom demo_ab:sdsMeasurements .
+    ] .
 
 
 demo_ab:SkolemizeViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:SkolemizationProcessor ;
     p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
-    p-plan:isPrecededBy demo_ab:ThresholdMonitor ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -349,7 +338,6 @@ demo_ab:SkolemizeViolations a tcs:InstancePipelineComponent ;
 demo_ab:SdsifyViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:Sdsify ;
     p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
-    p-plan:isPrecededBy demo_ab:SkolemizeViolations ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -361,8 +349,7 @@ demo_ab:SdsifyViolations a tcs:InstancePipelineComponent ;
             ] ;
             rdfc:typeFilter <http://open-services.net/ns/core#Error>
         ]
-    ] ;
-    tcs:writesTo demo_ab:sdsViolations , demo_ab:sdsViolationsMeta .
+    ] .
 
 
 # Sink steps — drain the unused metadata streams.
@@ -375,8 +362,7 @@ demo_ab:LogMeasurementsMeta a tcs:InstancePipelineComponent ;
             rdfc:level "debug" ;
             rdfc:label "sds-measurements-metadata"
         ]
-    ] ;
-    tcs:readsFrom demo_ab:sdsMeasurementsMeta .
+    ] .
 
 
 demo_ab:LogViolationsMeta a tcs:InstancePipelineComponent ;
@@ -388,8 +374,7 @@ demo_ab:LogViolationsMeta a tcs:InstancePipelineComponent ;
             rdfc:level "debug" ;
             rdfc:label "sds-violations-metadata"
         ]
-    ] ;
-    tcs:readsFrom demo_ab:sdsViolationsMeta .
+    ] .
 
 
 #################################################################
@@ -398,12 +383,12 @@ demo_ab:LogViolationsMeta a tcs:InstancePipelineComponent ;
 
 # The reader that replaces demo:SparqlIngest.
 #
-# Declaring that the store reads the violations stream is the whole
-# change: the channel now has its writer on the RDF-Connect container and
-# its reader on a semantic.works one, with no boundary component named on
-# either side, which is exactly the condition BridgeTransportCompiler
-# auto-bridges. It inserts rdfc:HttpOut upstream and
-# sw:rdf-ingest-service downstream, and the two agree the endpoint
+# Naming it as the tcs:to of the demo_ab:sdsViolations Connection below
+# is the whole change: the channel now has its writer on the RDF-Connect
+# container and its reader on a semantic.works one, with no boundary
+# component named on either side, which is exactly the condition
+# BridgeTransportCompiler auto-bridges. It inserts rdfc:HttpOut upstream
+# and sw:rdf-ingest-service downstream, and the two agree the endpoint
 # through this channel.
 #
 # Nothing else about the sw segment changes: once the alerts are in the
@@ -411,8 +396,7 @@ demo_ab:LogViolationsMeta a tcs:InstancePipelineComponent ;
 # named channels, the same as in demo:DishacledPipeline.
 demo_ab:StoreViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:triple-store ;
-    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline ;
-    tcs:readsFrom demo_ab:sdsViolations .
+    p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline .
 
 
 demo_ab:TriggerAlert a tcs:InstancePipelineComponent ;
@@ -431,3 +415,30 @@ demo_ab:TriggerAlert a tcs:InstancePipelineComponent ;
 demo_ab:DeliverEmail a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:deliver-email-service ;
     p-plan:isStepOfPlan demo_ab:AutoBridgedPipeline .
+
+
+#################################################################
+# Dataflow — tcs:Connection edges (see pipeline_definition.ttl §2a)
+#################################################################
+
+[] a tcs:Connection ; tcs:from demo_ab:ApiPoll ; tcs:to demo_ab:JsonLdParse .
+[] a tcs:Connection ; tcs:from demo_ab:JsonLdParse ; tcs:to demo_ab:SsnSosaMap .
+[] a tcs:Connection ; tcs:from demo_ab:SsnSosaMap ; tcs:to demo_ab:LdioForward .
+[] a tcs:Connection ; tcs:from demo_ab:LdioForward ; tcs:to demo_ab:HttpIngest .
+[] a tcs:Connection ; tcs:from demo_ab:HttpIngest ; tcs:to demo_ab:JsonLdToRdf .
+[] a tcs:Connection ; tcs:from demo_ab:JsonLdToRdf ; tcs:to demo_ab:SdsifyMeasurements .
+[] a tcs:Connection ; tcs:from demo_ab:ThresholdMonitor ; tcs:to demo_ab:SkolemizeViolations .
+[] a tcs:Connection ; tcs:from demo_ab:SkolemizeViolations ; tcs:to demo_ab:SdsifyViolations .
+
+demo_ab:sdsMeasurements a tcs:Connection ;
+    tcs:from demo_ab:SdsifyMeasurements ; tcs:to demo_ab:ThresholdMonitor ;
+    tcs:writerPath rdfc:output .
+demo_ab:sdsMeasurementsMeta a tcs:Connection ;
+    tcs:from demo_ab:SdsifyMeasurements ; tcs:to demo_ab:LogMeasurementsMeta ;
+    tcs:writerPath rdfc:metadataOutput .
+demo_ab:sdsViolations a tcs:Connection ;
+    tcs:from demo_ab:SdsifyViolations ; tcs:to demo_ab:StoreViolations ;
+    tcs:writerPath rdfc:output .
+demo_ab:sdsViolationsMeta a tcs:Connection ;
+    tcs:from demo_ab:SdsifyViolations ; tcs:to demo_ab:LogViolationsMeta ;
+    tcs:writerPath rdfc:metadataOutput .

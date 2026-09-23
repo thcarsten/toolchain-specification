@@ -54,16 +54,18 @@ demo_rc:Poll a tcs:InstancePipelineComponent ;
 NEEDS_SECOND_PASS = PREFIXES + _POLLER + """
 demo_rc:Store a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:triple-store ;
-    p-plan:isStepOfPlan demo_rc:Test ;
-    p-plan:isPrecededBy demo_rc:Poll .
+    p-plan:isStepOfPlan demo_rc:Test .
+
+[ a tcs:Connection ; tcs:from demo_rc:Poll ; tcs:to demo_rc:Store ] .
 """
 
 # Single framework, single container: no bridge, so nothing to re-expand.
 NO_BRIDGE = PREFIXES + _POLLER + """
 demo_rc:Sink a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:ConsoleOut ;
-    p-plan:isStepOfPlan demo_rc:Test ;
-    p-plan:isPrecededBy demo_rc:Poll .
+    p-plan:isStepOfPlan demo_rc:Test .
+
+[ a tcs:Connection ; tcs:from demo_rc:Poll ; tcs:to demo_rc:Sink ] .
 """
 
 # A bridge inserted into a container whose requirement closure is already
@@ -73,8 +75,9 @@ demo_rc:Sink a tcs:InstancePipelineComponent ;
 BRIDGE_INTO_COMPLETE_CLOSURE = PREFIXES + _POLLER + """
 demo_rc:Store a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:triple-store ;
-    p-plan:isStepOfPlan demo_rc:Test ;
-    p-plan:isPrecededBy demo_rc:Poll .
+    p-plan:isStepOfPlan demo_rc:Test .
+
+[ a tcs:Connection ; tcs:from demo_rc:Poll ; tcs:to demo_rc:Store ] .
 
 demo_rc:Alert a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:loket-error-alert-service ;

@@ -15,15 +15,7 @@ class PipelineEnricher(Compiler):
     scattered across whichever framework compiler happens to need it
     first.
 
-    Responsibilities:
-
-    - **Channel synthesis** (:meth:`synthesize_channels`) — expands
-      ``p-plan:isPrecededBy`` edges between two
-      ``tcs:InstancePipelineComponent``\\ s into concrete ``tcs:Channel``
-      wiring (``tcs:readsFrom`` / ``tcs:writesTo``), so authors can use
-      the terse ``p-plan:isPrecededBy`` form for the common
-      strictly-serial 1:1 case instead of hand-naming a channel on both
-      ends.
+    Responsibility:
 
     - **Config seeding** (:meth:`ensure_step_configs`) — every
       ``tcs:InstancePipelineComponent`` gets exactly one
@@ -31,24 +23,10 @@ class PipelineEnricher(Compiler):
       pre-declare an empty config just so a later compiler has somewhere
       to write a key.
 
-    Explicit wiring always wins over minting a fresh channel, but an
-    edge with exactly one already-explicit side (predecessor has a
-    single ``tcs:writesTo``, or successor has a single
-    ``tcs:readsFrom``) still gets its *other* side reused-and-wired —
-    there is no ambiguity in that case, only a missing triple. Genuine
-    ambiguity (either side already has more than one channel — e.g.
-    ``rdfc:Sdsify`` writing to two channels) is left completely
-    untouched: ``p-plan:isPrecededBy`` alone cannot say which of a
-    producer's outputs a given consumer reads, so this compiler never
-    guesses and the edge must stay fully explicit.
-
-    A minted channel is typed ``a tcs:Channel`` explicitly by this
-    compiler (:meth:`synthesize_channels`) — inference runs once at
-    graph load, before any compiler, so a channel minted at compile
-    time never picks up the type from ``inference_rules.yaml`` the way
-    an author-declared channel does. Code that anchors on
-    ``tcs:Channel`` (``BridgeTransportCompiler``, every boundary
-    compiler's ``_annotate_channel``) would otherwise never see it.
+    Channel synthesis from a terse edge notation is
+    ``SemanticModelMapper``'s job now (``tcs:Connection`` /
+    ``tcs:from`` / ``tcs:to``) — this compiler no longer expands
+    ``p-plan:isPrecededBy``, which is not an authoring form any more.
     """
 
     def __init__(self, graph: Graph) -> None:
@@ -57,7 +35,6 @@ class PipelineEnricher(Compiler):
         # checked against the graph so it never collides with a name
         # already in use — same idiom as PipelineSeeder.name_blind_nodes
         # / PipelineAssembler.describe_docker_container.
-        self._next_channel_index = 0
         self._next_config_index = 0
 
     @classmethod
@@ -76,54 +53,8 @@ class PipelineEnricher(Compiler):
         ).df.empty
 
     def compile(self) -> Graph:
-        self.synthesize_channels()
         self.ensure_step_configs()
         return self.output_reader.graph
-
-    def synthesize_channels(self) -> None:
-        edges = self.output_reader.select(
-            "?successor ?predecessor",
-            "?successor p-plan:isPrecededBy ?predecessor .",
-        )
-        # SPARQL result order is not guaranteed, and the iteration order
-        # decides which edge gets `:channel_0`. Those names are written
-        # into every emitted framework config, so leaving the order to
-        # the engine makes the generator emit different bytes for
-        # identical input. Both columns are named IRIs, so sorting them
-        # is total and stable.
-        edges = edges.sort_values(["successor", "predecessor"])
-
-        for _, row in edges.iterrows():
-            successor = row["successor"]
-            predecessor = row["predecessor"]
-
-            reads = (
-                self.output_reader.filter(sub=successor, pred="tcs:readsFrom")
-                .df["obj"]
-                .to_list()
-            )
-            writes = (
-                self.output_reader.filter(sub=predecessor, pred="tcs:writesTo")
-                .df["obj"]
-                .to_list()
-            )
-
-            if len(reads) == 0 and len(writes) == 0:
-                # Neither side wired — mint a fresh channel for both.
-                channel_id = self._mint_channel_id()
-                self._add(f"{successor} tcs:readsFrom {channel_id} .")
-                self._add(f"{predecessor} tcs:writesTo {channel_id} .")
-                self._add(f"{channel_id} a tcs:Channel .")
-            elif len(reads) == 0 and len(writes) == 1:
-                # Predecessor already unambiguously wired — reuse it.
-                self._add(f"{successor} tcs:readsFrom {writes[0]} .")
-            elif len(writes) == 0 and len(reads) == 1:
-                # Successor already unambiguously wired — reuse it.
-                self._add(f"{predecessor} tcs:writesTo {reads[0]} .")
-            # Any other combination (either side already has >1 channel,
-            # or both sides are already wired) is left untouched —
-            # either it's a genuine branch that must stay explicit, or
-            # it's already fully resolved.
 
     def ensure_step_configs(self) -> None:
         """Give every step exactly one ``tcs:PipelineConfig`` to inject into.
@@ -135,8 +66,8 @@ class PipelineEnricher(Compiler):
         steps that have none, and never guesses which existing config a
         later compiler should use.
         """
-        # Sorted for the same reason as the channel edges above: the
-        # iteration order decides which step gets `:pipelineconfig_0`.
+        # Sorted so the iteration order — which decides which step gets
+        # `:pipelineconfig_0` — is stable across runs.
         steps = sorted(
             self.output_reader.filter(
                 pred="rdf:type", obj="tcs:InstancePipelineComponent"
@@ -153,14 +84,6 @@ class PipelineEnricher(Compiler):
             if existing:
                 continue
             self._mint_config(step_id)
-
-    def _mint_channel_id(self) -> str:
-        channel_id = f":channel_{self._next_channel_index}"
-        self._next_channel_index += 1
-        while self.output_reader.check_exists(channel_id):
-            channel_id = f":channel_{self._next_channel_index}"
-            self._next_channel_index += 1
-        return channel_id
 
     def _mint_config(self, step_id: str) -> None:
         """Mint an empty ``tcs:PipelineConfig`` for ``step_id``.
@@ -209,8 +132,4 @@ class PipelineEnricher(Compiler):
                 BNode(),
             )
         )
-        self.output_reader = self.output_reader.add(new_triples)
-
-    def _add(self, triple: str) -> None:
-        new_triples = self.output_reader.construct(triple, "?s ?p ?o .").graph
         self.output_reader = self.output_reader.add(new_triples)

@@ -30,15 +30,14 @@ demo:In a tcs:InstancePipelineComponent ; prov:specializationOf ldio:HttpInPolle
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [ ldio:url "http://a" ; ldio:cron "0 0 * * * *" ]
-    ] ;
-    tcs:writesTo demo:ch1 .
+    ] .
 demo:Out a tcs:InstancePipelineComponent ; prov:specializationOf ldio:ConsoleOut ;
     p-plan:isStepOfPlan demo:Test ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [ ldio:rdf-writer [ ldio:content-type "text/turtle" ] ]
-    ] ;
-    tcs:readsFrom demo:ch1 .
+    ] .
+[ a tcs:Connection ; tcs:from demo:In ; tcs:to demo:Out ] .
 """
 
 # A user-facing shape that omits the channel key, plus the query that
@@ -57,7 +56,7 @@ ldio:HttpInPoller dcat:qualifiedRelation [
         WHERE {
             ?config tcs:embedded ?source .
             ?source ?p ?o .
-            OPTIONAL { ?step tcs:writesTo ?channel }
+            OPTIONAL { ?channel a tcs:Connection ; tcs:from ?step }
         } \"\"\" .
 """
 

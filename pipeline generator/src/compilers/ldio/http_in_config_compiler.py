@@ -17,10 +17,11 @@ class LdioHttpInConfigCompiler(Compiler):
     compiler still attaches an empty ``tcs:PipelineConfig`` so
     downstream compilers can rely on ``p-plan:hasInputVar`` being
     present on every step, and writes the resulting HTTP endpoint
-    onto the shared cross-container channel the step reads from via
-    ``tcs:endpoint`` and ``tcs:port``. The paired Exit compiler on
-    the upstream side reads those triples off the same channel
-    (which it writes to) and populates its own step's config.
+    onto the shared cross-container Connection the step is the
+    ``tcs:to`` of via ``tcs:endpoint`` and ``tcs:port``. The paired
+    Exit compiler on the upstream side reads those triples off the
+    same Connection (which it is the ``tcs:from`` of) and populates
+    its own step's config.
 
     Hand-authored ``ldio:HttpIn`` steps that already declare a
     ``p-plan:hasInputVar`` are left untouched — the trigger skips
@@ -91,8 +92,8 @@ class LdioHttpInConfigCompiler(Compiler):
 
     def _lookup_shared_channel(self, step: str) -> str | None:
         channels = (
-            self.output_reader.filter(sub=step, pred="tcs:readsFrom")
-            .df["obj"]
+            self.output_reader.filter(obj=step, pred="tcs:to")
+            .df["sub"]
             .to_list()
         )
         return channels[0] if len(channels) == 1 else None
@@ -118,7 +119,7 @@ class LdioHttpInConfigCompiler(Compiler):
                       tcs:port {self.orchestrator_port} ;
                       tcs:contentType "{self.default_content_type}" .
             """,
-            f"{channel} a tcs:Channel .",
+            f"{channel} a tcs:Connection .",
         ).graph
         self.output_reader = self.output_reader.add(new_triples)
 

@@ -67,7 +67,11 @@ tcs:DockerImageConfig     rdfs:subClassOf tcs:Config .
 
 tcs:EntryBoundaryComponent  rdfs:subClassOf tcs:PipelineComponent .
 tcs:ExitBoundaryComponent   rdfs:subClassOf tcs:PipelineComponent .
-tcs:HttpChannel             rdfs:subClassOf tcs:Channel .
+# tcs:HttpChannel / tcs:SparqlUpdateChannel are transport-type markers
+# used only as tcs:channelType *values* (compared for equality, e.g.
+# BridgeTransportCompiler.default_channel_type) — never asserted as an
+# rdf:type on any real node, so no rdfs:subClassOf hierarchy rooted at
+# tcs:Channel is meaningful here now that tcs:Channel itself is gone.
 tcs:SparqlUpdateChannel     rdfs:subClassOf tcs:HttpChannel .
 
 
@@ -181,7 +185,7 @@ tcs:PipelineComponentShape a sh:NodeShape ;
 
 tcs:InstancePipelineComponentShape a sh:NodeShape ;
     rdfs:label "InstancePipelineComponent application-profile shape" ;
-    sh:message "Checks that a step belongs to exactly one PipelineDefinition, specializes exactly one PipelineComponent, has at most one hasInputVar, and that any readsFrom/writesTo point at a tcs:Channel." ;
+    sh:message "Checks that a step belongs to exactly one PipelineDefinition, specializes exactly one PipelineComponent, and has at most one hasInputVar." ;
     sh:targetClass tcs:InstancePipelineComponent ;
 
     sh:property [
@@ -208,70 +212,82 @@ tcs:InstancePipelineComponentShape a sh:NodeShape ;
         sh:maxCount 1 ;
         sh:name "hasInputVar" ;
         sh:message "A step may have at most one p-plan:hasInputVar — two configs on the same step silently merge their predicates (e.g. duplicate rdfc:level values) instead of composing with any defined precedence."
-    ] ;
-
-    sh:property [
-        sh:path tcs:readsFrom ;
-        sh:class tcs:Channel ;
-        sh:name "readsFrom" ;
-        sh:message "tcs:readsFrom must point at a tcs:Channel."
-    ] ;
-
-    sh:property [
-        sh:path tcs:writesTo ;
-        sh:class tcs:Channel ;
-        sh:name "writesTo" ;
-        sh:message "tcs:writesTo must point at a tcs:Channel."
     ] .
 
 
-# TEMPORARY: tcs:Connection is a strictly 1:1 authoring edge for now —
-# fan-out/fan-in need a channel-identity term of their own, deferred to
-# its own design pass. Remove this shape once branching lands.
+# A tcs:Connection is an edge: exactly one tcs:from, exactly one
+# tcs:to, both pointing at a tcs:InstancePipelineComponent. Branching is
+# several Connections sharing an endpoint, not one wider Connection, so
+# this shape targets the Connection itself rather than capping how many
+# Connections may touch a given step.
+#
 # Complements (rather than replaces) SemanticModelMapper's own
-# ValueError guard: the guard fires immediately at compile time and in
-# both PipelineGenerator/PipelineValidator presets, while this shape
-# surfaces the same constraint declaratively in the validation report —
-# but only for a caller who validates the *source* graph directly
-# (ValidationReportCompiler's pySHACL run happens in the finalize
-# phase, after SemanticModelMapper has already consumed every
+# ValueError guard, which absorbs the same endpoint-typing check
+# (`validate_connection_wellformedness`): the guard fires immediately at
+# compile time and in both PipelineGenerator/PipelineValidator presets,
+# while this shape surfaces the same constraint declaratively in the
+# validation report — but only for a caller who validates the *source*
+# graph directly (ValidationReportCompiler's pySHACL run happens in the
+# finalize phase, after SemanticModelMapper has already consumed every
 # tcs:Connection it mapped, so this shape passes vacuously there).
 tcs:ConnectionCardinalityShape a sh:NodeShape ;
-    rdfs:label "Connection cardinality shape (TEMPORARY — no branching yet)" ;
-    sh:targetClass tcs:InstancePipelineComponent ;
-    sh:message "TEMPORARY: a step may participate in at most one incoming and one outgoing tcs:Connection. Branching is not yet supported — use tcs:readsFrom / tcs:writesTo directly. Remove this shape when branching lands." ;
+    rdfs:label "Connection cardinality shape" ;
+    sh:targetClass tcs:Connection ;
+    sh:message "A tcs:Connection must have exactly one tcs:from and exactly one tcs:to, each a tcs:InstancePipelineComponent." ;
 
     sh:property [
-        sh:path [ sh:inversePath tcs:from ] ;
-        sh:maxCount 1 ;
-        sh:name "outgoing tcs:Connection" ;
-        sh:message "TEMPORARY: {?this} is the tcs:from of more than one tcs:Connection. Branching is not yet supported — use tcs:writesTo directly. Remove this shape when branching lands."
+        sh:path tcs:from ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:class tcs:InstancePipelineComponent ;
+        sh:name "tcs:from" ;
+        sh:message "{?this} must have exactly one tcs:from, pointing at a tcs:InstancePipelineComponent."
     ] ;
 
     sh:property [
-        sh:path [ sh:inversePath tcs:to ] ;
-        sh:maxCount 1 ;
-        sh:name "incoming tcs:Connection" ;
-        sh:message "TEMPORARY: {?this} is the tcs:to of more than one tcs:Connection. Branching is not yet supported — use tcs:readsFrom directly. Remove this shape when branching lands."
+        sh:path tcs:to ;
+        sh:minCount 1 ; sh:maxCount 1 ;
+        sh:class tcs:InstancePipelineComponent ;
+        sh:name "tcs:to" ;
+        sh:message "{?this} must have exactly one tcs:to, pointing at a tcs:InstancePipelineComponent."
     ] .
 
 
-# Acyclic channel graph: no step may (transitively) read from a channel
-# it feeds — including the trivial self-loop of reading and writing the
-# very same channel. Framework-agnostic: tcs:readsFrom/tcs:writesTo are
-# core predicates, so this holds across the whole pipeline definition,
-# not just within one framework's segment (e.g. LDIO).
+# tcs:writerPath disambiguates which framework port an outgoing
+# tcs:Connection targets, for the case where two Connections share a
+# tcs:from and are otherwise indistinguishable (e.g. rdfc:Sdsify's main
+# output vs. its metadata sidestream). Its value space is deliberately
+# heterogeneous and framework-specific — an IRI for RDF-Connect
+# (rdfc:output), a string for NiFi (a relationship name like "splits")
+# — so this shape only bounds cardinality, never sh:nodeKind. A
+# Connection carrying none is the unambiguous case and needs none.
+tcs:ConnectionWriterPathShape a sh:NodeShape ;
+    rdfs:label "Connection writer-path shape" ;
+    sh:targetClass tcs:Connection ;
+    sh:message "tcs:writerPath is at most one hint per tcs:Connection, naming the framework port this Connection's writer side uses." ;
+
+    sh:property [
+        sh:path tcs:writerPath ;
+        sh:maxCount 1 ;
+        sh:name "tcs:writerPath"
+    ] .
+
+
+# Acyclic dataflow graph: no step may (transitively) be downstream of
+# itself — including the trivial self-loop of a Connection whose
+# tcs:from and tcs:to are the same step. Framework-agnostic: tcs:from /
+# tcs:to are core predicates, so this holds across the whole pipeline
+# definition, not just within one framework's segment (e.g. LDIO).
 tcs:AcyclicGraphShape a sh:NodeShape ;
     rdfs:label "Acyclic channel graph shape" ;
-    sh:message "Checks that no step transitively reads from a channel it also writes to (no cycles in the readsFrom/writesTo channel graph)." ;
+    sh:message "Checks that no step is transitively downstream of itself (no cycles in the tcs:Connection dataflow graph)." ;
     sh:targetClass tcs:InstancePipelineComponent ;
 
     sh:sparql [
         sh:prefixes tcs:prefixes ;
-        sh:message "Step {?this} is part of a cycle in the channel graph — it transitively reads from a channel it also writes to." ;
+        sh:message "Step {?this} is part of a cycle in the dataflow graph — it is transitively downstream of itself." ;
         sh:select """
             SELECT ?this WHERE {
-                ?this (tcs:writesTo/^tcs:readsFrom)+ ?this .
+                ?this (^tcs:from/tcs:to)+ ?this .
             }
         """
     ] .
@@ -529,10 +545,10 @@ tcs:BoundaryChannelTypeShape a sh:NodeShape ;
 #################################################################
 # tcs:CatalogMissingBridgeShape
 #
-# Formal-presence check: for every cross-container tcs:Channel,
+# Formal-presence check: for every cross-container tcs:Connection,
 # both sides must be covered by a step whose specialized component
-# is typed as the matching boundary class (Entry on the reader
-# side, Exit on the writer side). BridgeTransportCompiler auto-
+# is typed as the matching boundary class (Entry on the tcs:to
+# side, Exit on the tcs:from side). BridgeTransportCompiler auto-
 # inserts missing sides where the catalog has a candidate; this
 # shape fires when the catalog has none, so the compiler had
 # nothing to insert.
@@ -546,16 +562,16 @@ tcs:BoundaryChannelTypeShape a sh:NodeShape ;
 
 tcs:CatalogMissingBridgeShape a sh:NodeShape ;
     rdfs:label "CatalogMissingBridge application-profile shape" ;
-    sh:message "Checks that every cross-container channel has a bridge step on both sides." ;
+    sh:message "Checks that every cross-container Connection has a bridge step on both sides." ;
 
     sh:target [
         a sh:SPARQLTarget ;
         sh:prefixes tcs:prefixes ;
         sh:select """
             SELECT DISTINCT ?this WHERE {
-                ?this a tcs:Channel .
-                ?writer tcs:writesTo ?this .
-                ?reader tcs:readsFrom ?this .
+                ?this a tcs:Connection ;
+                      tcs:from ?writer ;
+                      tcs:to ?reader .
                 ?cW tcs:runs ?writer .
                 ?cR tcs:runs ?reader .
                 FILTER (?cW != ?cR)
@@ -564,44 +580,53 @@ tcs:CatalogMissingBridgeShape a sh:NodeShape ;
     ] ;
 
     sh:property [
-        sh:path ( [ sh:inversePath tcs:writesTo ] prov:specializationOf ) ;
+        sh:path (tcs:from prov:specializationOf) ;
         sh:class tcs:ExitBoundaryComponent ;
         sh:minCount 1 ;
         sh:name "exit-side-bridge" ;
-        sh:message "Cross-container channel {?this} has no ExitBoundaryComponent-typed writer step — no bridge component available in the catalog to insert."
+        sh:message "Cross-container Connection {?this} has no ExitBoundaryComponent-typed writer step — no bridge component available in the catalog to insert."
     ] , [
-        sh:path ( [ sh:inversePath tcs:readsFrom ] prov:specializationOf ) ;
+        sh:path (tcs:to prov:specializationOf) ;
         sh:class tcs:EntryBoundaryComponent ;
         sh:minCount 1 ;
         sh:name "entry-side-bridge" ;
-        sh:message "Cross-container channel {?this} has no EntryBoundaryComponent-typed reader step — no bridge component available in the catalog to insert."
+        sh:message "Cross-container Connection {?this} has no EntryBoundaryComponent-typed reader step — no bridge component available in the catalog to insert."
     ] .
 
 
 #################################################################
 # tcs:UnsupportedChannelTopologyShape
 #
-# BridgeTransportCompiler's MVP only handles cross-container
-# channels with (a) a single writer and (b) readers all in one
-# downstream container. Fan-in (writers in more than one
-# container) and multi-container fan-out (readers spanning more
-# than two containers total) fall outside that scope and must
-# stay hand-authored. Ordinary branching (N readers in one
-# downstream container) is fully supported.
+# BridgeTransportCompiler's MVP only handles a cross-container
+# Connection whose group — every Connection sharing its tcs:from,
+# or every Connection sharing its tcs:to — stays within (a) a
+# single writer container and (b) at most two containers overall.
+# Fan-in (a step whose incoming Connections' writers run in more
+# than one container) and multi-container fan-out (a step whose
+# outgoing Connections' readers, together with the step's own
+# container, span more than two containers total) fall outside
+# that scope and must stay hand-authored. Ordinary branching (N
+# Connections from one producer into one downstream container) is
+# fully supported.
+#
+# Re-expressed over groups of Connections sharing an endpoint
+# rather than over a multi-writer/multi-reader tcs:Channel, since a
+# tcs:Connection is always 1:1 — the branching this shape used to
+# see as "one channel, several sides" is now "several Connections
+# sharing a step" (see the plan's §5).
 #################################################################
 
 tcs:UnsupportedChannelTopologyShape a sh:NodeShape ;
     rdfs:label "UnsupportedChannelTopology application-profile shape" ;
-    sh:message "Checks that cross-container channel topology is a MVP-supported (1-writer, 1-or-2-container) shape." ;
-    sh:targetClass tcs:Channel ;
+    sh:message "Checks that cross-container Connection topology, grouped by shared endpoint, is a MVP-supported (1-writer-container, 1-or-2-container) shape." ;
+    sh:targetClass tcs:InstancePipelineComponent ;
 
     sh:sparql [
         sh:prefixes tcs:prefixes ;
-        sh:message "Channel {?this} has writers in more than one container — multi-container fan-in is not auto-bridged." ;
+        sh:message "Step {?this} has incoming Connections whose writers run in more than one container — multi-container fan-in is not auto-bridged." ;
         sh:select """
             SELECT ?this WHERE {
-                ?this a tcs:Channel .
-                ?writer tcs:writesTo ?this .
+                ?conn tcs:to ?this ; tcs:from ?writer .
                 ?container tcs:runs ?writer .
             }
             GROUP BY ?this
@@ -609,18 +634,17 @@ tcs:UnsupportedChannelTopologyShape a sh:NodeShape ;
         """
     ] , [
         sh:prefixes tcs:prefixes ;
-        sh:message "Channel {?this} has readers spanning more than two containers total — multi-container fan-out is not auto-bridged." ;
+        sh:message "Step {?this}'s outgoing Connections, together with its own container, span more than two containers total — multi-container fan-out is not auto-bridged." ;
         sh:select """
             SELECT ?this WHERE {
-                ?this a tcs:Channel .
+                ?ownContainer tcs:runs ?this .
                 {
-                    ?reader tcs:readsFrom ?this .
-                    ?container tcs:runs ?reader .
+                    BIND(?ownContainer AS ?container)
                 }
                 UNION
                 {
-                    ?writer tcs:writesTo ?this .
-                    ?container tcs:runs ?writer .
+                    ?conn tcs:from ?this ; tcs:to ?reader .
+                    ?container tcs:runs ?reader .
                 }
             }
             GROUP BY ?this
@@ -632,9 +656,9 @@ tcs:UnsupportedChannelTopologyShape a sh:NodeShape ;
 #################################################################
 # tcs:BridgeEndpointReachableShape
 #
-# The Entry/Exit contract runs through the channel: an Entry config
+# The Entry/Exit contract runs through the Connection: an Entry config
 # compiler writes `tcs:endpoint` onto the shared cross-container
-# channel, and the Exit compiler on the other side points its step at
+# Connection, and the Exit compiler on the other side points its step at
 # whatever it finds there. Nothing otherwise checks that the hostname
 # in that URL will correspond to a service the generated compose file
 # declares, so a mistake yields a project that boots cleanly and then
@@ -652,25 +676,24 @@ tcs:UnsupportedChannelTopologyShape a sh:NodeShape ;
 # projects it onto the container as `tcs:serviceName` in the finalize
 # phase so this shape can reason about it in triples.
 #
-# Scoped to channels that genuinely cross a container boundary — a
-# `tcs:endpoint` on any other channel may legitimately point somewhere
-# outside the compose project.
+# Scoped to Connections that genuinely cross a container boundary — a
+# `tcs:endpoint` on any other Connection may legitimately point
+# somewhere outside the compose project.
 #################################################################
 
 tcs:BridgeEndpointReachableShape a sh:NodeShape ;
     rdfs:label "BridgeEndpointReachable application-profile shape" ;
     sh:message "Checks that every cross-container bridge endpoint names a compose service the build declares." ;
-    sh:targetClass tcs:Channel ;
+    sh:targetClass tcs:Connection ;
 
     sh:sparql [
         sh:prefixes tcs:prefixes ;
-        sh:message "Cross-container channel {?this} has endpoint {?endpoint}, whose host {?host} is not declared as a compose service by any container in the build. Either the component owning that service is missing — check that its dct:requires chain is expanded into containers — or the Entry config compiler that wrote the endpoint resolved the wrong service name." ;
+        sh:message "Cross-container Connection {?this} has endpoint {?endpoint}, whose host {?host} is not declared as a compose service by any container in the build. Either the component owning that service is missing — check that its dct:requires chain is expanded into containers — or the Entry config compiler that wrote the endpoint resolved the wrong service name." ;
         sh:select """
             SELECT ?this ?endpoint ?host WHERE {
-                ?this a tcs:Channel ;
-                      tcs:endpoint ?endpoint .
-                ?writer tcs:writesTo ?this .
-                ?reader tcs:readsFrom ?this .
+                ?this tcs:endpoint ?endpoint ;
+                      tcs:from ?writer ;
+                      tcs:to ?reader .
                 ?writer_container tcs:runs ?writer .
                 ?reader_container tcs:runs ?reader .
                 FILTER (?writer_container != ?reader_container)
@@ -741,17 +764,17 @@ tcs:LdioComponentTypeShape a sh:NodeShape ;
     ] .
 
 
-# LDIO steps are strictly serial: each step has at most one upstream
-# channel (`tcs:readsFrom`) and at most one downstream channel
-# (`tcs:writesTo`). LDIO's YAML pipeline model has no branching primitive;
-# a step with two upstream feeds or two downstream sinks cannot be
+# LDIO steps are strictly serial: each step is the tcs:to of at most one
+# tcs:Connection (one upstream) and the tcs:from of at most one (one
+# downstream). LDIO's YAML pipeline model has no branching primitive; a
+# step with two upstream feeds or two downstream sinks cannot be
 # rendered by `LdioConfigCompiler`.
 #
 # Discriminator: instance-pipeline-components whose specialized component
 # carries `ldio:type` (i.e., is an LDIO processing component).
 tcs:LdioStepSerialityShape a sh:NodeShape ;
     rdfs:label "LDIO step seriality shape" ;
-    sh:message "Checks that every LDIO step has at most one upstream and one downstream channel (LDIO pipelines are strictly serial)." ;
+    sh:message "Checks that every LDIO step has at most one upstream and one downstream Connection (LDIO pipelines are strictly serial)." ;
 
     sh:target [
         a sh:SPARQLTarget ;
@@ -766,28 +789,28 @@ tcs:LdioStepSerialityShape a sh:NodeShape ;
     ] ;
 
     sh:property [
-        sh:path tcs:readsFrom ;
+        sh:path [ sh:inversePath tcs:to ] ;
         sh:maxCount 1 ;
-        sh:name "readsFrom" ;
-        sh:message "LDIO step {?this} reads from more than one channel — LDIO pipelines are strictly serial (max 1 upstream)."
+        sh:name "incoming tcs:Connection" ;
+        sh:message "LDIO step {?this} is the tcs:to of more than one tcs:Connection — LDIO pipelines are strictly serial (max 1 upstream)."
     ] ;
 
     sh:property [
-        sh:path tcs:writesTo ;
+        sh:path [ sh:inversePath tcs:from ] ;
         sh:maxCount 1 ;
-        sh:name "writesTo" ;
-        sh:message "LDIO step {?this} writes to more than one channel — LDIO pipelines are strictly serial (max 1 downstream)."
+        sh:name "outgoing tcs:Connection" ;
+        sh:message "LDIO step {?this} is the tcs:from of more than one tcs:Connection — LDIO pipelines are strictly serial (max 1 downstream)."
     ] .
 
 
 # LDIO step-ordering: an `Output` must be terminal in its LDIO segment,
 # an `Input` must be initial. Concretely:
-#   * If step X is an `Output`, no other LDIO step may read from a
-#     channel X writes to. (A downstream *non-LDIO* step is allowed —
-#     e.g. LDIO `HttpOut` writes to a channel that RDF-Connect
-#     `HttpIn` reads. Cross-framework hand-offs stay legal.)
-#   * If step X is an `Input`, no other LDIO step may write to a
-#     channel X reads from.
+#   * If step X is an `Output`, no other LDIO step may be the tcs:to of
+#     a Connection X is the tcs:from of. (A downstream *non-LDIO* step
+#     is allowed — e.g. LDIO `HttpOut` writes to a Connection that
+#     RDF-Connect `HttpIn` reads. Cross-framework hand-offs stay legal.)
+#   * If step X is an `Input`, no other LDIO step may be the tcs:from of
+#     a Connection X is the tcs:to of.
 #
 # The FILTER excludes the step itself so a self-loop (nonsensical but
 # not caught here) doesn't accidentally validate.
@@ -809,15 +832,15 @@ tcs:LdioStepOrderingShape a sh:NodeShape ;
 
     sh:sparql [
         sh:prefixes tcs:prefixes ;
-        sh:message "LDIO Output step {?this} is followed by another LDIO step ({?downstream}) via channel {?ch} — Output must be terminal within its LDIO segment." ;
+        sh:message "LDIO Output step {?this} is followed by another LDIO step ({?downstream}) via Connection {?conn} — Output must be terminal within its LDIO segment." ;
         sh:select """
-            SELECT ?this ?ch ?downstream WHERE {
+            SELECT ?this ?conn ?downstream WHERE {
                 ?this a tcs:InstancePipelineComponent ;
-                      prov:specializationOf ?comp ;
-                      tcs:writesTo ?ch .
+                      prov:specializationOf ?comp .
                 ?comp ldio:type "Output" .
-                ?downstream tcs:readsFrom ?ch ;
-                            prov:specializationOf ?dcomp .
+                ?conn tcs:from ?this ;
+                      tcs:to ?downstream .
+                ?downstream prov:specializationOf ?dcomp .
                 ?dcomp ldio:type ?danytype .
                 FILTER ( ?downstream != ?this )
             }
@@ -826,15 +849,15 @@ tcs:LdioStepOrderingShape a sh:NodeShape ;
 
     sh:sparql [
         sh:prefixes tcs:prefixes ;
-        sh:message "LDIO Input step {?this} is preceded by another LDIO step ({?upstream}) via channel {?ch} — Input must be initial within its LDIO segment." ;
+        sh:message "LDIO Input step {?this} is preceded by another LDIO step ({?upstream}) via Connection {?conn} — Input must be initial within its LDIO segment." ;
         sh:select """
-            SELECT ?this ?ch ?upstream WHERE {
+            SELECT ?this ?conn ?upstream WHERE {
                 ?this a tcs:InstancePipelineComponent ;
-                      prov:specializationOf ?comp ;
-                      tcs:readsFrom ?ch .
+                      prov:specializationOf ?comp .
                 ?comp ldio:type "Input" .
-                ?upstream tcs:writesTo ?ch ;
-                          prov:specializationOf ?ucomp .
+                ?conn tcs:to ?this ;
+                      tcs:from ?upstream .
+                ?upstream prov:specializationOf ?ucomp .
                 ?ucomp ldio:type ?uanytype .
                 FILTER ( ?upstream != ?this )
             }
@@ -1114,13 +1137,17 @@ tcs:NifiControllerServiceReferenceShape a sh:NodeShape ;
     ] .
 
 
-# Route blocks select which NiFi relationships feed an authored channel.
+# Route blocks select which NiFi relationships feed an authored
+# Connection. ``nifi:channel``'s value is the same tcs:Connection a
+# pipeline definition names in its tcs:writerPath-bearing edges (see
+# the channel-to-connection plan, [D8]) — a tcs:Connection, not a
+# tcs:Channel, hence ``sh:class tcs:Connection`` below.
 tcs:NifiRouteShape a sh:NodeShape ;
     rdfs:label "NiFi route shape" ;
     sh:targetObjectsOf nifi:route ;
     sh:property [
         sh:path nifi:channel ;
-        sh:class tcs:Channel ;
+        sh:class tcs:Connection ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
         sh:message "A NiFi route must reference exactly one nifi:channel."
@@ -1133,13 +1160,13 @@ tcs:NifiRouteShape a sh:NodeShape ;
     ] ;
     sh:sparql [
         sh:prefixes tcs:prefixes ;
-        sh:message "NiFi route {?this} references channel {?channel}, but its owner step does not write to that channel." ;
+        sh:message "NiFi route {?this} references Connection {?channel}, but its owner step is not that Connection's tcs:from." ;
         sh:select """
             SELECT DISTINCT ?this ?channel WHERE {
                 ?step p-plan:hasInputVar/tcs:embedded ?config .
                 ?config nifi:route ?this .
                 ?this nifi:channel ?channel .
-                FILTER NOT EXISTS { ?step tcs:writesTo ?channel . }
+                FILTER NOT EXISTS { ?channel tcs:from ?step . }
             }
         """
     ] ;
@@ -1162,60 +1189,35 @@ tcs:NifiRouteShape a sh:NodeShape ;
     ] .
 
 
-# Multiple NiFi writers/readers on the same semantic channel make the current
-# compiler create an implicit Cartesian product of Connections. Keep such
-# fan-in/fan-out explicit until the model has a dedicated channel mode.
+# Formerly also rejected any step with >1 distinct NiFi writer/reader
+# ("explicit fan-in/fan-out is not supported yet"), carried over
+# mechanically from the tcs:Channel model where a shared multi-writer/
+# multi-reader channel node made NifiConfigCompiler.plan_connections
+# group rows from different writers together — an implicit Cartesian
+# product of relationships across steps.
+#
+# That hazard is gone under tcs:Connection: plan_connections groups by
+# (source, destination, channel) where channel is now the Connection's
+# own IRI, always unique to one writer/reader pair, so every Connection
+# into or out of a step is planned independently regardless of how many
+# others share that step. Real NiFi has no restriction on fan-in/fan-out
+# either — any destination may have multiple incoming connections, and
+# funnels are a UI convenience for it, not a capability boundary. The
+# two sh:sparql blocks that checked this were removed rather than
+# narrowed to exclude funnels, since the constraint they encoded no
+# longer corresponds to anything the compiler or NiFi actually enforces
+# (see plan/channel-to-connection-plan.md [O2]).
 tcs:NifiChannelTopologyShape a sh:NodeShape ;
     rdfs:label "NiFi channel topology shape" ;
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT DISTINCT ?this WHERE {
-                ?step (tcs:readsFrom|tcs:writesTo) ?this ;
-                    prov:specializationOf ?component .
-                ?component dct:requires nifi:Orchestrator .
-            }
-        """
-    ] ;
+    sh:targetClass tcs:InstancePipelineComponent ;
+
     sh:sparql [
         sh:prefixes tcs:prefixes ;
-        sh:message "NiFi channel {?this} has more than one NiFi writer; explicit fan-in is not supported yet." ;
+        sh:message "NiFi step {?this} both reads from and writes to itself via {?conn}; self-loop Connections are not supported by the compiler." ;
         sh:select """
-            SELECT DISTINCT ?this WHERE {
-                ?left tcs:writesTo ?this ;
-                    prov:specializationOf ?leftComponent .
-                ?right tcs:writesTo ?this ;
-                    prov:specializationOf ?rightComponent .
-                ?leftComponent dct:requires nifi:Orchestrator .
-                ?rightComponent dct:requires nifi:Orchestrator .
-                FILTER (?left != ?right)
-            }
-        """
-    ] ;
-    sh:sparql [
-        sh:prefixes tcs:prefixes ;
-        sh:message "NiFi channel {?this} has more than one NiFi reader; explicit fan-out is not supported yet." ;
-        sh:select """
-            SELECT DISTINCT ?this WHERE {
-                ?left tcs:readsFrom ?this ;
-                    prov:specializationOf ?leftComponent .
-                ?right tcs:readsFrom ?this ;
-                    prov:specializationOf ?rightComponent .
-                ?leftComponent dct:requires nifi:Orchestrator .
-                ?rightComponent dct:requires nifi:Orchestrator .
-                FILTER (?left != ?right)
-            }
-        """
-    ] ;
-    sh:sparql [
-        sh:prefixes tcs:prefixes ;
-        sh:message "NiFi step {?step} reads from and writes to channel {?this}; self-loop channels are not supported by the compiler." ;
-        sh:select """
-            SELECT DISTINCT ?this ?step WHERE {
-                ?step tcs:readsFrom ?this ;
-                    tcs:writesTo ?this ;
-                    prov:specializationOf ?component .
+            SELECT DISTINCT ?this ?conn WHERE {
+                ?conn tcs:from ?this ; tcs:to ?this .
+                ?this prov:specializationOf ?component .
                 ?component dct:requires nifi:Orchestrator .
             }
         """
@@ -1290,72 +1292,6 @@ tcs:NifiStepScheduledStateShape a sh:NodeShape ;
 # owl:imports to them too, that's a modelling convenience, not a
 # requirement.
 
-# A step's channel wiring is expressed twice: framework-specifically
-# inside its `tcs:embedded` config (`rdfc:reader demo:sdsMeasurements`),
-# and framework-neutrally as `tcs:readsFrom` / `tcs:writesTo`. The two
-# had no connection — the compilers read the config, these shapes read
-# the annotation — so a step could wire one channel and declare another
-# with nothing objecting.
-#
-# `rdfc_inference_rules.yaml` materialises what the config implies as
-# `tcs:derivedReadsFrom` / `tcs:derivedWritesTo`; this shape requires
-# that every derived edge was also declared.
-#
-# Discriminator: the step specialises an `rdfc:Processor`. Only
-# RDF-Connect states its topology inside a config in the first place, so
-# targeting `tcs:InstancePipelineComponent` — every step of every
-# framework — claimed a reach this shape does not have. It made no
-# practical difference (nothing else derives the `tcs:derived*`
-# predicates it reads, so other frameworks' steps passed vacuously) but
-# it read as a general constraint, and the next framework to grow
-# channel-valued parameters would have inherited RDF-Connect's rules by
-# accident.
-#
-# The check is deliberately one-directional (derived must be a subset of
-# declared, not equal to it). Plenty of declared edges are legitimately
-# underivable even within RDF-Connect: the LDIO -> RDF-Connect boundary
-# channel has no RDFC-side config property behind it (`rdfc:HttpServer`
-# receives an HTTP POST, not a channel), and hand-maintained components
-# such as `proc:JsonLdToNQuads` have no config shape to key on. Those
-# produce no derived triples, so they are not constrained here.
-tcs:RdfcStepChannelWiringShape a sh:NodeShape ;
-    rdfs:label "RDF-Connect step channel wiring shape" ;
-
-    sh:target [
-        a sh:SPARQLTarget ;
-        sh:prefixes tcs:prefixes ;
-        sh:select """
-            SELECT ?this WHERE {
-                ?this a tcs:InstancePipelineComponent ;
-                      prov:specializationOf ?component .
-                ?component a rdfc:Processor .
-            }
-        """
-    ] ;
-
-    sh:sparql [
-        sh:prefixes tcs:prefixes ;
-        sh:message "Step {?this} reads from {?value} according to its config, but does not declare tcs:readsFrom {?value}. The framework-specific wiring and the framework-neutral annotation disagree." ;
-        sh:select """
-            SELECT ?this ?value WHERE {
-                ?this tcs:derivedReadsFrom ?value .
-                FILTER NOT EXISTS { ?this tcs:readsFrom ?value . }
-            }
-        """
-    ] ;
-
-    sh:sparql [
-        sh:prefixes tcs:prefixes ;
-        sh:message "Step {?this} writes to {?value} according to its config, but does not declare tcs:writesTo {?value}. The framework-specific wiring and the framework-neutral annotation disagree." ;
-        sh:select """
-            SELECT ?this ?value WHERE {
-                ?this tcs:derivedWritesTo ?value .
-                FILTER NOT EXISTS { ?this tcs:writesTo ?value . }
-            }
-        """
-    ] .
-
-
 tcs:RdfcProcessorShape a sh:NodeShape ;
     rdfs:label "RDF-Connect processor shape" ;
 
@@ -1381,26 +1317,26 @@ tcs:RdfcProcessorShape a sh:NodeShape ;
 
 # If a step's component declares a *mandatory* reader parameter, the
 # step cannot run without a reader regardless of how its config key ends
-# up filled in — so it must have at least one tcs:readsFrom. Currently
-# bites on nothing in the demonstrator catalog (every reader path today
-# is optional upstream), but fires the moment a component makes one
-# mandatory, without needing a new shape written for it.
+# up filled in — so it must be the tcs:to of at least one tcs:Connection.
+# Currently bites on nothing in the demonstrator catalog (every reader
+# path today is optional upstream), but fires the moment a component
+# makes one mandatory, without needing a new shape written for it.
 #
 # This pair is also where a generated config shape's dropped cardinality
 # lands. Upstream marks a channel parameter sh:minCount 1 and means it —
 # but that is a requirement on the *running pipeline*, not on the author:
-# RdfcConfigCompiler fills the config key in from tcs:readsFrom /
-# tcs:writesTo, so an authored config omits it and the generator moves
-# the obligation onto tcs:upstreamMinCount (rewrite 5 in
-# rdfc_catalog_harvest/shapes.py). Asking here instead puts the question
-# at the level that can answer it: not "did you write rdfc:reader" but
-# "is this step wired to anything at all".
+# RdfcConfigCompiler fills the config key in from the step's Connections,
+# so an authored config omits it and the generator moves the obligation
+# onto tcs:upstreamMinCount (rewrite 5 in rdfc_catalog_harvest/shapes.py).
+# Asking here instead puts the question at the level that can answer it:
+# not "did you write rdfc:reader" but "is this step wired to anything at
+# all".
 #
 # Discriminator: instance components whose specialized component's
 # compiler-facing config shape (the same dcat:qualifiedRelation /
 # dcat:hadRole tcs:compilerFacingConfigShape attachment used throughout
 # catalog-rdfc.ttl) has a sh:property carrying a channel — sh:class
-# tcs:Channel with tcs:upstreamClass rdfc:Reader — that upstream made
+# tcs:Connection with tcs:upstreamClass rdfc:Reader — that upstream made
 # mandatory.
 tcs:RdfcMandatoryReaderWiringShape a sh:NodeShape ;
     rdfs:label "RDF-Connect mandatory reader wiring shape" ;
@@ -1416,7 +1352,7 @@ tcs:RdfcMandatoryReaderWiringShape a sh:NodeShape ;
                 ?rel dcat:hadRole tcs:compilerFacingConfigShape ;
                      dct:relation ?shape .
                 ?shape sh:property ?prop .
-                ?prop sh:class tcs:Channel ;
+                ?prop sh:class tcs:Connection ;
                       tcs:upstreamClass rdfc:Reader ;
                       tcs:upstreamMinCount ?minCount .
                 FILTER (?minCount >= 1)
@@ -1425,17 +1361,16 @@ tcs:RdfcMandatoryReaderWiringShape a sh:NodeShape ;
     ] ;
 
     sh:property [
-        sh:path tcs:readsFrom ;
+        sh:path [ sh:inversePath tcs:to ] ;
         sh:minCount 1 ;
-        sh:name "readsFrom" ;
-        sh:message "{?this}'s component declares a mandatory rdfc:Reader config path but the step has no tcs:readsFrom wiring — it cannot run without one."
+        sh:name "incoming tcs:Connection" ;
+        sh:message "{?this}'s component declares a mandatory rdfc:Reader config path but the step is not the tcs:to of any tcs:Connection — it cannot run without one."
     ] .
 
 
-# Mirror of RdfcMandatoryReaderWiringShape for writer paths /
-# tcs:writesTo. Currently the only components this fires against a
-# missing wiring for are Sdsify's rdfc:output / rdfc:metadataOutput —
-# both mandatory upstream.
+# Mirror of RdfcMandatoryReaderWiringShape for writer paths. Currently
+# the only components this fires against a missing wiring for are
+# Sdsify's rdfc:output / rdfc:metadataOutput — both mandatory upstream.
 tcs:RdfcMandatoryWriterWiringShape a sh:NodeShape ;
     rdfs:label "RDF-Connect mandatory writer wiring shape" ;
 
@@ -1450,7 +1385,7 @@ tcs:RdfcMandatoryWriterWiringShape a sh:NodeShape ;
                 ?rel dcat:hadRole tcs:compilerFacingConfigShape ;
                      dct:relation ?shape .
                 ?shape sh:property ?prop .
-                ?prop sh:class tcs:Channel ;
+                ?prop sh:class tcs:Connection ;
                       tcs:upstreamClass rdfc:Writer ;
                       tcs:upstreamMinCount ?minCount .
                 FILTER (?minCount >= 1)
@@ -1459,10 +1394,10 @@ tcs:RdfcMandatoryWriterWiringShape a sh:NodeShape ;
     ] ;
 
     sh:property [
-        sh:path tcs:writesTo ;
+        sh:path [ sh:inversePath tcs:from ] ;
         sh:minCount 1 ;
-        sh:name "writesTo" ;
-        sh:message "{?this}'s component declares a mandatory rdfc:Writer config path but the step has no tcs:writesTo wiring — it cannot run without one."
+        sh:name "outgoing tcs:Connection" ;
+        sh:message "{?this}'s component declares a mandatory rdfc:Writer config path but the step is not the tcs:from of any tcs:Connection — it cannot run without one."
     ] .
 
 

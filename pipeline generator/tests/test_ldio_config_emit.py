@@ -25,17 +25,18 @@ def test_ldio_yaml_slug_iris_booleans_and_urls_list(catalog_graph):
             rdfs:comment "ingest stream" .
 
         demo:In a tcs:InstancePipelineComponent ; prov:specializationOf ldio:LdesClient ;
-            p-plan:isStepOfPlan demo:Test ; tcs:writesTo demo:ch1 ;
+            p-plan:isStepOfPlan demo:Test ;
             p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [
                 ldio:urls "http://example.org/stream" ;
                 ldio:enable-exactly-once false
             ] ] .
         demo:Voc a tcs:InstancePipelineComponent ; prov:specializationOf ldio:VersionObjectCreator ;
-            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch1 ;
+            p-plan:isStepOfPlan demo:Test ;
             p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [
                 ldio:date-observed-property "http://purl.org/dc/terms/modified" ;
                 ldio:member-type "http://example.org/ExampleType"
             ] ] .
+        [ a tcs:Connection ; tcs:from demo:In ; tcs:to demo:Voc ] .
         """,
     )
     gen, _ = compile_pipeline(catalog_graph, "demo:Test")

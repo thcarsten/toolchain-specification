@@ -26,7 +26,7 @@ class LdioConfigCompiler(Compiler):
     directory.
 
     Step order inside each segment YAML is recovered from
-    ``tcs:readsFrom`` / ``tcs:writesTo`` walks so LDIO's list-position
+    ``tcs:Connection`` walks so LDIO's list-position
     semantics for ``transformers:``/``outputs:`` match the intended
     dataflow. LDIO's singular ``input:`` / ``input.adapter:`` keys
     are enforced per-segment by :class:`tcs:LdioSingularStepShape`.
@@ -101,13 +101,14 @@ class LdioConfigCompiler(Compiler):
                            prov:specializationOf ?pipeline_component ;
                            tcs:segment ?segment .
             ?pipeline_component ldio:type ?ldio_type .
-            OPTIONAL { ?pipeline_step tcs:readsFrom ?reads_from . }
-            OPTIONAL { ?pipeline_step tcs:writesTo ?writes_to . }
+            OPTIONAL { ?reads_from tcs:to ?pipeline_step . }
+            OPTIONAL { ?writes_to tcs:from ?pipeline_step . }
             """,
         )
         # Collapse the OPTIONAL cross-join down to one row per step —
-        # LDIO steps are single-valued on readsFrom/writesTo, so the
-        # first row per (step, component, segment) is sufficient.
+        # LDIO steps are single-valued on incoming/outgoing Connections
+        # (tcs:LdioStepSerialityShape), so the first row per (step,
+        # component, segment) is sufficient.
         df_raw = df_raw.groupby(
             ["pipeline_step", "pipeline_component", "segment"], as_index=False
         ).first()
@@ -148,10 +149,11 @@ class LdioConfigCompiler(Compiler):
 
     @staticmethod
     def _order_by_channel_chain(df_raw: pd.DataFrame) -> list:
-        """Recover execution order by walking ``tcs:readsFrom``/``tcs:writesTo``.
+        """Recover execution order by walking ``tcs:Connection`` edges.
 
-        Starts from every step with no ``tcs:readsFrom`` (a chain's
-        entry point) and follows ``writes_to`` -> matching ``reads_from``
+        Starts from every step that is not the ``tcs:to`` of any
+        Connection (a chain's entry point) and follows ``writes_to`` ->
+        matching ``reads_from`` (both columns hold a Connection IRI)
         until the chain ends. Steps the walk never reaches are
         appended afterwards in their original query order, so a
         wiring-free chain still compiles instead of silently losing

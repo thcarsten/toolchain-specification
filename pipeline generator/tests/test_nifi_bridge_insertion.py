@@ -47,7 +47,6 @@ demo_ln:Poll a tcs:InstancePipelineComponent ;
 demo_ln:Parse a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan demo_ln:Test ;
-    p-plan:isPrecededBy demo_ln:Poll ;
     p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [
         ldio:force-content-type true ;
         ldio:context "{}"
@@ -55,8 +54,10 @@ demo_ln:Parse a tcs:InstancePipelineComponent ;
 
 demo_ln:Sink a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:Funnel ;
-    p-plan:isStepOfPlan demo_ln:Test ;
-    p-plan:isPrecededBy demo_ln:Parse .
+    p-plan:isStepOfPlan demo_ln:Test .
+
+[ a tcs:Connection ; tcs:from demo_ln:Poll ; tcs:to demo_ln:Parse ] .
+[ a tcs:Connection ; tcs:from demo_ln:Parse ; tcs:to demo_ln:Sink ] .
 """
 
 NIFI_TO_LDIO = PREFIXES + """
@@ -74,8 +75,9 @@ demo_ln:Emit a tcs:InstancePipelineComponent ;
 demo_ln:Downstream a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:ConsoleOut ;
     p-plan:isStepOfPlan demo_ln:Test ;
-    p-plan:isPrecededBy demo_ln:Emit ;
     p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [] ] .
+
+[ a tcs:Connection ; tcs:from demo_ln:Emit ; tcs:to demo_ln:Downstream ] .
 """
 
 # Two LDIO-to-NiFi bridges in one pipeline. Each independent LDIO segment
@@ -96,7 +98,6 @@ demo_ln:PollA a tcs:InstancePipelineComponent ;
 demo_ln:ParseA a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan demo_ln:Test ;
-    p-plan:isPrecededBy demo_ln:PollA ;
     p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [
         ldio:force-content-type true ;
         ldio:context "{}"
@@ -104,8 +105,7 @@ demo_ln:ParseA a tcs:InstancePipelineComponent ;
 
 demo_ln:SinkA a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:Funnel ;
-    p-plan:isStepOfPlan demo_ln:Test ;
-    p-plan:isPrecededBy demo_ln:ParseA .
+    p-plan:isStepOfPlan demo_ln:Test .
 
 demo_ln:PollB a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpInPoller ;
@@ -118,7 +118,6 @@ demo_ln:PollB a tcs:InstancePipelineComponent ;
 demo_ln:ParseB a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan demo_ln:Test ;
-    p-plan:isPrecededBy demo_ln:PollB ;
     p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [
         ldio:force-content-type true ;
         ldio:context "{}"
@@ -126,8 +125,12 @@ demo_ln:ParseB a tcs:InstancePipelineComponent ;
 
 demo_ln:SinkB a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:Funnel ;
-    p-plan:isStepOfPlan demo_ln:Test ;
-    p-plan:isPrecededBy demo_ln:ParseB .
+    p-plan:isStepOfPlan demo_ln:Test .
+
+[ a tcs:Connection ; tcs:from demo_ln:PollA ; tcs:to demo_ln:ParseA ] .
+[ a tcs:Connection ; tcs:from demo_ln:ParseA ; tcs:to demo_ln:SinkA ] .
+[ a tcs:Connection ; tcs:from demo_ln:PollB ; tcs:to demo_ln:ParseB ] .
+[ a tcs:Connection ; tcs:from demo_ln:ParseB ; tcs:to demo_ln:SinkB ] .
 """
 
 
@@ -176,11 +179,11 @@ def test_ldio_to_nifi_agrees_endpoint_through_channel(catalog_graph):
     endpoints = build.select(
         "?endpoint",
         """
-        ?listen prov:specializationOf nifi:ListenHTTP ;
-                tcs:readsFrom ?channel .
-        ?exit   prov:specializationOf ldio:HttpOut ;
-                tcs:writesTo ?channel .
-        ?channel tcs:endpoint ?endpoint .
+        ?listen prov:specializationOf nifi:ListenHTTP .
+        ?exit   prov:specializationOf ldio:HttpOut .
+        ?channel a tcs:Connection ;
+                 tcs:from ?exit ; tcs:to ?listen ;
+                 tcs:endpoint ?endpoint .
         """,
     )
     assert len(endpoints) == 1
@@ -287,7 +290,6 @@ demo_ln:PollA a tcs:InstancePipelineComponent ;
 demo_ln:ParseA a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan demo_ln:Test ;
-    p-plan:isPrecededBy demo_ln:PollA ;
     p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [
         ldio:force-content-type true ;
         ldio:context "{}"
@@ -296,7 +298,6 @@ demo_ln:ParseA a tcs:InstancePipelineComponent ;
 demo_ln:ForwardA a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpOut ;
     p-plan:isStepOfPlan demo_ln:Test ;
-    p-plan:isPrecededBy demo_ln:ParseA ;
     tcs:writesTo demo_ln:ldio_to_nifi ;
     p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [
         ldio:endpoint "http://nifip:7777/custom" ;
@@ -318,6 +319,9 @@ demo_ln:SinkA a tcs:InstancePipelineComponent ;
     prov:specializationOf nifi:Funnel ;
     p-plan:isStepOfPlan demo_ln:Test ;
     tcs:readsFrom demo_ln:receive_out .
+
+[ a tcs:Connection ; tcs:from demo_ln:PollA ; tcs:to demo_ln:ParseA ] .
+[ a tcs:Connection ; tcs:from demo_ln:ParseA ; tcs:to demo_ln:ForwardA ] .
 """
 
 

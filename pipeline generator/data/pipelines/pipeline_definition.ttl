@@ -56,24 +56,24 @@
 #################################################################
 # Aspects the current toolchain specification does **not yet** cover
 #
-#  1. Cross-framework transport-as-channel. `demo:HttpIngest
-#     p-plan:isPrecededBy demo:LdioForward` is an HTTP hop between the LDIO
-#     `HttpOut` step and the RDF-Connect `HttpServer` step, expanded by
-#     `PipelineEnricher` into an auto-named `tcs:Channel` (formerly
-#     the hand-named `demo:ldioToRdfcBridge`). Both sides still configure
-#     the transport independently (`endpoint: http://rdfc:9000/source-a` on
-#     one side, `port: 9000` + `path: /source-a` on the other).
-#     `tcs:Channel` currently has no way to declare its transport type —
-#     the model treats every channel as opaque. The two ends could drift
-#     without any error.
+#  1. Cross-framework transport-as-connection. `demo:LdioForward tcs:Connection
+#     demo:HttpIngest` is an HTTP hop between the LDIO `HttpOut` step and
+#     the RDF-Connect `HttpServer` step, an auto-named blank
+#     `tcs:Connection`. Both sides still configure the transport
+#     independently (`endpoint: http://rdfc:9000/source-a` on one side,
+#     `port: 9000` + `path: /source-a` on the other). `tcs:Connection`
+#     currently has no way to declare its transport type — the model
+#     treats every edge as opaque. The two ends could drift without any
+#     error.
 #
 #  2. Branching output. `rdfc:Sdsify` writes to *two* channels: the main
 #     data stream (`rdfc:output`) and a metadata sidestream
-#     (`rdfc:metadataOutput`). Modelled below with two `tcs:writesTo`
-#     triples on the same step, which is legal — but the model can't
-#     express "this branch is the main output, that one is metadata".
-#     Per-channel `inputShape` / `outputShape` attachment (the open
-#     roadmap item in ROADMAP.md) would close this.
+#     (`rdfc:metadataOutput`). Modelled below as two named `tcs:Connection`
+#     nodes sharing the same `tcs:from`, each carrying a `tcs:writerPath`
+#     naming which config key it disambiguates — but the model still can't
+#     express "this branch is the main output, that one is metadata" at
+#     the shape level. Per-channel `inputShape` / `outputShape` attachment
+#     (the open roadmap item in ROADMAP.md) would close this.
 #
 #  3. Event-driven communication via a shared triple store. The
 #     semantic.works segment doesn't use channels at all. `SparqlIngest`
@@ -81,9 +81,9 @@
 #     fires webhooks; `TriggerAlert` reacts by inserting `nmo:Email`
 #     triples; `DeliverEmail` polls the mail folder. There's no explicit
 #     dataflow between them — everything is coordinated through the shared
-#     store and delta rules. Modelled below by giving the sw steps NO
-#     `tcs:readsFrom` / `tcs:writesTo`, which is technically correct
-#     (steps are optional readers/writers) but hides the causal chain.
+#     store and delta rules. Modelled below by giving the sw steps no
+#     `tcs:Connection` at all, which is technically correct (a step is
+#     an optional endpoint of any Connection) but hides the causal chain.
 #     A future construct like `tcs:observesStore` or `tcs:reactsToInsertOf`
 #     would express it properly.
 #
@@ -97,8 +97,9 @@
 #     component" vs "supporting service component" is not explicit.
 #
 #  5. Sink steps. `LogMeasurementsMeta`, `LogViolationsMeta`, and
-#     `DeliverEmail` only read; they never write. `tcs:writesTo` is
-#     already optional so this works, but the model has no dedicated
+#     `DeliverEmail` only read; they never write. Being the `tcs:to` of
+#     a Connection without ever being a `tcs:from` already expresses
+#     this, but the model has no dedicated
 #     `tcs:Sink` marker to make the terminal nature explicit.
 #
 #  6. LDIO orchestrator version + volume drift. `catalog-ldio.ttl` declares
@@ -162,7 +163,6 @@ demo:ApiPoll a tcs:InstancePipelineComponent ;
 demo:JsonLdParse a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
-    p-plan:isPrecededBy demo:ApiPoll ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:outputShape ;
@@ -191,7 +191,6 @@ demo:JsonLdParse a tcs:InstancePipelineComponent ;
 demo:SsnSosaMap a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:SparqlConstructTransformer ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
-    p-plan:isPrecededBy demo:JsonLdParse ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:inputShape ;
@@ -252,7 +251,6 @@ demo:SsnSosaMap a tcs:InstancePipelineComponent ;
 demo:LdioForward a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpOut ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
-    p-plan:isPrecededBy demo:SsnSosaMap ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -275,9 +273,9 @@ demo:LdioForward a tcs:InstancePipelineComponent ;
 # now (no inference rule yet) — every channel named here is written by
 # one step's Writer-role compilerFacingConfigShape path and read by another's
 # Reader-role path, so both types apply. Compiler-minted channels
-# (the anonymous :channel_N wiring synthesized by PipelineEnricher for
-# isPrecededBy edges, e.g. HttpIngest -> JsonLdToRdf) have no stable
-# author-facing name to type against and are left untyped.
+# (the anonymous :channel_N wiring resolved by SemanticModelMapper for
+# blank tcs:Connection edges, e.g. HttpIngest -> JsonLdToRdf) have no
+# stable author-facing name to type against and are left untyped.
 demo:sdsMeasurements a rdfc:Reader, rdfc:Writer .
 demo:sdsMeasurementsMeta a rdfc:Reader, rdfc:Writer .
 demo:sdsViolations a rdfc:Reader, rdfc:Writer .
@@ -286,7 +284,6 @@ demo:sdsViolationsMeta a rdfc:Reader, rdfc:Writer .
 demo:HttpIngest a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:HttpServer ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
-    p-plan:isPrecededBy demo:LdioForward ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -308,7 +305,6 @@ demo:HttpIngest a tcs:InstancePipelineComponent ;
 demo:JsonLdToRdf a tcs:InstancePipelineComponent ;
     prov:specializationOf proc:JsonLdToNQuads ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
-    p-plan:isPrecededBy demo:HttpIngest ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -317,13 +313,13 @@ demo:JsonLdToRdf a tcs:InstancePipelineComponent ;
 
 
 # Branching writer — see gap #2 in the file header. Read side is a plain
-# 1:1 edge (isPrecededBy); write side stays fully explicit because the
-# two outputs are genuinely ambiguous (nothing can disambiguate which
-# downstream consumer wants which branch).
+# blank tcs:Connection; write side is two named tcs:Connection nodes
+# (below, §2a) since the two outputs are genuinely ambiguous — nothing
+# can disambiguate which downstream consumer wants which branch except
+# tcs:writerPath.
 demo:SdsifyMeasurements a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:Sdsify ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
-    p-plan:isPrecededBy demo:JsonLdToRdf ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:inputShape ;
@@ -340,12 +336,12 @@ demo:SdsifyMeasurements a tcs:InstancePipelineComponent ;
             ] ;
             rdfc:typeFilter sosa:Observation
         ]
-    ] ;
-    tcs:writesTo demo:sdsMeasurements , demo:sdsMeasurementsMeta .
+    ] .
 
 
-# Reader side stays explicit — the upstream producer (SdsifyMeasurements)
-# branches, so isPrecededBy alone couldn't tell which output this reads.
+# Reader side stays a named Connection — the upstream producer
+# (SdsifyMeasurements) branches, so a blank Connection alone couldn't
+# tell which output this reads.
 demo:ThresholdMonitor a tcs:InstancePipelineComponent ;
     prov:specializationOf tm:ThresholdMonitorJs ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
@@ -363,14 +359,12 @@ demo:ThresholdMonitor a tcs:InstancePipelineComponent ;
             tm:stream demo:measurementsStream ;
             tm:creator demo:thresholdMonitorAgent
         ]
-    ] ;
-    tcs:readsFrom demo:sdsMeasurements .
+    ] .
 
 
 demo:SkolemizeViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:SkolemizationProcessor ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
-    p-plan:isPrecededBy demo:ThresholdMonitor ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -379,12 +373,12 @@ demo:SkolemizeViolations a tcs:InstancePipelineComponent ;
     ] .
 
 
-# Read side is a plain 1:1 edge (isPrecededBy); write side stays fully
-# explicit for the same branching reason as SdsifyMeasurements above.
+# Read side is a plain blank tcs:Connection; write side is two named
+# tcs:Connection nodes (below, §2a) for the same branching reason as
+# SdsifyMeasurements above.
 demo:SdsifyViolations a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:Sdsify ;
     p-plan:isStepOfPlan demo:DishacledPipeline ;
-    p-plan:isPrecededBy demo:SkolemizeViolations ;
     p-plan:hasInputVar [
         a tcs:PipelineConfig ;
         tcs:embedded [
@@ -396,8 +390,7 @@ demo:SdsifyViolations a tcs:InstancePipelineComponent ;
             ] ;
             rdfc:typeFilter <http://open-services.net/ns/core#Error>
         ]
-    ] ;
-    tcs:writesTo demo:sdsViolations , demo:sdsViolationsMeta .
+    ] .
 
 
 # Sink steps — drain the unused metadata streams. See gap #5.
@@ -410,8 +403,7 @@ demo:LogMeasurementsMeta a tcs:InstancePipelineComponent ;
             rdfc:level "debug" ;
             rdfc:label "sds-measurements-metadata"
         ]
-    ] ;
-    tcs:readsFrom demo:sdsMeasurementsMeta .
+    ] .
 
 
 demo:LogViolationsMeta a tcs:InstancePipelineComponent ;
@@ -423,8 +415,7 @@ demo:LogViolationsMeta a tcs:InstancePipelineComponent ;
             rdfc:level "debug" ;
             rdfc:label "sds-violations-metadata"
         ]
-    ] ;
-    tcs:readsFrom demo:sdsViolationsMeta .
+    ] .
 
 
 # Terminal RDFC step — pushes SDS-wrapped oslc:Error records into the mu
@@ -444,16 +435,49 @@ demo:SparqlIngest a tcs:InstancePipelineComponent ;
                 rdfc:forVirtuoso true
             ]
         ]
-    ] ;
-    tcs:readsFrom demo:sdsViolations .
+    ] .
+
+
+#################################################################
+# 2a. Dataflow — tcs:Connection edges
+#
+# Every hop above is a plain blank Connection (D5) except the two
+# Sdsify branch points, which are named after the channel key they
+# disambiguate (D8's scoped exception to D5: those names keep
+# rdfc:output / rdfc:metadataOutput above resolvable until the
+# framework translation in a later slice stops needing an authored
+# channel key at all).
+#################################################################
+
+[] a tcs:Connection ; tcs:from demo:ApiPoll ; tcs:to demo:JsonLdParse .
+[] a tcs:Connection ; tcs:from demo:JsonLdParse ; tcs:to demo:SsnSosaMap .
+[] a tcs:Connection ; tcs:from demo:SsnSosaMap ; tcs:to demo:LdioForward .
+[] a tcs:Connection ; tcs:from demo:LdioForward ; tcs:to demo:HttpIngest .
+[] a tcs:Connection ; tcs:from demo:HttpIngest ; tcs:to demo:JsonLdToRdf .
+[] a tcs:Connection ; tcs:from demo:JsonLdToRdf ; tcs:to demo:SdsifyMeasurements .
+[] a tcs:Connection ; tcs:from demo:ThresholdMonitor ; tcs:to demo:SkolemizeViolations .
+[] a tcs:Connection ; tcs:from demo:SkolemizeViolations ; tcs:to demo:SdsifyViolations .
+
+demo:sdsMeasurements a tcs:Connection ;
+    tcs:from demo:SdsifyMeasurements ; tcs:to demo:ThresholdMonitor ;
+    tcs:writerPath rdfc:output .
+demo:sdsMeasurementsMeta a tcs:Connection ;
+    tcs:from demo:SdsifyMeasurements ; tcs:to demo:LogMeasurementsMeta ;
+    tcs:writerPath rdfc:metadataOutput .
+demo:sdsViolations a tcs:Connection ;
+    tcs:from demo:SdsifyViolations ; tcs:to demo:SparqlIngest ;
+    tcs:writerPath rdfc:output .
+demo:sdsViolationsMeta a tcs:Connection ;
+    tcs:from demo:SdsifyViolations ; tcs:to demo:LogViolationsMeta ;
+    tcs:writerPath rdfc:metadataOutput .
 
 
 #################################################################
 # 3. semantic.works segment — react to store inserts, compose + deliver
 #
-# No `tcs:readsFrom` / `tcs:writesTo` on these steps: the causal chain
-# runs through the shared triple store + `mu-delta-notifier` webhooks,
-# not through named channels. See gap #3.
+# No `tcs:Connection` on these steps: the causal chain runs through the
+# shared triple store + `mu-delta-notifier` webhooks, not through named
+# edges. See gap #3.
 #################################################################
 
 demo:TriggerAlert a tcs:InstancePipelineComponent ;

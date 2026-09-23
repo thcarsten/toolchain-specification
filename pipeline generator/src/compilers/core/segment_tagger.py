@@ -9,8 +9,8 @@ class SegmentTagger(Compiler):
     """Tag each maximal run of channel-connected steps within one
     container as one ``tcs:segment``.
 
-    Walks ``tcs:readsFrom``/``tcs:writesTo`` forward from every Entry-
-    marked step to the next Exit-marked step or container boundary,
+    Walks ``tcs:Connection`` edges forward from every Entry-marked step
+    to the next Exit-marked step or container boundary,
     attaching ``tcs:segment :segment_N`` to each step encountered on
     the way. Steps not reached by any Entry walk are then grouped by
     connected component within their container so channel-linked
@@ -117,8 +117,7 @@ class SegmentTagger(Compiler):
         rows = self.output_reader.select(
             "?next",
             f"""
-            {step} tcs:writesTo ?ch .
-            ?next tcs:readsFrom ?ch .
+            ?conn tcs:from {step} ; tcs:to ?next .
             """,
         )
         successors = sorted(rows["next"].drop_duplicates().to_list())
@@ -163,9 +162,9 @@ class SegmentTagger(Compiler):
         rows = self.output_reader.select(
             "?other",
             f"""
-            {{ {step} tcs:writesTo ?ch . ?other tcs:readsFrom ?ch . }}
+            {{ ?conn tcs:from {step} ; tcs:to ?other . }}
             UNION
-            {{ {step} tcs:readsFrom ?ch . ?other tcs:writesTo ?ch . }}
+            {{ ?conn tcs:to {step} ; tcs:from ?other . }}
             """,
         )
         neighbours = rows["other"].drop_duplicates().to_list()

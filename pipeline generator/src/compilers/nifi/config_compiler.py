@@ -5,11 +5,12 @@ NiFi 2 ``flow.json``, attached as an ``spdx:File`` under ``nifi/``.
 
 Authoring model (Turtle → NiFi)
 -------------------------------
-* **Topology** — ``tcs:writesTo`` / ``tcs:readsFrom`` on steps name the
-  channels that become NiFi connections.
-* **Relationships** — which NiFi relationship feeds a channel is authored
-  on the *writer* step as ``tcs:embedded`` / ``nifi:route`` (not on the
-  Channel resource). Readers only declare ``tcs:readsFrom``.
+* **Topology** — ``tcs:Connection`` (``tcs:from`` / ``tcs:to``) between
+  two steps becomes a NiFi connection.
+* **Relationships** — which NiFi relationship feeds a Connection is
+  authored on the *writer* step as ``tcs:embedded`` / ``nifi:route``
+  (not on the Connection resource). Readers need declare nothing extra
+  — the Connection itself already names them.
 * **Properties** — predicates in ``tcs:embedded`` are renamed via
   ``nifi:propertyName`` on the component's ``compilerFacingConfigShape``. Only authored
   keys are emitted; NiFi fills the rest from the NAR at load time.
@@ -586,7 +587,7 @@ class NifiConfigCompiler(Compiler):
         self,
         component_types: dict[str, str],
     ) -> list[dict]:
-        """IRI-keyed connection plans from channels + writer ``nifi:route``s.
+        """IRI-keyed connection plans from Connections + writer ``nifi:route``s.
 
         Each plan has ``source``, ``destination``, ``channel``, and
         ``selectedRelationships``. Relationship resolution:
@@ -606,9 +607,8 @@ class NifiConfigCompiler(Compiler):
                 tcs:instantiates nifi:Orchestrator ;
                 tcs:runs ?source, ?destination .
 
-            ?source tcs:writesTo ?channel ;
-                prov:specializationOf ?source_component .
-            ?destination tcs:readsFrom ?channel .
+            ?channel tcs:from ?source ; tcs:to ?destination .
+            ?source prov:specializationOf ?source_component .
 
             OPTIONAL {
                 ?source_component nifi:outgoingRelationship ?default_relationship .

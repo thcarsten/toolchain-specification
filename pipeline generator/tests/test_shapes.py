@@ -34,7 +34,7 @@ def _flat(shape) -> list[tuple[str, str]]:
 
 def test_reader_and_writer_collapse_to_channel():
     # Upstream's Reader/Writer distinction cannot match: the toolchain
-    # only ever asserts tcs:Channel, inferred from readsFrom/writesTo.
+    # only ever asserts tcs:Connection, inferred from tcs:from/tcs:to.
     shape = _translate("""
     rdfc:Demo rdfc:jsImplementationOf rdfc:Processor .
     [] a sh:NodeShape ; sh:targetClass rdfc:Demo ;
@@ -42,21 +42,21 @@ def test_reader_and_writer_collapse_to_channel():
                    [ sh:path rdfc:writer ; sh:name "writer" ; sh:class rdfc:Writer ] .
     """)
     pairs = _flat(shape)
-    assert ("sh:class", "tcs:Channel") in pairs
-    assert pairs.count(("sh:class", "tcs:Channel")) == 2
+    assert ("sh:class", "tcs:Connection") in pairs
+    assert pairs.count(("sh:class", "tcs:Connection")) == 2
     # Direction preserved, non-constraining.
     assert ("tcs:upstreamClass", "rdfc:Reader") in pairs
     assert ("tcs:upstreamClass", "rdfc:Writer") in pairs
-    assert not any(p == "sh:class" and o != "tcs:Channel" for p, o in pairs)
+    assert not any(p == "sh:class" and o != "tcs:Connection" for p, o in pairs)
 
 
 def test_required_channel_parameter_loses_its_min_count():
     # A channel parameter is required of the *pipeline*, not of the
-    # author: RdfcConfigCompiler fills rdfc:reader in from tcs:readsFrom,
-    # so the authored config deliberately omits it and upstream's
-    # sh:minCount 1 would fail every pipeline in the repo. The class
-    # constraint still applies to whatever the author does write; only
-    # the obligation moves, and the original is kept as provenance.
+    # author: RdfcConfigCompiler fills rdfc:reader in from the step's
+    # tcs:Connection, so the authored config deliberately omits it and
+    # upstream's sh:minCount 1 would fail every pipeline in the repo. The
+    # class constraint still applies to whatever the author does write;
+    # only the obligation moves, and the original is kept as provenance.
     shape = _translate("""
     rdfc:Demo rdfc:jsImplementationOf rdfc:Processor .
     [] a sh:NodeShape ; sh:targetClass rdfc:Demo ;
@@ -67,7 +67,7 @@ def test_required_channel_parameter_loses_its_min_count():
     """)
     pairs = _flat(shape)
     assert ("tcs:upstreamMinCount", "1") in pairs
-    assert ("sh:class", "tcs:Channel") in pairs
+    assert ("sh:class", "tcs:Connection") in pairs
     # maxCount is untouched — it still holds for whatever is written.
     assert ("sh:maxCount", "1") in pairs
     # Non-channel parameters keep their obligation: nothing fills those in.

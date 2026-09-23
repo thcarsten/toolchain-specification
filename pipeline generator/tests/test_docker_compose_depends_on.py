@@ -94,8 +94,7 @@ def test_channel_across_containers_yields_floworder_fallback_depends_on(catalog_
     parse_extra(
         catalog_graph,
         _two_microservices_ttl(requires=False) + """
-        demo:A tcs:writesTo demo:ch1 .
-        demo:B tcs:readsFrom demo:ch1 .
+        [ a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B ] .
     """,
     )
     compose_file = _compose_file(catalog_graph)
@@ -113,8 +112,7 @@ def test_explicit_requires_suppresses_reverse_floworder_fallback(catalog_graph):
     parse_extra(
         catalog_graph,
         _two_microservices_ttl(requires=True) + """
-        demo:B tcs:writesTo demo:ch1 .
-        demo:A tcs:readsFrom demo:ch1 .
+        [ a tcs:Connection ; tcs:from demo:B ; tcs:to demo:A ] .
     """,
     )
     compose_file = _compose_file(catalog_graph)

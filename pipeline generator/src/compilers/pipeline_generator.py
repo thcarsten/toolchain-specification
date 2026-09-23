@@ -39,7 +39,6 @@ from .core.pipeline_enricher import PipelineEnricher
 from .core.pipeline_seeder import PipelineSeeder
 from .core.requirement_closure_compiler import RequirementClosureCompiler
 from .core.segment_tagger import SegmentTagger
-from .core.semantic_model_mapper import SemanticModelMapper
 from .core.validation_report_compiler import ValidationReportCompiler
 from .ldio.config_compiler import LdioConfigCompiler
 from .ldio.http_in_config_compiler import LdioHttpInConfigCompiler
@@ -93,10 +92,7 @@ DEFAULT_PIPELINE_FILES: tuple[str, ...] = (
 )
 
 #: Inference rule YAMLs applied on top of the loaded catalog.
-DEFAULT_INFERENCE_FILES: tuple[str, ...] = (
-    "inference_rules/inference_rules.yaml",
-    "inference_rules/rdfc_inference_rules.yaml",
-)
+DEFAULT_INFERENCE_FILES: tuple[str, ...] = ("inference_rules/inference_rules.yaml",)
 
 
 #: Preset :class:`CompilationConfig` for compilation into a runnable
@@ -114,7 +110,6 @@ PipelineGeneratorConfig = CompilationConfig(
     inference_files=[_DATA_ROOT / f for f in DEFAULT_INFERENCE_FILES],
     compilers=[
         PipelineSeeder,
-        SemanticModelMapper,
         PipelineAssembler,
         PipelineEnricher,
         BridgeTransportCompiler,

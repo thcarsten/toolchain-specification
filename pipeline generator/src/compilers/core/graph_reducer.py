@@ -45,39 +45,10 @@ class GraphReducer(Compiler):
         """Fires once ``PipelineAssembler`` has recorded provenance on
         the build. See the class docstring for the temporary-trigger
         note.
-
-        Belt-and-braces guard against ``SemanticModelMapper`` (which
-        must consume every ``tcs:Connection`` it maps before narrowing
-        runs — a standalone Connection node is unreachable from the
-        build's forward traversal below, so narrowing would silently
-        drop it): this can only matter if the two compilers' list order
-        is ever reshuffled, since ``SemanticModelMapper`` always runs
-        before ``PipelineAssembler`` in both presets today.
-
-        Scoped to *this* pipeline's own steps, not "any ``tcs:Connection``
-        anywhere" — ``DEFAULT_PIPELINE_FILES`` loads every shipped
-        pipeline definition into one graph, and a Connection belonging
-        to another plan is left untouched by design
-        (``SemanticModelMapper`` never consumes it). An unscoped guard
-        would block this compiler forever once any other plan sharing
-        the graph carried a stray Connection.
         """
-        if not graph_reader.ask("?s dct:creator tcs:PipelineAssembler ."):
-            return False
-        build_and_pipeline = graph_reader.select(
-            "?pipeline",
-            """
-            ?build a tcs:PipelineBuild ; prov:hadPlan ?pipeline .
-            ?request a tcs:CompilationRequest ; tcs:targetPipeline ?pipeline .
-            """,
-        )
-        pipeline_id = receive_first(build_and_pipeline["pipeline"])
-        return not graph_reader.ask(
-            f"""
-            ?c a tcs:Connection ; (tcs:from|tcs:to) ?step .
-            ?step p-plan:isStepOfPlan {pipeline_id} .
-            """
-        )
+        return not graph_reader.filter(
+            pred="dct:creator", obj="tcs:PipelineAssembler"
+        ).df.empty
 
     def compile(self) -> Graph:
         self.reduce_to_pipeline()
@@ -149,11 +120,18 @@ class GraphReducer(Compiler):
         # Traversal starts from the build so its own attached triples
         # (``dct:hasPart`` containers, ``tcs:compiledFile`` files,
         # ``dct:creator`` provenance) survive alongside the pipeline
-        # reached via ``prov:hadPlan``. ``against="p-plan:isStepOfPlan"``
-        # then pulls in every step of this pipeline and its downstream
-        # configuration.
+        # reached via ``prov:hadPlan``. ``p-plan:isStepOfPlan`` walked
+        # against its normal direction then pulls in every step of this
+        # pipeline and its downstream configuration. ``tcs:from``/
+        # ``tcs:to`` are also walked against
+        # their normal direction: a ``tcs:Connection`` is the *subject*
+        # pointing at its two step endpoints, so nothing reaches it
+        # going forward from a step — without this, narrowing would
+        # silently drop every Connection (the topology itself) as soon
+        # as it ran.
         self.output_reader = self.output_reader.traverse(
-            self.build_id, against="p-plan:isStepOfPlan"
+            self.build_id,
+            against=["p-plan:isStepOfPlan", "tcs:from", "tcs:to"],
         )
         self.output_reader = self.output_reader.add(shape_graph)
         self.output_reader = self.output_reader.add(catalog_graph)

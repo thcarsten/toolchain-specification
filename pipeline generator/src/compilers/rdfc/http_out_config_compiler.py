@@ -11,20 +11,20 @@ class RdfcHttpOutConfigCompiler(Compiler):
     have one yet — typically boundary steps inserted by
     :class:`BridgeTransportCompiler`.
 
-    Also forwards the channel's ``tcs:contentType`` as
+    Also forwards the Connection's ``tcs:contentType`` as
     ``rdfc:content_type`` when the Entry compiler advertised one, so a
     downstream Entry that selects its parser from the request header
     (``sw:rdf-ingest-service``) gets a serialisation it accepts.
 
     Reads the ``tcs:endpoint`` written onto the shared cross-container
-    channel by the paired Entry compiler on the downstream container,
+    Connection by the paired Entry compiler on the downstream container,
     then attaches ``p-plan:hasInputVar tcs:PipelineConfig`` with an
     ``tcs:embedded`` body carrying ``rdfc:endpoint``. The RDF-Connect
     ``rdfc:HttpOut`` component has no compiler-facing config shape declared in the
     catalog, so the default field name is a best guess; a pipeline
     that needs different behaviour should hand-author the config.
 
-    Fires only when the write channel already carries a
+    Fires only when the outgoing Connection already carries a
     ``tcs:endpoint`` — so a paired Entry compiler must have run
     first. Hand-authored ``rdfc:HttpOut`` steps that already declare
     a ``p-plan:hasInputVar`` are left untouched.
@@ -40,9 +40,9 @@ class RdfcHttpOutConfigCompiler(Compiler):
             "?step",
             """
             ?step a tcs:InstancePipelineComponent ;
-                  prov:specializationOf rdfc:HttpOut ;
-                  tcs:writesTo ?channel .
-            ?channel tcs:endpoint ?endpoint .
+                  prov:specializationOf rdfc:HttpOut .
+            ?channel tcs:from ?step ;
+                     tcs:endpoint ?endpoint .
             FILTER NOT EXISTS { ?step p-plan:hasInputVar ?c }
             """,
         ).empty
@@ -56,9 +56,9 @@ class RdfcHttpOutConfigCompiler(Compiler):
             "?step ?endpoint ?content_type",
             """
             ?step a tcs:InstancePipelineComponent ;
-                  prov:specializationOf rdfc:HttpOut ;
-                  tcs:writesTo ?channel .
-            ?channel tcs:endpoint ?endpoint .
+                  prov:specializationOf rdfc:HttpOut .
+            ?channel tcs:from ?step ;
+                     tcs:endpoint ?endpoint .
             OPTIONAL { ?channel tcs:contentType ?content_type . }
             FILTER NOT EXISTS { ?step p-plan:hasInputVar ?c }
             """,

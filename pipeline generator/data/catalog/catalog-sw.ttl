@@ -259,7 +259,7 @@ database:
 #   `rules.js`, including the `rdf:type oslc:Error → error-alert` rule
 #   that ties the RDFC threshold sink to the sw error-alert service.
 #   That second rule is cross-framework glue specific to the DiSHACLed
-#   demonstrator; long-term it should be derived from a `tcs:Channel`
+#   demonstrator; long-term it should be derived from a `tcs:Connection`
 #   between the two frameworks (semantic-model gap; see AGENTS.md §8).
 # - `ErrorAlertTemplateHbsDefault` — the "UFFFFFF!! Water levels is
 #   exceeded!!!" email copy is pure demonstrator content, not a stock

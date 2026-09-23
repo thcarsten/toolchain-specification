@@ -102,7 +102,6 @@ fs:HttpIn a tcs:InstancePipelineComponent ;
 fs:JsonToLd a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan fs:PublisherPipeline ;
-    p-plan:isPrecededBy fs:HttpIn ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:outputShape ;
@@ -129,7 +128,6 @@ fs:JsonToLd a tcs:InstancePipelineComponent ;
 fs:GeoJsonToWkt a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:GeoJsonToWktTransformer ;
     p-plan:isStepOfPlan fs:PublisherPipeline ;
-    p-plan:isPrecededBy fs:JsonToLd ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -147,7 +145,6 @@ fs:GeoJsonToWkt a tcs:InstancePipelineComponent ;
 fs:OsloMap a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:SparqlConstructTransformer ;
     p-plan:isStepOfPlan fs:PublisherPipeline ;
-    p-plan:isPrecededBy fs:GeoJsonToWkt ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:inputShape ;
@@ -294,7 +291,6 @@ fs:OsloMap a tcs:InstancePipelineComponent ;
 fs:VersionObject a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:VersionObjectCreator ;
     p-plan:isStepOfPlan fs:PublisherPipeline ;
-    p-plan:isPrecededBy fs:OsloMap ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -314,7 +310,6 @@ fs:VersionObject a tcs:InstancePipelineComponent ;
 fs:HttpOut a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpOut ;
     p-plan:isStepOfPlan fs:PublisherPipeline ;
-    p-plan:isPrecededBy fs:VersionObject ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -327,6 +322,14 @@ fs:HttpOut a tcs:InstancePipelineComponent ;
             ldio:rdf-writer [ ldio:content-type "application/n-triples" ]
         ]
     ] .
+
+
+# Dataflow — tcs:Connection edges for fs:PublisherPipeline.
+[] a tcs:Connection ; tcs:from fs:HttpIn ; tcs:to fs:JsonToLd .
+[] a tcs:Connection ; tcs:from fs:JsonToLd ; tcs:to fs:GeoJsonToWkt .
+[] a tcs:Connection ; tcs:from fs:GeoJsonToWkt ; tcs:to fs:OsloMap .
+[] a tcs:Connection ; tcs:from fs:OsloMap ; tcs:to fs:VersionObject .
+[] a tcs:Connection ; tcs:from fs:VersionObject ; tcs:to fs:HttpOut .
 
 
 #################################################################
@@ -412,7 +415,6 @@ fs:LdesClient a tcs:InstancePipelineComponent ;
 fs:ClientForward a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:HttpOut ;
     p-plan:isStepOfPlan fs:ConsumerPipeline ;
-    p-plan:isPrecededBy fs:LdesClient ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -430,7 +432,6 @@ fs:ClientForward a tcs:InstancePipelineComponent ;
 fs:MemberIngest a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:HttpServer ;
     p-plan:isStepOfPlan fs:ConsumerPipeline ;
-    p-plan:isPrecededBy fs:ClientForward ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -452,7 +453,6 @@ fs:MemberIngest a tcs:InstancePipelineComponent ;
 fs:Skolemize a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:SkolemizationProcessor ;
     p-plan:isStepOfPlan fs:ConsumerPipeline ;
-    p-plan:isPrecededBy fs:MemberIngest ;
     dcat:qualifiedRelation [
         a dcat:Relationship ;
         dcat:hadRole tcs:passthroughShape ;
@@ -469,7 +469,6 @@ fs:Skolemize a tcs:InstancePipelineComponent ;
 fs:SparqlIngest a tcs:InstancePipelineComponent ;
     prov:specializationOf rdfc:SPARQLIngest ;
     p-plan:isStepOfPlan fs:ConsumerPipeline ;
-    p-plan:isPrecededBy fs:Skolemize ;
     p-plan:hasInputVar [
         a tcs:Config ;
         tcs:embedded [
@@ -490,6 +489,13 @@ fs:SparqlIngest a tcs:InstancePipelineComponent ;
 fs:TripleStore a tcs:InstancePipelineComponent ;
     prov:specializationOf sw:triple-store ;
     p-plan:isStepOfPlan fs:ConsumerPipeline .
+
+
+# Dataflow — tcs:Connection edges for fs:ConsumerPipeline.
+[] a tcs:Connection ; tcs:from fs:LdesClient ; tcs:to fs:ClientForward .
+[] a tcs:Connection ; tcs:from fs:ClientForward ; tcs:to fs:MemberIngest .
+[] a tcs:Connection ; tcs:from fs:MemberIngest ; tcs:to fs:Skolemize .
+[] a tcs:Connection ; tcs:from fs:Skolemize ; tcs:to fs:SparqlIngest .
 
 
 ###############################################################################

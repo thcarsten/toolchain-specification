@@ -16,10 +16,9 @@ from ..utils import parse_docker_compose_config, prefer_non_default_compose_conf
 #: channel, which needs no bridge at all.
 CROSS_CONTAINER_UNANNOTATED = """
             ?step a tcs:InstancePipelineComponent ;
-                  prov:specializationOf sw:rdf-ingest-service ;
-                  tcs:readsFrom ?channel .
+                  prov:specializationOf sw:rdf-ingest-service .
+            ?channel tcs:to ?step ; tcs:from ?writer .
             ?reader_container tcs:runs ?step .
-            ?writer tcs:writesTo ?channel .
             ?writer_container tcs:runs ?writer .
             FILTER (?writer_container != ?reader_container)
             FILTER NOT EXISTS { ?channel tcs:endpoint ?endpoint }
@@ -32,7 +31,7 @@ class SwRdfIngestConfigCompiler(Compiler):
     by :class:`BridgeTransportCompiler`.
 
     The Entry half of the HTTP bridge contract: annotate the shared
-    cross-container channel with ``tcs:endpoint``, ``tcs:port`` and
+    cross-container Connection with ``tcs:endpoint``, ``tcs:port`` and
     ``tcs:contentType`` so the paired Exit compiler on the upstream
     container (``LdioHttpOutConfigCompiler``,
     ``RdfcHttpOutConfigCompiler``, ``NifiInvokeHttpConfigCompiler``)
@@ -173,6 +172,6 @@ class SwRdfIngestConfigCompiler(Compiler):
                       tcs:port {self.default_port} ;
                       tcs:contentType "{self.default_content_type}" .
             """,
-            f"{channel} a tcs:Channel .",
+            f"{channel} a tcs:Connection .",
         ).graph
         self.output_reader = self.output_reader.add(new_triples)

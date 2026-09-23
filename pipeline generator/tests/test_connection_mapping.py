@@ -1,24 +1,22 @@
-"""Tests for SemanticModelMapper — the tcs:Connection authoring layer.
+"""Tests for the tcs:Connection authoring vocabulary.
 
-Structured like test_channel_synthesis.py: module-level PREFIXES, the
-catalog_graph fixture + parse_extra, then compile_pipeline /
-assert_compile_raises. See the plan's two-pillar convention
-(tests/EDGE_CASES.md): unsupported edge cases are caught either by a
-SHACL shape or a compiler-level guard; supported edge cases compile for
-real and get their resulting graph inspected.
+Module-level PREFIXES, the catalog_graph fixture + parse_extra, then
+compile_pipeline. Malformed-Connection cases used to be caught by
+SemanticModelMapper raising; per the channel-to-connection plan [D6]
+that compiler is deleted and the same checks now live in
+tcs:ConnectionCardinalityShape, exercised via assert_shacl_violation.
 """
 
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from rdflib import Graph
 
 from testing_helpers import (
-    assert_compile_raises,
     assert_shacl_violation,
     compile_pipeline,
+    load_reader,
     parse_extra,
     pipeline_ttl_content,
 )
@@ -43,76 +41,21 @@ demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessor
 
 
 # ---------------------------------------------------------------------
-# Pillar 2 — compiles (the resolution table, rows 1-4)
+# Pillar 2 — compiles
 # ---------------------------------------------------------------------
-
-
-def test_named_connection_wires_both_ends(catalog_graph):
-    parse_extra(
-        catalog_graph,
-        PREFIXES + TWO_STEP + """
-        demo:conn1 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B .
-    """,
-    )
-    _, build = compile_pipeline(catalog_graph, "demo:Test")
-    channel = build.filter(sub="demo:B", pred="tcs:readsFrom").df["obj"].iloc[0]
-    assert build.ask(f"demo:A tcs:writesTo {channel} .")
-
-
-def test_blank_node_connection_wires_both_ends(catalog_graph):
-    parse_extra(
-        catalog_graph,
-        PREFIXES + TWO_STEP + """
-        [ a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B ] .
-    """,
-    )
-    _, build = compile_pipeline(catalog_graph, "demo:Test")
-    channel = build.filter(sub="demo:B", pred="tcs:readsFrom").df["obj"].iloc[0]
-    assert build.ask(f"demo:A tcs:writesTo {channel} .")
-
-
-def test_minted_channel_is_typed(catalog_graph):
-    parse_extra(
-        catalog_graph,
-        PREFIXES + TWO_STEP + """
-        demo:conn1 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B .
-    """,
-    )
-    _, build = compile_pipeline(catalog_graph, "demo:Test")
-    channel = build.filter(sub="demo:B", pred="tcs:readsFrom").df["obj"].iloc[0]
-    assert build.ask(f"{channel} a tcs:Channel .")
-
-
-def test_reuses_producers_existing_writesto(catalog_graph):
-    parse_extra(
-        catalog_graph,
-        PREFIXES + """
-        demo:Test a tcs:PipelineDefinition .
-        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ; tcs:writesTo demo:ch1 .
-        demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test .
-        demo:conn1 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B .
-    """,
-    )
-    _, build = compile_pipeline(catalog_graph, "demo:Test")
-    assert build.ask("demo:B tcs:readsFrom demo:ch1 .")
-
-
-def test_reuses_consumers_existing_readsfrom(catalog_graph):
-    parse_extra(
-        catalog_graph,
-        PREFIXES + """
-        demo:Test a tcs:PipelineDefinition .
-        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test .
-        demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch1 .
-        demo:conn1 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B .
-    """,
-    )
-    _, build = compile_pipeline(catalog_graph, "demo:Test")
-    assert build.ask("demo:A tcs:writesTo demo:ch1 .")
+#
+# The "resolution table" this section used to cover (named/blank
+# Connection minting a channel, reusing a pre-existing tcs:writesTo /
+# tcs:readsFrom) was SemanticModelMapper's job: turning an authored
+# tcs:Connection into tcs:readsFrom/tcs:writesTo/tcs:Channel wiring for
+# downstream compilers to consume. Per the channel-to-connection plan
+# [D6], that compiler is deleted — a Connection's tcs:from/tcs:to *is*
+# the wiring now, consumed directly by every downstream compiler, so
+# there is no separate resolution step left to exercise. Those cases
+# retired with the compiler they tested; see
+# test_no_connection_triple_survives_into_build below for the coverage
+# that replaces them (authored tcs:from/tcs:to must survive narrowing
+# unchanged, since nothing derives anything from them anymore).
 
 
 def test_already_wired_to_same_channel_is_a_noop(catalog_graph):
@@ -139,64 +82,33 @@ def test_already_wired_to_same_channel_is_a_noop(catalog_graph):
 # ---------------------------------------------------------------------
 # Pillar 1b — compiler-level guards
 # ---------------------------------------------------------------------
+#
+# "Existing wiring conflicts with an authored Connection" and "two
+# tcs:from on one Connection" were SemanticModelMapper's ValueErrors —
+# reconciling a Connection against pre-existing tcs:readsFrom/
+# tcs:writesTo, and rejecting a malformed Connection outright. Per [D6]
+# both retire with the compiler: there is no pre-existing wiring left
+# to reconcile against (a Connection's tcs:from/tcs:to is the only
+# wiring there is), and a malformed Connection now *reports* rather
+# than *raises* — tcs:ConnectionCardinalityShape's job, exercised in
+# test_connection_cardinality_shape_fires_on_two_tcs_from below. Fan-in
+# and fan-out ("wires both branches") tested the same mapper minting a
+# channel per branch; under a 1:1 Connection, branching is just two
+# Connections sharing an endpoint — nothing left to mint, and its
+# legality is covered by
+# test_connection_cardinality_shape_is_silent_on_a_branching_source_graph.
+#
+# The other guard, endpoint typing (tcs:to must not point at a
+# tcs:Channel), is also absorbed into that same SHACL shape ([D2]) —
+# rewritten below to assert the violation declaratively instead of a
+# raise.
 
 
-def test_conflicting_existing_wiring_raises(catalog_graph):
+def test_connection_cardinality_shape_fires_when_to_is_not_a_component(
+    catalog_with_shapes,
+):
     parse_extra(
-        catalog_graph,
-        PREFIXES + """
-        demo:Test a tcs:PipelineDefinition .
-        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ; tcs:writesTo demo:ch1 .
-        demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch2 .
-        demo:conn1 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B .
-    """,
-    )
-    assert_compile_raises(
-        catalog_graph, "demo:Test", match="contradicts existing wiring"
-    )
-
-
-def test_fan_out_from_one_step_raises(catalog_graph):
-    parse_extra(
-        catalog_graph,
-        PREFIXES + """
-        demo:Test a tcs:PipelineDefinition .
-        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test .
-        demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test .
-        demo:C a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test .
-        demo:conn1 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B .
-        demo:conn2 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:C .
-    """,
-    )
-    assert_compile_raises(catalog_graph, "demo:Test", match="fan-out")
-
-
-def test_fan_in_to_one_step_raises(catalog_graph):
-    parse_extra(
-        catalog_graph,
-        PREFIXES + """
-        demo:Test a tcs:PipelineDefinition .
-        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test .
-        demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test .
-        demo:C a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test .
-        demo:conn1 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:C .
-        demo:conn2 a tcs:Connection ; tcs:from demo:B ; tcs:to demo:C .
-    """,
-    )
-    assert_compile_raises(catalog_graph, "demo:Test", match="fan-in")
-
-
-def test_to_pointing_at_a_channel_raises_with_hint(catalog_graph):
-    parse_extra(
-        catalog_graph,
+        catalog_with_shapes,
         PREFIXES + """
         demo:Test a tcs:PipelineDefinition .
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
@@ -205,22 +117,9 @@ def test_to_pointing_at_a_channel_raises_with_hint(catalog_graph):
         demo:conn1 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:ch1 .
     """,
     )
-    assert_compile_raises(
-        catalog_graph, "demo:Test", match="point tcs:to at a channel"
-    )
-
-
-def test_two_tcs_from_on_one_connection_raises(catalog_graph):
-    parse_extra(
-        catalog_graph,
-        PREFIXES + TWO_STEP + """
-        demo:C a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test .
-        demo:conn1 a tcs:Connection ; tcs:from demo:A , demo:C ; tcs:to demo:B .
-    """,
-    )
-    assert_compile_raises(
-        catalog_graph, "demo:Test", match="exactly one tcs:from"
+    assert_shacl_violation(
+        catalog_with_shapes,
+        message_contains="must have exactly one tcs:to, pointing at a tcs:InstancePipelineComponent",
     )
 
 
@@ -243,37 +142,23 @@ def test_connection_between_steps_of_another_plan_is_ignored(catalog_graph):
     )
     _, build = compile_pipeline(catalog_graph, "demo:Test")
     # demo:Test itself declares no tcs:Connection — the other plan's
-    # edge must never leak wiring onto demo:A / demo:B.
-    assert not build.ask("demo:A tcs:writesTo ?c .")
-    assert not build.ask("demo:B tcs:readsFrom ?c .")
+    # edge must never leak into demo:Test's build at all.
+    assert not build.ask("demo:otherconn ?p ?o .")
     # GraphReducer must still narrow the build (it must not be blocked
-    # forever by demo:Other's Connection, which SemanticModelMapper
-    # never consumes since it's out of demo:Test's scope) — the other
-    # plan's steps must not survive narrowing into demo:Test's build.
+    # forever by demo:Other's Connection, which is out of demo:Test's
+    # scope) — the other plan's steps must not survive narrowing into
+    # demo:Test's build.
     assert not build.ask("?s a tcs:InstancePipelineComponent ; p-plan:isStepOfPlan demo:Other .")
 
 
-def test_connection_and_isprecededby_on_same_pair_is_idempotent(catalog_graph):
-    parse_extra(
-        catalog_graph,
-        PREFIXES + """
-        demo:Test a tcs:PipelineDefinition .
-        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test .
-        demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ; p-plan:isPrecededBy demo:A .
-        demo:conn1 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B .
-    """,
-    )
-    _, build = compile_pipeline(catalog_graph, "demo:Test")
-    writes = build.filter(sub="demo:A", pred="tcs:writesTo").df["obj"].to_list()
-    reads = build.filter(sub="demo:B", pred="tcs:readsFrom").df["obj"].to_list()
-    assert len(writes) == 1
-    assert len(reads) == 1
-    assert writes == reads
-
-
-def test_no_connection_triple_survives_into_build(catalog_graph):
+def test_connection_triple_survives_into_build(catalog_graph):
+    """Drift guard for the risk the plan itself calls out (§10): forward
+    narrowing cannot reach a tcs:Connection (nothing points *at* it), so
+    GraphReducer walks tcs:from/tcs:to against their normal direction
+    specifically to keep it. Per [D6]/[D7] a Connection is no longer
+    detached after being consumed by a mapper — there is no mapper —
+    so it must show up in the build exactly as authored.
+    """
     parse_extra(
         catalog_graph,
         PREFIXES + TWO_STEP + """
@@ -281,9 +166,7 @@ def test_no_connection_triple_survives_into_build(catalog_graph):
     """,
     )
     _, build = compile_pipeline(catalog_graph, "demo:Test")
-    assert build.filter(pred="rdf:type", obj="tcs:Connection").df.empty
-    assert build.filter(pred="tcs:from").df.empty
-    assert build.filter(pred="tcs:to").df.empty
+    assert build.ask("demo:conn1 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B .")
 
 
 def test_connection_free_pipeline_never_runs_the_mapper(catalog_graph):
@@ -294,7 +177,7 @@ def test_connection_free_pipeline_never_runs_the_mapper(catalog_graph):
         demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
             p-plan:isStepOfPlan demo:Test .
         demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ; p-plan:isPrecededBy demo:A .
+            p-plan:isStepOfPlan demo:Test ; tcs:readsFrom demo:ch1 .
     """,
     )
     gen, build = compile_pipeline(catalog_graph, "demo:Test")
@@ -321,7 +204,6 @@ demo_lr:Poll a tcs:InstancePipelineComponent ;
 demo_lr:Parse a tcs:InstancePipelineComponent ;
     prov:specializationOf ldio:JsonToLdAdapter ;
     p-plan:isStepOfPlan demo_lr:Test ;
-    p-plan:isPrecededBy demo_lr:Poll ;
     p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [
         ldio:force-content-type true ;
         ldio:context "{}"
@@ -332,6 +214,7 @@ demo_lr:Sink a tcs:InstancePipelineComponent ;
     p-plan:isStepOfPlan demo_lr:Test ;
     p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [] ] .
 
+[ a tcs:Connection ; tcs:from demo_lr:Poll ; tcs:to demo_lr:Parse ] .
 [ a tcs:Connection ; tcs:from demo_lr:Parse ; tcs:to demo_lr:Sink ] .
 """
 
@@ -348,12 +231,11 @@ def test_cross_container_connection_is_bridged(catalog_graph):
     endpoints = build.select(
         "?endpoint ?port",
         """
-        ?entry  prov:specializationOf rdfc:HttpServer ;
-                tcs:readsFrom ?channel .
-        ?exit   prov:specializationOf ldio:HttpOut ;
-                tcs:writesTo ?channel .
-        ?channel tcs:endpoint ?endpoint ;
-                 tcs:port ?port .
+        ?entry  prov:specializationOf rdfc:HttpServer .
+        ?exit   prov:specializationOf ldio:HttpOut .
+        ?channel a tcs:Connection ;
+                 tcs:from ?exit ; tcs:to ?entry ;
+                 tcs:endpoint ?endpoint ; tcs:port ?port .
         """,
     )
     assert len(endpoints) == 1
@@ -381,75 +263,53 @@ def _copy_graph(g: Graph) -> Graph:
     return copy
 
 
-def test_connection_syntax_compiles_to_same_rdfc_pipeline_as_isprecededby(
-    catalog_graph,
-):
-    isprecededby_graph = _copy_graph(catalog_graph)
-    parse_extra(
-        isprecededby_graph,
-        PREFIXES + """
-        demo:Test a tcs:PipelineDefinition .
-        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [] ] .
-        demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ; p-plan:isPrecededBy demo:A ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [] ] .
-    """,
-    )
-    _, isprecededby_build = compile_pipeline(isprecededby_graph, "demo:Test")
-    isprecededby_ttl = _normalize_channel_names(
-        pipeline_ttl_content(isprecededby_build)
-    )
-
-    connection_graph = _copy_graph(catalog_graph)
-    parse_extra(
-        connection_graph,
-        PREFIXES + """
-        demo:Test a tcs:PipelineDefinition .
-        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [] ] .
-        demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
-            p-plan:isStepOfPlan demo:Test ;
-            p-plan:hasInputVar [ a tcs:PipelineConfig ; tcs:embedded [] ] .
-        [ a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B ] .
-    """,
-    )
-    _, connection_build = compile_pipeline(connection_graph, "demo:Test")
-    connection_ttl = _normalize_channel_names(pipeline_ttl_content(connection_build))
-
-    assert isprecededby_ttl == connection_ttl
-
-
-def test_no_compiler_outside_mapper_mentions_connection_vocabulary():
-    """Drift guard: the tcs:Connection / tcs:from / tcs:to authoring
-    vocabulary must stay confined to SemanticModelMapper. The one
-    documented exception is GraphReducer's belt-and-braces
-    ``FILTER NOT EXISTS { ?c a tcs:Connection }`` guard (§1.2, layer 3)
-    — a deliberate ordering safety net, not a leak of the authoring
-    layer's semantics.
+def test_blank_connection_channel_is_run_stable(catalog_graph):
+    """Drift guard: a blank Connection's minted channel is
+    `PipelineSeeder.name_blind_nodes`'s `:connection_N`, not a
+    separately-numbered `:channel_N` — regenerating the same pipeline in
+    two fresh processes must not disagree on the name.
     """
-    compilers_dir = Path(__file__).resolve().parents[1] / "src" / "compilers"
-    allowed = {"semantic_model_mapper.py", "graph_reducer.py"}
-    offenders = []
-    for path in compilers_dir.rglob("*.py"):
-        if path.name in allowed:
-            continue
-        text = path.read_text(encoding="utf-8")
-        if re.search(r"tcs:Connection|tcs:from\b|tcs:to\b", text):
-            offenders.append(str(path.relative_to(compilers_dir)))
-    assert not offenders, f"tcs:Connection vocabulary leaked into: {offenders}"
+    first_graph = _copy_graph(catalog_graph)
+    parse_extra(first_graph, PREFIXES + TWO_STEP + """
+        [ a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B ] .
+    """)
+    _, first_build = compile_pipeline(first_graph, "demo:Test")
+    first_ttl = _normalize_channel_names(pipeline_ttl_content(first_build))
+
+    second_graph = _copy_graph(catalog_graph)
+    parse_extra(second_graph, PREFIXES + TWO_STEP + """
+        [ a tcs:Connection ; tcs:from demo:A ; tcs:to demo:B ] .
+    """)
+    _, second_build = compile_pipeline(second_graph, "demo:Test")
+    second_ttl = _normalize_channel_names(pipeline_ttl_content(second_build))
+
+    assert first_ttl == second_ttl
+
+
+# The drift guard that used to live here ("no compiler outside the
+# mapper mentions tcs:Connection vocabulary") asserted the opposite of
+# what C2 deliberately did: per §7 of the channel-to-connection plan,
+# every framework consumer (RdfcConfigCompiler, the LDIO/NiFi/sw
+# boundary compilers, BridgeTransportCompiler, DockerComposeCompiler,
+# ...) now reads tcs:from/tcs:to directly, with no translation layer to
+# confine the vocabulary to. Confining it to one file was only ever a
+# property of the now-deleted SemanticModelMapper design; there is no
+# analogous invariant to guard in the new one, so the test retires with
+# the compiler it was guarding.
 
 
 # ---------------------------------------------------------------------
-# The temporary no-branching shape
+# tcs:ConnectionCardinalityShape — per-Connection, not per-step
 # ---------------------------------------------------------------------
 
 
-def test_connection_cardinality_shape_fires_on_branching_source_graph(
+def test_connection_cardinality_shape_is_silent_on_a_branching_source_graph(
     catalog_with_shapes,
 ):
+    """Branching (two Connections sharing a tcs:from) is legal ([D2]) —
+    the shape must not fire on it, only on a structurally malformed
+    Connection (see the next test).
+    """
     parse_extra(
         catalog_with_shapes,
         PREFIXES + """
@@ -464,6 +324,40 @@ def test_connection_cardinality_shape_fires_on_branching_source_graph(
         demo:conn2 a tcs:Connection ; tcs:from demo:A ; tcs:to demo:C .
     """,
     )
+    report = load_reader(catalog_with_shapes).validate(advanced=True)
+    violations = report.select(
+        "?focus ?message",
+        "?r a sh:ValidationResult ; sh:focusNode ?focus ; sh:resultMessage ?message .",
+    )
+    # Narrowed to tcs:ConnectionCardinalityShape's own wording rather
+    # than a generic "tcs:Connection" substring: other shapes (e.g.
+    # RdfcMandatoryReaderWiringShape, since rdfc:LogProcessorJs
+    # mandates exactly one reader) now legitimately mention
+    # tcs:Connection in their own messages too, and demo:A here has no
+    # incoming Connection — a real, unrelated violation the old filter
+    # would have swept up as if it were this shape firing.
+    matches = violations[
+        violations["message"].str.contains(
+            "must have exactly one tcs:(?:from|to)", case=False, na=False, regex=True
+        )
+    ]
+    assert matches.empty, f"unexpected Connection-cardinality violation(s): {matches}"
+
+
+def test_connection_cardinality_shape_fires_on_two_tcs_from(catalog_with_shapes):
+    parse_extra(
+        catalog_with_shapes,
+        PREFIXES + """
+        demo:Test a tcs:PipelineDefinition .
+        demo:A a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
+            p-plan:isStepOfPlan demo:Test .
+        demo:B a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
+            p-plan:isStepOfPlan demo:Test .
+        demo:C a tcs:InstancePipelineComponent ; prov:specializationOf rdfc:LogProcessorJs ;
+            p-plan:isStepOfPlan demo:Test .
+        demo:conn1 a tcs:Connection ; tcs:from demo:A , demo:C ; tcs:to demo:B .
+    """,
+    )
     assert_shacl_violation(
-        catalog_with_shapes, message_contains="Branching is not yet supported"
+        catalog_with_shapes, message_contains="exactly one tcs:from"
     )

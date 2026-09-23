@@ -227,7 +227,7 @@ class DockerComposeCompiler(Compiler):
         1. **Explicit** — a ``dct:requires`` edge between two components
            that each already live in a *different* ``tcs:DockerContainer``
            (see :meth:`_lookup_explicit_container_dependencies`).
-        2. **Flow-order fallback** — a ``tcs:Channel`` crossing two
+        2. **Flow-order fallback** — a ``tcs:Connection`` crossing two
            different containers, only for container pairs the explicit
            source above has no opinion about (see
            :meth:`_lookup_floworder_container_dependencies`).
@@ -392,9 +392,9 @@ class DockerComposeCompiler(Compiler):
     def _lookup_floworder_container_dependencies(
         self, explicit_pairs: set[tuple[str, str]]
     ) -> set[tuple[str, str]]:
-        """Phase 2 (fallback): for a ``tcs:Channel`` crossing two different
-        containers, the producing container depends_on the consuming
-        container — mirrors the demonstrator's hand-written
+        """Phase 2 (fallback): for a ``tcs:Connection`` crossing two
+        different containers, the producing container depends_on the
+        consuming container — mirrors the demonstrator's hand-written
         ``ldio-workbench -> rdfc`` edge, which has no ``dct:requires``
         counterpart at all. Skipped for any container pair Phase 1
         already has an opinion about, in either direction — avoids both a
@@ -405,8 +405,9 @@ class DockerComposeCompiler(Compiler):
         rows = self.output_reader.select(
             "?compProd ?cProd ?compCons ?cCons",
             """
-            ?prodStep tcs:writesTo ?ch ; prov:specializationOf ?compProd .
-            ?consStep tcs:readsFrom ?ch ; prov:specializationOf ?compCons .
+            ?conn tcs:from ?prodStep ; tcs:to ?consStep .
+            ?prodStep prov:specializationOf ?compProd .
+            ?consStep prov:specializationOf ?compCons .
             ?cProd tcs:runs ?prodStep .
             ?cCons tcs:runs ?consStep .
             FILTER (?cProd != ?cCons)

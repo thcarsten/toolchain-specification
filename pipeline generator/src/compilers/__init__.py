@@ -1,7 +1,6 @@
 from .compiler_abc import Compiler
 from .compilation_runner import CompilationConfig, CompilationRunner
 from .core.pipeline_seeder import PipelineSeeder
-from .core.semantic_model_mapper import SemanticModelMapper
 from .core.pipeline_enricher import PipelineEnricher
 from .core.pipeline_assembler import PipelineAssembler
 from .core.bridge_transport_compiler import BridgeTransportCompiler
@@ -45,7 +44,6 @@ __all__ = [
     "PipelineValidatorConfig",
     "FileMaterializer",
     "PipelineSeeder",
-    "SemanticModelMapper",
     "GraphReducer",
     "PipelineEnricher",
     "BridgeTransportCompiler",

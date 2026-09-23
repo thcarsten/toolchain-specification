@@ -144,8 +144,8 @@ Even if the [PipelineGenerator](#pipelinegenerator) is not utilized, the *toolch
 |----------|----------|
 | **Definition** | A InstancePipelineComponent is any component in a pipeline which acts on data. This can mean producing, transforming, consuming data (ETL) or a combination of these. t is a specialization of a [PipelineComponent](#pipelinecomponent) in that it is instanced by a [DockerContainer](#dockercontainer) as part of a [PipelineBuild](#pipelinebuild). |
 | **subclass of** | [p-plan:Step](https://vocab.linkeddata.es/p-plan/version/17092013/#Step) |
-| **domain of** | [prov:specializationOf](https://www.w3.org/TR/prov-o/#specializationOf), [p-plan:isStepOfPlan](https://vocab.linkeddata.es/p-plan/version/17092013/#isStepOfPlan), [p-plan:isPrecededBy](https://vocab.linkeddata.es/p-plan/version/17092013/#isPreceededBy), [tcs:writesTo](#tcswritesto), [tcs:readsFrom](#tcsreadsfrom), [p-plan:hasInputVar](https://vocab.linkeddata.es/p-plan/version/17092013/#hasInputVar), [tcs:segment](#tcssegment) |
-| **range of** | [p-plan:isPrecededBy](https://vocab.linkeddata.es/p-plan/version/17092013/#isPreceededBy), [tcs:runs](#tcsruns), [tcs:from](#tcsfrom), [tcs:to](#tcsto) |
+| **domain of** | [prov:specializationOf](https://www.w3.org/TR/prov-o/#specializationOf), [p-plan:isStepOfPlan](https://vocab.linkeddata.es/p-plan/version/17092013/#isStepOfPlan), [tcs:writesTo](#tcswritesto), [tcs:readsFrom](#tcsreadsfrom), [p-plan:hasInputVar](https://vocab.linkeddata.es/p-plan/version/17092013/#hasInputVar), [tcs:segment](#tcssegment) |
+| **range of** | [tcs:runs](#tcsruns), [tcs:from](#tcsfrom), [tcs:to](#tcsto) |
 <br>
 
 
@@ -161,9 +161,9 @@ Even if the [PipelineGenerator](#pipelinegenerator) is not utilized, the *toolch
 ### Connection
 | | |
 |----------|----------|
-| **Definition** | A Connection is a reified dataflow edge between two [InstancePipelineComponents](#instancepipelinecomponent), authored as `[ a tcs:Connection ; tcs:from producer ; tcs:to consumer ]`. It is a third, equally terse alternative to writing [tcs:readsFrom](#tcsreadsfrom)/[tcs:writesTo](#tcswritesto) directly or to [p-plan:isPrecededBy](https://vocab.linkeddata.es/p-plan/version/17092013/#isPreceededBy): unlike the latter, a Connection is extensible with its own metadata, and it keeps an InstancePipelineComponent's own triples stable when wiring changes, since the edge lives on a separate node rather than on either step. A Connection is currently a strictly 1:1 edge — an InstancePipelineComponent may be the `tcs:from`/`tcs:to` of at most one Connection each; fan-out/fan-in are not yet supported (deferred pending a channel-identity term of their own). At compile time, the [PipelineGenerator](#pipelinegenerator)'s `SemanticModelMapper` compiler translates every Connection into concrete [tcs:readsFrom](#tcsreadsfrom)/[tcs:writesTo](#tcswritesto)/[Channel](#channel) wiring and removes the Connection's own triples — no compiler, shape, or inference rule downstream of that translation step ever needs to reason about `tcs:Connection` itself. |
+| **Definition** | A Connection is a reified dataflow edge between two [InstancePipelineComponents](#instancepipelinecomponent), authored as `[ a tcs:Connection ; tcs:from producer ; tcs:to consumer ]` — the primary way to state an edge, extensible with its own metadata (e.g. [tcs:writerPath](#tcswriterpath)) and keeping an InstancePipelineComponent's own triples stable when wiring changes, since the edge lives on a separate node rather than on either step. Writing [tcs:readsFrom](#tcsreadsfrom)/[tcs:writesTo](#tcswritesto) directly stays supported as an escape hatch. A Connection is strictly a 1:1 edge — exactly one `tcs:from`, exactly one `tcs:to` — but a step may be the endpoint of any number of Connections: branching is several Connections sharing an endpoint, not one wider Connection. At compile time, the [PipelineGenerator](#pipelinegenerator)'s `SemanticModelMapper` compiler translates every Connection into concrete [tcs:readsFrom](#tcsreadsfrom)/[tcs:writesTo](#tcswritesto)/[Channel](#channel) wiring and removes the Connection's own triples — no compiler, shape, or inference rule downstream of that translation step ever needs to reason about `tcs:Connection` itself. |
 | **subclass of** | --- |
-| **domain of** | [tcs:from](#tcsfrom), [tcs:to](#tcsto) |
+| **domain of** | [tcs:from](#tcsfrom), [tcs:to](#tcsto), [tcs:writerPath](#tcswriterpath) |
 | **range of** | --- |
 <br>
 
@@ -298,7 +298,7 @@ Predicates native to the `tcs:` namespace, each with its domain and range. Predi
 ### tcs:readsFrom
 | | |
 |----------|----------|
-| **Definition** | Declares that an [InstancePipelineComponent](#instancepipelinecomponent) consumes data from a [Channel](#channel). Complementary to [p-plan:isPrecededBy](https://vocab.linkeddata.es/p-plan/version/17092013/#isPreceededBy): the latter is a terser way to declare step order and is expanded into concrete channel wiring where unambiguous, but an explicit tcs:readsFrom is required to disambiguate which channel a step reads from when more than one is available (e.g. a branching producer). An author may also express the same edge via a reified [Connection](#connection) — `[ a tcs:Connection ; tcs:from producer ; tcs:to consumer ]` — a third authoring form the pipeline generator's `SemanticModelMapper` compiler translates into this predicate (and [tcs:writesTo](#tcswritesto)) at compile time. |
+| **Definition** | Declares that an [InstancePipelineComponent](#instancepipelinecomponent) consumes data from a [Channel](#channel). The internal wiring predicate every downstream compiler, SHACL shape and inference rule reasons over — an author normally states the edge as a reified [Connection](#connection) instead (`[ a tcs:Connection ; tcs:from producer ; tcs:to consumer ]`), which the pipeline generator's `SemanticModelMapper` compiler translates into this predicate (and [tcs:writesTo](#tcswritesto)) at compile time. Writing it directly stays supported for the rare case a Connection's 1:1 shape can't express. |
 | **domain** | [tcs:InstancePipelineComponent](#instancepipelinecomponent) |
 | **range** | [tcs:Channel](#channel) |
 <br>
@@ -306,7 +306,7 @@ Predicates native to the `tcs:` namespace, each with its domain and range. Predi
 ### tcs:writesTo
 | | |
 |----------|----------|
-| **Definition** | Declares that an [InstancePipelineComponent](#instancepipelinecomponent) produces data onto a [Channel](#channel). Complementary to [p-plan:isPrecededBy](https://vocab.linkeddata.es/p-plan/version/17092013/#isPreceededBy) in the same way as [tcs:readsFrom](#tcsreadsfrom): required to disambiguate which channel a step writes to when more than one is available. As with [tcs:readsFrom](#tcsreadsfrom), an author may express the same edge via a reified [Connection](#connection) instead; `SemanticModelMapper` translates it into this predicate at compile time. |
+| **Definition** | Declares that an [InstancePipelineComponent](#instancepipelinecomponent) produces data onto a [Channel](#channel). Symmetric with [tcs:readsFrom](#tcsreadsfrom) in every respect, including the Connection-first authoring convention. |
 | **domain** | [tcs:InstancePipelineComponent](#instancepipelinecomponent) |
 | **range** | [tcs:Channel](#channel) |
 <br>
@@ -314,7 +314,7 @@ Predicates native to the `tcs:` namespace, each with its domain and range. Predi
 ### tcs:from
 | | |
 |----------|----------|
-| **Definition** | Declares the producing [InstancePipelineComponent](#instancepipelinecomponent) of a [Connection](#connection) — the step data flows from. Exactly one per Connection. |
+| **Definition** | Declares the producing [InstancePipelineComponent](#instancepipelinecomponent) of a [Connection](#connection) — the step data flows from. Exactly one per Connection; branching is several Connections sharing a `tcs:from`, not one Connection with several. |
 | **domain** | [tcs:Connection](#connection) |
 | **range** | [tcs:InstancePipelineComponent](#instancepipelinecomponent) |
 <br>
@@ -322,9 +322,17 @@ Predicates native to the `tcs:` namespace, each with its domain and range. Predi
 ### tcs:to
 | | |
 |----------|----------|
-| **Definition** | Declares the consuming [InstancePipelineComponent](#instancepipelinecomponent) of a [Connection](#connection) — the step data flows to. Exactly one per Connection. |
+| **Definition** | Declares the consuming [InstancePipelineComponent](#instancepipelinecomponent) of a [Connection](#connection) — the step data flows to. Exactly one per Connection; fan-in is several Connections sharing a `tcs:to`. |
 | **domain** | [tcs:Connection](#connection) |
 | **range** | [tcs:InstancePipelineComponent](#instancepipelinecomponent) |
+<br>
+
+### tcs:writerPath
+| | |
+|----------|----------|
+| **Definition** | Disambiguates which framework port a [Connection](#connection)'s writer side uses, for the case where two Connections share a `tcs:from` and are otherwise indistinguishable (e.g. `rdfc:Sdsify`'s main output vs. its metadata sidestream). Value space is deliberately heterogeneous and framework-specific — an IRI for RDF-Connect (e.g. `rdfc:output`, itself a config predicate), a string for NiFi (a relationship name like `"splits"`). A Connection carrying no `tcs:writerPath` is the unambiguous case and needs none. There is no `tcs:readerPath`: every catalogued component declares exactly one reader-side config key, so an incoming edge is never ambiguous about which port it lands on. |
+| **domain** | [tcs:Connection](#connection) |
+| **range** | — (IRI or literal, at most one per Connection) |
 <br>
 
 ### tcs:instantiates
